@@ -1,0 +1,557 @@
+/* ========== Material Design 3 设计系统 ========== */
+/* [WHY] 实现 Google Material Design 风格，提供统一的视觉语言 */
+/* [WHAT] 定义阴影层次、圆角、间距、动画等 Material 核心样式 */
+
+/* ========== Elevation 阴影层次 ========== */
+/* [WHAT] Material Design 使用 0-5 级阴影表示 UI 元素层次 */
+:root {
+  /* 阴影 - 深色主题优化 */
+  --md-elevation-0: none;
+  --md-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --md-elevation-2: 0 3px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.12);
+  --md-elevation-3: 0 10px 20px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.10);
+  --md-elevation-4: 0 15px 25px rgba(0, 0, 0, 0.15), 0 5px 10px rgba(0, 0, 0, 0.05);
+  --md-elevation-5: 0 20px 40px rgba(0, 0, 0, 0.2);
+  
+  /* Material 圆角系统 */
+  --md-radius-xs: 4px;
+  --md-radius-sm: 8px;
+  --md-radius-md: 12px;
+  --md-radius-lg: 16px;
+  --md-radius-xl: 24px;
+  --md-radius-full: 9999px;
+  
+  /* Material 间距系统 (8dp grid) */
+  --md-spacing-xs: 4px;
+  --md-spacing-sm: 8px;
+  --md-spacing-md: 16px;
+  --md-spacing-lg: 24px;
+  --md-spacing-xl: 32px;
+  --md-spacing-xxl: 48px;
+  
+  /* Material 动画时长 */
+  --md-duration-short: 150ms;
+  --md-duration-medium: 300ms;
+  --md-duration-long: 500ms;
+  
+  /* Material 动画曲线 */
+  --md-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --md-easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --md-easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  
+  /* Material 色彩系统 - 深色主题 */
+  --md-primary: #6750A4;
+  --md-primary-container: #EADDFF;
+  --md-secondary: #625B71;
+  --md-tertiary: #7D5260;
+  --md-error: #B3261E;
+  --md-success: #2E7D32;
+  --md-warning: #F57C00;
+  
+  /* 表面色 */
+  --md-surface: #1C1B1F;
+  --md-surface-variant: #49454F;
+  --md-surface-container: #211F26;
+  --md-surface-container-low: #1D1B20;
+  --md-surface-container-high: #2B2930;
+  --md-surface-container-highest: #36343B;
+  
+  /* 文字色 */
+  --md-on-surface: #E6E1E5;
+  --md-on-surface-variant: #CAC4D0;
+  --md-outline: #938F99;
+  --md-outline-variant: #49454F;
+}
+
+/* ========== 深色主题 Material 色彩 ========== */
+[data-theme="dark"] {
+  --md-primary: #D0BCFF;
+  --md-primary-container: #4F378B;
+  --md-secondary: #CCC2DC;
+  --md-tertiary: #EFB8C8;
+  --md-error: #F2B8B5;
+  --md-success: #81C784;
+  --md-warning: #FFB74D;
+  
+  --md-surface: #1C1B1F;
+  --md-surface-variant: #49454F;
+  --md-surface-container: #211F26;
+  --md-surface-container-low: #1D1B20;
+  --md-surface-container-high: #2B2930;
+  --md-surface-container-highest: #36343B;
+  
+  --md-on-surface: #E6E1E5;
+  --md-on-surface-variant: #CAC4D0;
+  --md-outline: #938F99;
+  --md-outline-variant: #49454F;
+}
+
+/* ========== Material 卡片组件 ========== */
+.md-card {
+  background: var(--md-surface-container);
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-spacing-md);
+  box-shadow: var(--md-elevation-1);
+  transition: box-shadow var(--md-duration-medium) var(--md-easing-standard),
+              transform var(--md-duration-short) var(--md-easing-standard);
+}
+
+.md-card:active {
+  box-shadow: var(--md-elevation-2);
+  transform: scale(0.98);
+}
+
+.md-card-elevated {
+  background: var(--md-surface-container-high);
+  box-shadow: var(--md-elevation-2);
+}
+
+.md-card-outlined {
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline-variant);
+  box-shadow: none;
+}
+
+/* ========== Material 按钮 ========== */
+.md-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: var(--md-radius-full);
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.1px;
+  border: none;
+  cursor: pointer;
+  transition: all var(--md-duration-short) var(--md-easing-standard);
+  position: relative;
+  overflow: hidden;
+}
+
+.md-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-duration-short);
+}
+
+.md-button:active::after {
+  opacity: 0.12;
+}
+
+.md-button-filled {
+  background: var(--md-primary);
+  color: #1C1B1F;
+}
+
+.md-button-tonal {
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+}
+
+.md-button-outlined {
+  background: transparent;
+  border: 1px solid var(--md-outline);
+  color: var(--md-primary);
+}
+
+.md-button-text {
+  background: transparent;
+  color: var(--md-primary);
+  padding: 10px 12px;
+}
+
+/* ========== Material 列表项 ========== */
+.md-list-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 16px;
+  background: var(--md-surface);
+  border-radius: var(--md-radius-md);
+  transition: background var(--md-duration-short) var(--md-easing-standard);
+}
+
+.md-list-item:active {
+  background: var(--md-surface-container-high);
+}
+
+.md-list-item-leading {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--md-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  flex-shrink: 0;
+}
+
+.md-list-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.md-list-item-headline {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--md-on-surface);
+  line-height: 1.5;
+}
+
+.md-list-item-supporting {
+  font-size: 14px;
+  color: var(--md-on-surface-variant);
+  line-height: 1.4;
+}
+
+.md-list-item-trailing {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ========== Material 分割线 ========== */
+.md-divider {
+  height: 1px;
+  background: var(--md-outline-variant);
+  margin: var(--md-spacing-sm) 0;
+}
+
+.md-divider-inset {
+  margin-left: 72px;
+}
+
+/* ========== Material Chip 标签 ========== */
+.md-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: var(--md-radius-sm);
+  font-size: 14px;
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
+  border: 1px solid var(--md-outline-variant);
+}
+
+.md-chip-filled {
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  border: none;
+}
+
+/* ========== Material 进度指示器 ========== */
+.md-progress-linear {
+  height: 4px;
+  background: var(--md-surface-container-highest);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.md-progress-linear-indicator {
+  height: 100%;
+  background: var(--md-primary);
+  border-radius: 2px;
+  transition: width var(--md-duration-medium) var(--md-easing-standard);
+}
+
+/* ========== Material 涟漪效果 ========== */
+.md-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.md-ripple::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--md-primary) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity var(--md-duration-short), transform var(--md-duration-medium);
+}
+
+.md-ripple:active::before {
+  opacity: 0.12;
+  transform: scale(2);
+}
+
+/* ========== Material 图标按钮 ========== */
+.md-icon-button {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--md-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  transition: background var(--md-duration-short);
+}
+
+.md-icon-button:active {
+  background: var(--md-surface-container-highest);
+}
+
+/* ========== Material FAB 浮动按钮 ========== */
+.md-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--md-radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  border: none;
+  box-shadow: var(--md-elevation-3);
+  cursor: pointer;
+  transition: box-shadow var(--md-duration-short);
+}
+
+.md-fab:active {
+  box-shadow: var(--md-elevation-4);
+}
+
+/* ========== Material 头部标题 ========== */
+.md-headline-large {
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--md-on-surface);
+}
+
+.md-headline-medium {
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.29;
+  color: var(--md-on-surface);
+}
+
+.md-headline-small {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.33;
+  color: var(--md-on-surface);
+}
+
+.md-title-large {
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.27;
+  color: var(--md-on-surface);
+}
+
+.md-title-medium {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.15px;
+  color: var(--md-on-surface);
+}
+
+.md-title-small {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+  letter-spacing: 0.1px;
+  color: var(--md-on-surface);
+}
+
+.md-body-large {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.5px;
+  color: var(--md-on-surface);
+}
+
+.md-body-medium {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  letter-spacing: 0.25px;
+  color: var(--md-on-surface-variant);
+}
+
+.md-body-small {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.33;
+  letter-spacing: 0.4px;
+  color: var(--md-on-surface-variant);
+}
+
+.md-label-large {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+  letter-spacing: 0.1px;
+}
+
+.md-label-medium {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.33;
+  letter-spacing: 0.5px;
+}
+
+.md-label-small {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.5px;
+}
+
+/* ========== Material 数据展示卡片 ========== */
+.md-stat-card {
+  background: linear-gradient(135deg, var(--md-surface-container-high) 0%, var(--md-surface-container) 100%);
+  border-radius: var(--md-radius-xl);
+  padding: var(--md-spacing-lg);
+  box-shadow: var(--md-elevation-2);
+}
+
+.md-stat-value {
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--md-on-surface);
+}
+
+.md-stat-label {
+  font-size: 14px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
+
+.md-stat-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--md-radius-full);
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.md-stat-change.positive {
+  background: rgba(46, 125, 50, 0.15);
+  color: var(--md-success);
+}
+
+.md-stat-change.negative {
+  background: rgba(179, 38, 30, 0.15);
+  color: var(--md-error);
+}
+
+/* ========== Material 搜索栏 ========== */
+.md-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--md-surface-container-high);
+  border-radius: var(--md-radius-full);
+  padding: 8px 16px;
+  box-shadow: var(--md-elevation-1);
+}
+
+.md-search-bar input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--md-on-surface);
+  outline: none;
+}
+
+.md-search-bar input::placeholder {
+  color: var(--md-on-surface-variant);
+}
+
+/* ========== Material 底部导航栏增强 ========== */
+.van-tabbar {
+  background: var(--md-surface-container) !important;
+  border-top: none !important;
+  box-shadow: var(--md-elevation-2) !important;
+}
+
+.van-tabbar-item--active {
+  color: var(--md-primary) !important;
+}
+
+/* ========== Material 顶部导航栏增强 ========== */
+.van-nav-bar {
+  background: var(--md-surface) !important;
+  box-shadow: var(--md-elevation-1) !important;
+  border-bottom: none !important;
+}
+
+.van-nav-bar__title {
+  font-weight: 500 !important;
+  font-size: 20px !important;
+  color: var(--md-on-surface) !important;
+}
+
+.van-nav-bar .van-icon {
+  color: var(--md-on-surface) !important;
+}
+
+/* ========== Material 弹窗增强 ========== */
+.van-popup {
+  background: var(--md-surface-container) !important;
+  border-radius: var(--md-radius-xl) var(--md-radius-xl) 0 0 !important;
+}
+
+.van-popup--center {
+  border-radius: var(--md-radius-xl) !important;
+}
+
+/* ========== Material Toast 增强 ========== */
+.van-toast {
+  background: var(--md-surface-container-highest) !important;
+  border-radius: var(--md-radius-sm) !important;
+  box-shadow: var(--md-elevation-3) !important;
+}
+
+/* ========== Material 空状态 ========== */
+.van-empty {
+  background: transparent !important;
+}
+
+.van-empty__description {
+  color: var(--md-on-surface-variant) !important;
+}
+
+/* ========== Material 加载指示器 ========== */
+.van-loading__spinner {
+  color: var(--md-primary) !important;
+}
+
+/* ========== Material 按钮增强 ========== */
+.van-button--primary {
+  background: var(--md-primary) !important;
+  border-radius: var(--md-radius-full) !important;
+  border: none !important;
+}
+
+.van-button--default {
+  background: var(--md-surface-container-high) !important;
+  border-radius: var(--md-radius-full) !important;
+  border: 1px solid var(--md-outline-variant) !important;
+  color: var(--md-on-surface) !important;
+}
+
+/* ========== 工具类 ========== */
+.text-up { color: var(--color-up) !important; }
+.text-down { color: var(--color-down) !important; }
+.bg-up { background: var(--color-up-bg) !important; }
+.bg-down { background: var(--color-down-bg) !important; }

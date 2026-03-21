@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "exportDate": "2026-03-20T12:36:49.335Z",
+  "holdings": [
+    {
+      "code": "018125",
+      "name": "永赢先进制造智选混合发起C",
+      "buyNetValue": 2.3711145787481933,
+      "shares": 63802.48401149319,
+      "buyDate": "2026-02-05",
+      "holdingDays": 0,
+      "industrySectors": "机器人",
+      "createdAt": 1770269069335,
+      "source": "ali",
+      "isQDII": false
+    },
+    {
+      "code": "021662",
+      "name": "国富亚洲机会股票(QDII)C",
+      "buyNetValue": 1,
+      "shares": 4000,
+      "buyDate": "2026-02-25",
+      "holdingDays": 0,
+      "industrySectors": "海外",
+      "source": "ali",
+      "isQDII": true,
+      "createdAt": 1772003042566
+    }
+  ],
+  "summary": {
+    "totalValue": 143275.51293910464,
+    "totalProfit": -12007.487060895362,
+    "totalProfitRate": -8.380697311479052,
+    "todayProfit": -3541.539007710631
+  }
+}

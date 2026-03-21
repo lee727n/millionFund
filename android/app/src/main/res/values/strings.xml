@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">百万实盘</string>
+    <string name="title_activity_main">百万实盘</string>
+    <string name="package_name">com.fundapp.realtime</string>
+    <string name="custom_url_scheme">com.fundapp.realtime</string>
+</resources>

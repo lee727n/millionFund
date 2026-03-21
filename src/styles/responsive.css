@@ -1,0 +1,178 @@
+/**
+ * 响应式布局样式
+ * [WHY] 为不同平台和屏幕尺寸提供统一的布局类
+ * [WHAT] 使用 CSS 变量和媒体查询实现响应式
+ */
+
+
+/* Web 端宽屏布局 */
+
+.web-layout {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+
+/* 移动端窄屏布局 */
+
+.mobile-layout {
+    width: 100%;
+    padding: 0 12px;
+}
+
+
+/* 超小屏幕 (< 576px) */
+
+@media (max-width: 575px) {
+    .xs-layout {
+        /* 单列布局 */
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+
+/* 小屏幕 (576px - 767px) */
+
+@media (min-width: 576px) and (max-width: 767px) {
+    .sm-layout {
+        /* 单列布局 */
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+
+/* 中等屏幕 (768px - 991px) */
+
+@media (min-width: 768px) and (max-width: 991px) {
+    .md-layout {
+        /* 两列布局 */
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+}
+
+
+/* 大屏幕 (992px - 1199px) */
+
+@media (min-width: 992px) and (max-width: 1199px) {
+    .lg-layout {
+        /* 三列布局 */
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+}
+
+
+/* 超大屏幕 (>= 1200px) */
+
+@media (min-width: 1200px) {
+    .xl-layout {
+        /* 四列布局 */
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+    }
+}
+
+
+/* Web 端侧边栏布局 */
+
+.web-sidebar-layout {
+    display: flex;
+    gap: 20px;
+}
+
+.web-sidebar-layout .sidebar {
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.web-sidebar-layout .main-content {
+    flex: 1;
+    min-width: 0;
+}
+
+
+/* 移动端全屏布局 */
+
+.mobile-full-layout {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+
+
+/* Web 端卡片布局 */
+
+.web-card-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+
+/* 移动端卡片布局 */
+
+.mobile-card-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+
+/* Web 端表格布局 */
+
+.web-table-layout {
+    overflow-x: auto;
+}
+
+
+/* 移动端表格布局 */
+
+.mobile-table-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+
+/* 隐藏元素（移动端） */
+
+@media (max-width: 767px) {
+    .hide-on-mobile {
+        display: none !important;
+    }
+}
+
+
+/* 隐藏元素（Web 端） */
+
+@media (min-width: 768px) {
+    .hide-on-web {
+        display: none !important;
+    }
+}
+
+
+/* 显示元素（仅移动端） */
+
+@media (max-width: 767px) {
+    .show-on-mobile {
+        display: block !important;
+    }
+}
+
+
+/* 显示元素（仅 Web 端） */
+
+@media (min-width: 768px) {
+    .show-on-web {
+        display: block !important;
+    }
+}

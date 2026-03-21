@@ -1,0 +1,532 @@
+/* ========== 交易终端风格主题 ========== */
+/* [WHY] 专业交易终端UI，类似OKX/币安风格 */
+/* [WHAT] 深色背景 + 高对比度数据 + 专业金融感 */
+
+:root,
+[data-theme="dark"] {
+  /* ========== 深色主题（默认） ========== */
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --bg-elevated: #30363d;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  
+  /* 文字层次 */
+  --text-primary: #f0f6fc;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --text-highlight: #ffffff;
+  
+  /* 边框 */
+  --border-color: #30363d;
+  --border-light: #21262d;
+  --border-strong: #484f58;
+  
+  /* 涨跌颜色（红涨绿跌 - 高亮版） */
+  --color-up: #ff6b6b;
+  --color-up-bright: #ff8787;
+  --color-down: #51cf66;
+  --color-down-bright: #69db7c;
+  --color-up-bg: rgba(255, 107, 107, 0.15);
+  --color-down-bg: rgba(81, 207, 102, 0.15);
+  --color-up-bg-solid: #2d1f1f;
+  --color-down-bg-solid: #1a2e1a;
+  
+  /* 强调色 - 金色系 */
+  --color-primary: #ffc107;
+  --color-primary-hover: #ffca28;
+  --color-primary-bg: rgba(255, 193, 7, 0.12);
+  --color-secondary: #58a6ff;
+  --color-secondary-bg: rgba(88, 166, 255, 0.12);
+  
+  /* 功能色 */
+  --color-warning: #f0883e;
+  --color-warning-bg: rgba(240, 136, 62, 0.12);
+  --color-info: #58a6ff;
+  --color-info-bg: rgba(88, 166, 255, 0.12);
+  
+  /* 图表颜色 */
+  --chart-bg: #0d1117;
+  --chart-grid: #21262d;
+  --chart-text: #8b949e;
+  --chart-line: #58a6ff;
+  
+  /* 卡片阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow-up: 0 0 20px rgba(255, 107, 107, 0.2);
+  --shadow-glow-down: 0 0 20px rgba(81, 207, 102, 0.2);
+  
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* 字体 */
+  --font-mono: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-number: 'DIN Alternate', 'Roboto Mono', var(--font-mono);
+}
+
+/* ========== 浅色主题 ========== */
+[data-theme="light"] {
+  --bg-primary: #f6f8fa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f2f5;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.08);
+  
+  --text-primary: #1f2328;
+  --text-secondary: #57606a;
+  --text-muted: #8c959f;
+  --text-highlight: #000000;
+  
+  --border-color: #d0d7de;
+  --border-light: #e6eaef;
+  --border-strong: #8c959f;
+  
+  /* 涨跌颜色 */
+  --color-up: #cf222e;
+  --color-up-bright: #da3633;
+  --color-down: #1a7f37;
+  --color-down-bright: #2da44e;
+  --color-up-bg: rgba(207, 34, 46, 0.1);
+  --color-down-bg: rgba(26, 127, 55, 0.1);
+  --color-up-bg-solid: #ffebe9;
+  --color-down-bg-solid: #dafbe1;
+  
+  /* 强调色 */
+  --color-primary: #d97706;
+  --color-primary-hover: #b45309;
+  --color-primary-bg: rgba(217, 119, 6, 0.1);
+  --color-secondary: #0969da;
+  --color-secondary-bg: rgba(9, 105, 218, 0.1);
+  
+  /* 功能色 */
+  --color-warning: #bf8700;
+  --color-warning-bg: rgba(191, 135, 0, 0.1);
+  --color-info: #0969da;
+  --color-info-bg: rgba(9, 105, 218, 0.1);
+  
+  /* 图表颜色 */
+  --chart-bg: #ffffff;
+  --chart-grid: #e6eaef;
+  --chart-text: #57606a;
+  --chart-line: #0969da;
+  
+  /* 卡片阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-glow-up: 0 0 20px rgba(207, 34, 46, 0.15);
+  --shadow-glow-down: 0 0 20px rgba(26, 127, 55, 0.15);
+}
+
+/* ========== 全局样式应用 ========== */
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* [WHY] Vant 组件主题适配 */
+.van-tabbar {
+  background: var(--bg-secondary) !important;
+  border-top: 1px solid var(--border-color) !important;
+}
+
+.van-tabbar-item {
+  color: var(--text-secondary) !important;
+}
+
+.van-tabbar-item--active {
+  color: var(--color-primary) !important;
+}
+
+.van-loading__text {
+  color: var(--text-secondary) !important;
+}
+
+.van-toast {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.van-dialog {
+  background: var(--bg-secondary) !important;
+}
+
+.van-dialog__header,
+.van-dialog__message {
+  color: var(--text-primary) !important;
+}
+
+.van-cell {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.van-cell::after {
+  border-color: var(--border-color) !important;
+}
+
+.van-field__control {
+  color: var(--text-primary) !important;
+}
+
+.van-search {
+  background: var(--bg-primary) !important;
+}
+
+.van-search__content {
+  background: var(--bg-secondary) !important;
+}
+
+.van-search__field {
+  color: var(--text-primary) !important;
+}
+
+/* 导航栏适配 */
+.van-nav-bar {
+  background: var(--bg-secondary) !important;
+}
+
+.van-nav-bar__title,
+.van-nav-bar__text {
+  color: var(--text-primary) !important;
+}
+
+.van-nav-bar .van-icon {
+  color: var(--text-primary) !important;
+}
+
+/* 下拉刷新适配 */
+.van-pull-refresh {
+  background: var(--bg-primary) !important;
+}
+
+/* 弹窗适配 */
+.van-popup {
+  background: var(--bg-secondary) !important;
+}
+
+/* 空状态适配 */
+.van-empty__description {
+  color: var(--text-secondary) !important;
+}
+
+/* 标签适配 */
+.van-tag--success {
+  background: var(--color-down) !important;
+}
+
+/* 开关适配 */
+.van-switch--on {
+  background: var(--color-primary) !important;
+}
+
+/* Notice Bar 适配 */
+.van-notice-bar {
+  background: var(--color-primary-bg) !important;
+  color: var(--color-primary) !important;
+}
+
+/* 日期选择器适配 */
+.van-picker {
+  background: var(--bg-secondary) !important;
+}
+
+.van-picker__toolbar {
+  background: var(--bg-secondary) !important;
+}
+
+.van-picker__title {
+  color: var(--text-primary) !important;
+}
+
+.van-picker-column__item {
+  color: var(--text-primary) !important;
+}
+
+/* Radio 适配 */
+.van-radio__label {
+  color: var(--text-primary) !important;
+}
+
+/* Checkbox 适配 */
+.van-checkbox__label {
+  color: var(--text-primary) !important;
+}
+
+/* ========== 交易终端风格全局样式 ========== */
+
+/* 专业数字显示 - 等宽字体 */
+.num-display {
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 大号数字 */
+.num-lg {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.num-md {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.num-sm {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 涨跌色 */
+.text-up {
+  color: var(--color-up) !important;
+}
+
+.text-down {
+  color: var(--color-down) !important;
+}
+
+.text-up-bright {
+  color: var(--color-up-bright) !important;
+}
+
+.text-down-bright {
+  color: var(--color-down-bright) !important;
+}
+
+.bg-up {
+  background: var(--color-up-bg) !important;
+}
+
+.bg-down {
+  background: var(--color-down-bg) !important;
+}
+
+/* 卡片样式 */
+.card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+  transition: all 0.2s ease;
+}
+
+.card:active {
+  background: var(--bg-tertiary);
+  transform: scale(0.98);
+}
+
+.card-elevated {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: none;
+}
+
+/* 渐变资产卡片 */
+.card-asset {
+  background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-asset::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, var(--color-primary) 0%, transparent 70%);
+  opacity: 0.08;
+  transform: translate(30%, -30%);
+}
+
+/* 数据行 */
+.data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+}
+
+.data-row + .data-row {
+  border-top: 1px solid var(--border-light);
+}
+
+/* 标签 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tag-up {
+  background: var(--color-up-bg);
+  color: var(--color-up);
+}
+
+.tag-down {
+  background: var(--color-down-bg);
+  color: var(--color-down);
+}
+
+.tag-primary {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.tag-secondary {
+  background: var(--color-secondary-bg);
+  color: var(--color-secondary);
+}
+
+/* 分隔线 */
+.divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--spacing-md) 0;
+}
+
+/* 图标按钮 */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  transition: all 0.2s;
+}
+
+.icon-btn:active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+/* 进度条 */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-fill.up {
+  background: linear-gradient(90deg, var(--color-up), var(--color-up-bright));
+}
+
+.progress-bar-fill.down {
+  background: linear-gradient(90deg, var(--color-down), var(--color-down-bright));
+}
+
+/* 发光效果 */
+.glow-up {
+  box-shadow: var(--shadow-glow-up);
+}
+
+.glow-down {
+  box-shadow: var(--shadow-glow-down);
+}
+
+/* 滚动数字动画 */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-count {
+  animation: countUp 0.4s ease-out;
+}
+
+/* 脉冲动画 - 实时数据指示 */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.live-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-down);
+  animation: pulse 2s ease-in-out infinite;
+  margin-right: 6px;
+}
+
+/* 底部导航栏增强 */
+.van-tabbar {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(22, 27, 34, 0.9) !important;
+}
+
+/* 导航栏增强 */
+.van-nav-bar {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(22, 27, 34, 0.95) !important;
+}
+
+/* 按钮样式 */
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: #000;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px 24px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px 24px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-outline:active {
+  background: var(--bg-hover);
+}

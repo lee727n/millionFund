@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <!-- [WHY] 移动端APP必要的viewport配置 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0, viewport-fit=cover" />
+    <!-- [WHY] iOS全屏显示 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="基金宝" />
+    <!-- [WHY] Android主题色 -->
+    <meta name="theme-color" content="#0b0e11" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- [WHY] 禁止电话号码识别 -->
+    <meta name="format-detection" content="telephone=no" />
+    <!-- [WHY] 禁止邮箱识别 -->
+    <meta name="format-detection" content="email=no" />
+
+    <link rel="icon" type="image/png" href="/assets/title-CqS6n7-_.png" />
+    <!-- [WHY] iOS启动图标 -->
+    <link rel="apple-touch-icon" href="/assets/title-CqS6n7-_.png" />
+
+    <title>AI百万实盘</title>
+
+    <style>
+        /* [WHY] 全局移动端优化样式 */
+        
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            box-sizing: border-box;
+        }
+        
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            /* [WHY] 固定高度，防止 Android WebView 滚动问题 */
+            height: 100%;
+            width: 100%;
+            /* [WHY] 深色背景防止白色闪烁 */
+            background: #0b0e11;
+            /* [WHY] contain 允许组件内部下拉刷新，但防止页面整体橡皮筋效果 */
+            overscroll-behavior-y: contain;
+            /* [WHY] 禁止页面整体滚动，由内部容器处理滚动 */
+            overflow: hidden;
+            /* [WHY] 确保触摸滚动正常工作 */
+            touch-action: pan-x pan-y;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            /* [WHY] 安全区域只在需要的组件中处理，不在 body 上统一设置 */
+            /* 移除 padding: env(safe-area-inset-*) 避免 Android 兼容问题 */
+        }
+        
+        #app {
+            height: 100%;
+            overflow: hidden;
+        }
+        /* [WHY] 禁止长按选择 */
+        
+        img,
+        a {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/index-B31lIGYZ.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-OckApWxV.css">
+</head>
+
+<body>
+    <div id="app"></div>
+</body>
+
+</html>
