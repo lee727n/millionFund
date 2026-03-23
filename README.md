@@ -18,13 +18,17 @@
 
 ## 快速开始
 
+### AI策略验证
+
+欢迎关注支付宝盘友圈：**AI百万实盘**
+
 ### 本地开发
 
 ```bash
 # 克隆项目
 git clone https://github.com/lee727n/millionFund
 cd millionFund
-```
+
 # 安装依赖
 npm install
 
