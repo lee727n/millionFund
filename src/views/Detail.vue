@@ -1184,8 +1184,8 @@ function formatPercent(num: number): string {
           <van-field
             v-model="costFormData.amount"
             type="number"
-            label="成本金额"
-            placeholder="调整后的成本金额（元）"
+            label="持仓金额"
+            placeholder="调整后的持仓金额（元）"
           />
           <van-field
             v-model="costFormData.profit"
