@@ -89,10 +89,15 @@ function onTouchMove() {
         <div class="fund-code">{{ fund.code }}</div>
       </div>
       
-      <!-- 右侧：估值信息（带闪烁效果） -->
+      <!-- 中间：估值信息（带闪烁效果） -->
       <div class="fund-value" :class="[changeClass, flashClass]">
         <div class="estimate-value">{{ displayValue }}</div>
         <div class="estimate-change">{{ displayChange }}</div>
+      </div>
+
+      <!-- 右侧：删除按钮 -->
+      <div class="delete-icon" @click.stop="emit('delete', fund.code)">
+        <van-icon name="delete-o" size="20" color="#ff4444" />
       </div>
     </div>
     
@@ -141,6 +146,7 @@ function onTouchMove() {
 
 .fund-value {
   text-align: right;
+  flex: 1;
 }
 
 .estimate-value {
@@ -151,6 +157,22 @@ function onTouchMove() {
 
 .estimate-change {
   font-size: 14px;
+}
+
+.delete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.delete-icon:active {
+  background-color: var(--color-down-bg);
 }
 
 /* [WHY] 红涨绿跌配色（使用主题变量） */

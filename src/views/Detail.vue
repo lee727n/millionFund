@@ -2380,7 +2380,7 @@ function formatPercent(num: number): string {
 }
 
 .cost-dialog .dialog-content {
-  padding: 8px 0;
+  padding: 8px 0 16px;
 }
 
 .cost-dialog .dialog-footer {
@@ -2444,6 +2444,8 @@ function formatPercent(num: number): string {
   padding: 10px 16px;
   font-size: 12px;
   color: var(--text-secondary);
+  margin-bottom: 12px;
+  margin-top: 8px;
 }
 
 /* ========== 趋势预测 ========== */

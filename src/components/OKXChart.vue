@@ -767,7 +767,7 @@ onUnmounted(() => {
 <template>
   <div class="pro-chart">
     <!-- 调试信息 -->
-    <div class="debug-info" style="font-size: 10px; color: #999; padding: 4px 8px; background: rgba(0,0,0,0.05);">
+    <div class="debug-info" style="font-size: 10px; color: #999; padding: 10px 8px; background: rgba(0,0,0,0.05); margin-bottom: 8px;">
       {{ debugMessage }}
     </div>
     

@@ -19,6 +19,12 @@ const router = createRouter({
       meta: { title: '持仓' }
     },
     {
+      path: '/search',
+      name: 'search',
+      component: () => import('@/views/Search.vue'),
+      meta: { title: '搜索基金' }
+    },
+    {
       path: '/detail/:code',
       name: 'detail',
       component: () => import('@/views/Detail.vue'),
