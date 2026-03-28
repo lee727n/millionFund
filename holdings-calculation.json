@@ -1,0 +1,57 @@
+[
+  {
+    "code": "018125",
+    "name": "永赢先进制造智选混合发起C",
+    "marketValue": 139906.18,
+    "profit": -16377.12,
+    "profitRate": -10.48,
+    "currentNetValue": 2.148,
+    "shares": 65133.23,
+    "buyNetValue": 2.39944,
+    "buyDate": "2026-03-26"
+  },
+  {
+    "code": "024749",
+    "name": "博时中证卫星产业指数C",
+    "marketValue": 191314.28,
+    "profit": -37533.3,
+    "profitRate": -16.4,
+    "currentNetValue": 1.1911,
+    "shares": 160619.83,
+    "buyNetValue": 1.424778,
+    "buyDate": "2026-03-26"
+  },
+  {
+    "code": "160629",
+    "name": "鹏华中证传媒指数(LOF)A",
+    "marketValue": 120110.55,
+    "profit": -24242.74,
+    "profitRate": -16.79,
+    "currentNetValue": 1.2347,
+    "shares": 97279.14,
+    "buyNetValue": 1.483908,
+    "buyDate": "2026-03-26"
+  },
+  {
+    "code": "014016",
+    "name": "中信建投品质优选一年持有A",
+    "marketValue": 112514.74,
+    "profit": -7485.26,
+    "profitRate": -6.24,
+    "currentNetValue": 1.6238,
+    "shares": 69291.01,
+    "buyNetValue": 1.731826,
+    "buyDate": "2026-03-26"
+  },
+  {
+    "code": "024239",
+    "name": "华夏全球科技先锋混合(QDII)C",
+    "marketValue": 103458.21,
+    "profit": 7111.07,
+    "profitRate": 7.7,
+    "currentNetValue": 2.3004,
+    "shares": 44974.01,
+    "buyNetValue": 2.142285,
+    "buyDate": "2026-03-26"
+  }
+]

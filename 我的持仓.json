@@ -1,0 +1,71 @@
+{
+    "version": "1.0",
+    "exportDate": "2026-03-23T17:02:00.000Z",
+    "holdings": [{
+            "code": "018125",
+            "name": "永赢先进制造智选混合发起C",
+            "buyNetValue": 2.39944,
+            "shares": 65133.23,
+            "buyDate": "2026-03-26",
+            "holdingDays": 0,
+            "industrySectors": "机器人",
+            "createdAt": 1774512120000,
+            "source": "ali",
+            "isQDII": false
+        },
+        {
+            "code": "024749",
+            "name": "博时中证卫星产业指数C",
+            "buyNetValue": 1.424778,
+            "shares": 160619.83,
+            "buyDate": "2026-03-26",
+            "holdingDays": 0,
+            "industrySectors": "卫星产业",
+            "createdAt": 1774512120000,
+            "source": "ali",
+            "isQDII": false
+        },
+        {
+            "code": "164818",
+            "name": "工银传媒指数A",
+            "buyNetValue": 1.492081,
+            "shares": 96746.31,
+            "buyDate": "2026-03-26",
+            "holdingDays": 0,
+            "industrySectors": "传媒",
+            "createdAt": 1774512120000,
+            "source": "ali",
+            "isQDII": false
+        },
+        {
+            "code": "014016",
+            "name": "中信建投品质优选一年持有A",
+            "buyNetValue": 1.731826,
+            "shares": 69291.01,
+            "buyDate": "2026-03-26",
+            "holdingDays": 0,
+            "industrySectors": "品质优选",
+            "createdAt": 1774512120000,
+            "source": "ali",
+            "isQDII": false
+        },
+        {
+            "code": "024239",
+            "name": "华夏全球科技先锋混合(QDII)C",
+            "buyNetValue": 2.142285,
+            "shares": 44974.01,
+            "buyDate": "2026-03-26",
+            "holdingDays": 0,
+            "industrySectors": "科技",
+            "createdAt": 1774512120000,
+            "source": "ali",
+            "isQDII": true
+        }
+    ],
+    "summary": {
+        "totalValue": 667303.96,
+        "totalProfit": -78527.35,
+        "totalProfitRate": -11.77,
+        "todayProfit": -10550.51
+    }
+}
