@@ -163,7 +163,7 @@ function extractNumbersOnlyFallback(text: string): RecognizedHolding[] {
   const numRe = /[¥￥]?\s*(\d{1,3}(?:,?\d{3})*(?:\.\d+)?|\d+)(?!\d)/g
   let m: RegExpExecArray | null
   while ((m = numRe.exec(text)) !== null) {
-    const raw = m[1]
+    const raw = m[1]!
     const amt = parseAmount(raw)
     if (amt <= 0) continue
     // 忽略过小的数值（小于100元的很可能不是持仓金额）
@@ -173,7 +173,7 @@ function extractNumbersOnlyFallback(text: string): RecognizedHolding[] {
     const start = Math.max(0, m.index - 30)
     const context = text.slice(start, m.index)
     const nameMatch = context.match(/([\u4e00-\u9fa5·]{2,12})\s*$/)
-    const name = nameMatch ? cleanFundName(nameMatch[1]) : ''
+    const name = nameMatch ? cleanFundName(nameMatch[1]!) : ''
 
     // 记录位置（用于后续与 code 匹配），稍后会删除这个临时字段
     ;(results as any).push({ code: '', name, amount: amt, confidence: 0.25, __pos: m.index })
@@ -197,7 +197,7 @@ function associateCodesFromText(results: RecognizedHolding[], text: string) {
   const codes: {code: string, idx: number}[] = []
   let m: RegExpExecArray | null
   while ((m = codeRe.exec(text)) !== null) {
-    const c = m[1]
+    const c = m[1]!
     const idx = m.index
     if (isValidFundCode(c)) codes.push({ code: c, idx })
   }
@@ -220,7 +220,7 @@ function associateCodesFromText(results: RecognizedHolding[], text: string) {
         const leftStart = Math.max(0, idx - 30)
         const leftContext = text.slice(leftStart, idx)
         const nameMatch = leftContext.match(/([\u4e00-\u9fa5·]{2,12})\s*$/)
-        if (nameMatch) best.name = cleanFundName(nameMatch[1])
+        if (nameMatch) best.name = cleanFundName(nameMatch[1]!)
       }
     }
   }
@@ -234,9 +234,9 @@ function findDate(lines: string[]): string | null {
     // 支持 2024-01-02、2024/01/02、2024年01月02日
     const m1 = line.match(/(\d{4})[\-/年](\d{1,2})[\-/月](\d{1,2})/)
     if (m1) {
-      const y = m1[1]
-      const mo = String(m1[2]).padStart(2, '0')
-      const d = String(m1[3]).padStart(2, '0')
+      const y = m1[1]!
+      const mo = String(m1[2]!).padStart(2, '0')
+      const d = String(m1[3]!).padStart(2, '0')
       return `${y}-${mo}-${d}`
     }
     // 支持 01-02 形式（无年），使用当前年份
@@ -244,8 +244,8 @@ function findDate(lines: string[]): string | null {
     if (m2) {
       const now = new Date()
       const y = String(now.getFullYear())
-      const mo = String(m2[1]).padStart(2, '0')
-      const d = String(m2[2]).padStart(2, '0')
+      const mo = String(m2[1]!).padStart(2, '0')
+      const d = String(m2[2]!).padStart(2, '0')
       return `${y}-${mo}-${d}`
     }
   }
@@ -289,7 +289,7 @@ function preprocessLines(lines: string[]): string[] {
 function mergeNameWithParen(lines: string[]): string[] {
   return lines.map(line => {
     const m = line.match(/([\u4e00-\u9fa5A-Za-z0-9·\s]+)[（(](\d{6})[)）]/)
-    if (m) return `${m[1].trim()} ${m[2]}`
+    if (m) return `${m[1]!.trim()} ${m[2]!}`
     return line
   })
 }
@@ -326,9 +326,9 @@ function parseSingleLine(line: string): RecognizedHolding | null {
   const match1 = line.match(pattern1)
   if (match1) {
     return {
-      code: match1[1],
-      name: cleanFundName(match1[2]),
-      amount: parseAmount(match1[3]),
+      code: match1[1]!,
+      name: cleanFundName(match1[2]!),
+      amount: parseAmount(match1[3]!),
       confidence: 0.9
     }
   }
@@ -339,9 +339,9 @@ function parseSingleLine(line: string): RecognizedHolding | null {
   const match2 = line.match(pattern2)
   if (match2) {
     return {
-      code: match2[2],
-      name: cleanFundName(match2[1]),
-      amount: parseAmount(match2[3]),
+      code: match2[2]!,
+      name: cleanFundName(match2[1]!),
+      amount: parseAmount(match2[3]!),
       confidence: 0.9
     }
   }
@@ -352,9 +352,9 @@ function parseSingleLine(line: string): RecognizedHolding | null {
   const match3 = line.match(pattern3)
   if (match3) {
     return {
-      code: match3[1],
+      code: match3[1]!,
       name: '', // 名称后续通过 API 获取
-      amount: parseAmount(match3[2]),
+      amount: parseAmount(match3[2]!),
       confidence: 0.7
     }
   }
@@ -363,13 +363,13 @@ function parseSingleLine(line: string): RecognizedHolding | null {
   // 例如：华夏成长混合A 持有金额 ¥10,000.00
   const pattern4 = /([A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5]{2,})\s*.*?[¥￥]?\s*([\d,]+\.?\d{2})/
   const match4 = line.match(pattern4)
-  if (match4 && parseAmount(match4[2]) >= 100) { // 金额至少100元
+  if (match4 && parseAmount(match4[2]!) >= 100) { // 金额至少100元
     // [WHAT] 尝试从名称中提取基金代码
     const codeMatch = line.match(/\d{6}/)
     return {
       code: codeMatch ? codeMatch[0] : '',
-      name: cleanFundName(match4[1]),
-      amount: parseAmount(match4[2]),
+      name: cleanFundName(match4[1]!),
+      amount: parseAmount(match4[2]!),
       confidence: 0.6
     }
   }
@@ -414,9 +414,9 @@ function parseMultiLine(lines: string[]): RecognizedHolding[] {
   if (codes.length > 0 && codes.length === amounts.length) {
     for (let i = 0; i < codes.length; i++) {
       holdings.push({
-        code: codes[i],
+        code: codes[i]!,
         name: '',
-        amount: amounts[i],
+        amount: amounts[i]!,
         confidence: 0.5
       })
     }

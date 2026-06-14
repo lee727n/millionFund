@@ -32,11 +32,17 @@ android/*.iml
 *.apk
 *.aab
 *.keystore
-!android/app/debug.keystore
-!android/app/fund-app.keystore
 
 # Capacitor
 capacitor.config.json
+
+# Electron / 全平台构建产物
+release/
+
+# iOS 构建文件
+ios/App/build/
+ios/App/Pods/
+ios/*.xcworkspace
 
 # API配置（包含敏感接口地址）
 src/config/apiEndpoints.ts

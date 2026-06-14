@@ -15,6 +15,7 @@ import {
   type PeriodReturnExt
 } from '@/api/tiantianApi'
 import type { FundEstimate } from '@/types/fund'
+import { sourceOptions as configSourceOptions, getSourceLabel } from '@/config/sources'
 import { showToast, showConfirmDialog, showLoadingToast, closeToast } from 'vant'
 import ProChart from '@/components/OKXChart.vue'
 import { 
@@ -72,24 +73,13 @@ const sourceFormData = ref({
   isQDII: false
 })
 
-// [WHAT] 来源选项配置
-const sourceOptions = [
-  { text: '支付宝', value: 'ali' },
-  { text: '腾讯', value: 'TX' },
-  { text: '京东', value: 'JD' },
-  { text: '观察', value: 'observe' }
-]
+// [WHAT] 来源选项（从共享配置导入）
+const sourceOptions = configSourceOptions
 
 // [WHAT] 持仓信息（如果已持有）
 const holdingInfo = computed(() => {
   return holdingStore.holdings.find(h => h.code === fundCode.value) || null
 })
-
-// [WHAT] 获取来源显示文本
-const getSourceLabel = (value: string) => {
-  const option = sourceOptions.find(opt => opt.value === value)
-  return option ? option.text : value
-}
 
 // [WHAT] 持仓详细计算
 const holdingDetails = computed(() => {
@@ -228,8 +218,8 @@ async function loadTrendPrediction() {
         fundScore.value = calculateFundScore(returnAnalysis.value)
       }
     }
-  } catch {
-    // 静默失败
+  } catch (err) {
+    console.error('获取趋势预测失败:', err)
   } finally {
     isTrendLoading.value = false
   }
@@ -281,7 +271,7 @@ function editHolding() {
   costFormData.value = {
     code: holding.code,
     name: holding.name,
-    amount: (holding.marketValue || holding.shares * holding.currentValue || 0).toString(),
+    amount: (holding.marketValue || holding.shares * holding.currentValue! || 0).toString(),
     profit: (holding.profit !== undefined ? holding.profit : (holding.currentValue && holding.buyNetValue ? (holding.currentValue - holding.buyNetValue) * holding.shares : 0)).toString()
   }
   showCostDialog.value = true

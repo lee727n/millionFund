@@ -12,8 +12,7 @@
       "@/*": ["./src/*"]
     },
 
-    /* [WHY] 暂时放宽检查以便构建通过，后续逐步修复 */
-    "strict": false,
+    "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "erasableSyntaxOnly": true,

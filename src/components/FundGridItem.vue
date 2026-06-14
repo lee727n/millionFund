@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import aliIcon from '@/assets/ali.jpg'
+import TXIcon from '@/assets/TX.jpg'
+import JDIcon from '@/assets/JD.jpg'
 import eyeIcon from '@/assets/eye.png'
+import { getSourceLabel } from '@/config/sources'
 
 defineProps<{
   fund: any
@@ -12,6 +16,13 @@ const emit = defineEmits<{
   openTopHoldings: [event: Event]
   openIntradayModal: [event: Event]
 }>()
+
+const sourceIconMap: Record<string, string> = {
+  ali: aliIcon,
+  TX: TXIcon,
+  JD: JDIcon,
+  observe: eyeIcon
+}
 
 // 获取基金名称颜色类
 function getFundNameClass(fund: any, tradingSession?: string) {
@@ -36,10 +47,7 @@ function getFundNameClass(fund: any, tradingSession?: string) {
     <div class="index-name web-only">
       <div class="fund-name-content">
         <div class="fund-name-left">
-          <img v-if="fund.source === 'ali'" src="@/assets/ali.jpg" class="source-icon-small" alt="支付宝" />
-          <img v-else-if="fund.source === 'TX'" src="@/assets/TX.jpg" class="source-icon-small" alt="腾讯" />
-          <img v-else-if="fund.source === 'JD'" src="@/assets/JD.jpg" class="source-icon-small" alt="京东" />
-          <img v-else-if="fund.source === 'observe'" :src="eyeIcon" class="source-icon-small" alt="观察" />
+          <img :src="sourceIconMap[fund.source]" class="source-icon-small" :alt="getSourceLabel(fund.source)" />
         </div>
         <div class="fund-name-middle">
           <span v-if="fund.isQDII" class="qdii-tag">QD</span>
@@ -96,10 +104,7 @@ function getFundNameClass(fund: any, tradingSession?: string) {
       <div class="mobile-item-row mobile-item-row-1">
         <div class="fund-name-content">
           <div class="fund-name-left">
-            <img v-if="fund.source === 'ali'" src="@/assets/ali.jpg" class="source-icon-small" alt="支付宝" />
-            <img v-else-if="fund.source === 'TX'" src="@/assets/TX.jpg" class="source-icon-small" alt="腾讯" />
-            <img v-else-if="fund.source === 'JD'" src="@/assets/JD.jpg" class="source-icon-small" alt="京东" />
-            <img v-else-if="fund.source === 'observe'" :src="eyeIcon" class="source-icon-small" alt="观察" />
+            <img :src="sourceIconMap[fund.source]" class="source-icon-small" :alt="getSourceLabel(fund.source)" />
           </div>
           <div class="fund-name-middle">
             <span v-if="fund.isQDII" class="qdii-tag">QD</span>

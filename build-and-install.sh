@@ -42,14 +42,14 @@ echo -e "${GREEN}✓ 同步完成${NC}"
 echo ""
 
 # 构建 APK
-echo -e "${YELLOW}[5/6] 构建 APK...${NC}"
+echo -e "${YELLOW}[4/6] 构建 APK...${NC}"
 cd android
 ./gradlew assembleDebug
 cd ..
 echo -e "${GREEN}✓ APK 构建完成${NC}"
 
 # 安装新版（保留数据）
-echo -e "${YELLOW}[6/6] 安装新版（保留数据）...${NC}"
+echo -e "${YELLOW}[5/6] 安装新版（保留数据）...${NC}"
 APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
 
 # 检查 APK 文件是否存在

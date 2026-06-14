@@ -1,0 +1,16 @@
+// [WHY] API 端点配置文件模板
+// [WHAT] 复制为 apiEndpoints.ts 并根据实际环境填写
+// [NOTE] 该文件已被 .gitignore 排除，不会提交到仓库
+
+export const API_ENDPOINTS = {
+  // 基金估值接口（天天基金）
+  FUND_ESTIMATE: 'https://fundgz.1234567.com.cn/js/{code}.js',
+  // 基金详情接口
+  FUND_DETAIL: 'https://fund.eastmoney.com/pingzhongdata/{code}.js',
+  // 基金排行接口
+  FUND_RANKING: 'https://fund.eastmoney.com/data/rankhandler.aspx',
+  // 市场概览接口
+  MARKET_OVERVIEW: 'https://push2.eastmoney.com/api/qt/ulist.np/get',
+  // 指数数据接口
+  INDEX_DATA: 'https://push2.eastmoney.com/api/qt/ulist.np/get',
+}

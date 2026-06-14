@@ -27,6 +27,16 @@ app.use(pinia)
 // [WHAT] 注册 Vue Router
 app.use(router)
 
+// [WHY] 全局 Vue 错误处理器 - 捕获组件渲染/事件处理中的未处理异常
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue Error]', err, info)
+}
+
+// [WHY] 全局未处理 Promise 拒绝 - 捕获 async 函数中未 catch 的错误
+window.onunhandledrejection = (event) => {
+  console.error('[Unhandled Rejection]', event.reason)
+}
+
 app.mount('#app')
 
 // [WHAT] 检查版本并清除旧缓存

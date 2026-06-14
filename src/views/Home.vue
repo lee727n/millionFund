@@ -7,8 +7,9 @@ import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint } from '@/api/fundFast'
-import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
+import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast } from 'vant'
+import { getSourceLabel } from '@/config/sources'
 import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
 import riseW from '@/assets/riseW.jpg'
@@ -74,8 +75,8 @@ function drawIntradayChartOnCanvas(canvas: HTMLCanvasElement, data: IntradayPoin
   const values = data.map(d => d.value)
   const minVal = Math.min(...values)
   const maxVal = Math.max(...values)
-  const startVal = data[0].value
-  const endVal = data[data.length - 1].value
+  const startVal = data[0]!.value
+  const endVal = data[data.length - 1]!.value
   const color = endVal >= startVal ? '#ff4d4f' : '#52c41a'
 
   // 清空画布
@@ -107,7 +108,7 @@ function drawIntradayChartOnCanvas(canvas: HTMLCanvasElement, data: IntradayPoin
   const timeStep = Math.ceil(data.length / 5)
   for (let i = 0; i < data.length; i += timeStep) {
     const x = padding.left + (i / (data.length - 1)) * chartWidth
-    ctx.fillText(data[i].time, x, height - 5)
+    ctx.fillText(data[i]!.time, x, height - 5)
   }
 
   // 绘制折线
@@ -437,8 +438,7 @@ function filterBySource(source: string) {
     showToast('已取消来源筛选')
   } else {
     currentSourceFilter.value = source
-    const sourceName = source === 'ali' ? '支付宝' : source === 'TX' ? '腾讯' : source === 'JD' ? '京东' : source
-    showToast(`已筛选 ${sourceName} 来源的基金`)
+    showToast(`已筛选 ${getSourceLabel(source)} 来源的基金`)
   }
 }
 
@@ -446,19 +446,6 @@ function filterBySource(source: string) {
 function resetSort() {
   sortDirection.value = 'none'
 }
-
-// [WHAT] 公告列表（默认 + 远程）
-const defaultNotices = [
-  '基金投资有风险，入市需谨慎',
-  '交易时间：工作日 9:30-15:00'
-]
-const notices = ref<string[]>([...defaultNotices])
-
-// [WHAT] 财经资讯
-const newsList = ref<NewsItem[]>([])
-const newsLoading = ref(false)
-const showNewsDetail = ref(false)
-const currentNews = ref<NewsItem | null>(null)
 
 // [WHAT] 页面挂载时初始化数据
 onMounted(async () => {
@@ -518,8 +505,8 @@ async function refreshData() {
 async function loadIndices() {
   try {
     indices.value = await fetchMarketIndicesFast()
-  } catch {
-    // 静默失败
+  } catch (err) {
+    console.error('获取大盘指数失败:', err)
   }
 }
 
@@ -527,49 +514,9 @@ async function loadIndices() {
 async function loadGlobalIndices() {
   try {
     globalIndices.value = await fetchGlobalIndices()
-  } catch {
-    // 静默失败
+  } catch (err) {
+    console.error('获取全球指数失败:', err)
   }
-}
-
-// [WHAT] 加载财经资讯
-async function loadNews() {
-  newsLoading.value = true
-  try {
-    newsList.value = await fetchFinanceNews(6)
-  } catch {
-    // 静默失败
-  } finally {
-    newsLoading.value = false
-  }
-}
-
-// [WHAT] 监听数据变化，检查提醒条件
-watch(
-  () => fundStore.watchlist,
-  (watchlist) => {
-    for (const fund of watchlist) {
-      if (fund.estimateValue && fund.estimateChange) {
-        const value = parseFloat(fund.estimateValue)
-        const change = parseFloat(fund.estimateChange)
-        if (!isNaN(value) && !isNaN(change)) {
-          // 提醒功能已移除
-        }
-      }
-    }
-  },
-  { deep: true }
-)
-
-// [WHAT] 下拉刷新处理
-async function onRefresh() {
-  await Promise.all([
-    fundStore.refreshEstimates(),
-    loadIndices(),
-    loadGlobalIndices(),
-    loadNews()
-  ])
-  showToast('刷新成功')
 }
 
 // [WHAT] 删除自选基金
@@ -586,24 +533,19 @@ async function handleDelete(code: string) {
   }
 }
 
+// [WHAT] 下拉刷新处理
+async function onRefresh() {
+  await Promise.all([
+    fundStore.refreshEstimates(),
+    loadIndices(),
+    loadGlobalIndices()
+  ])
+  showToast('刷新成功')
+}
+
 // [WHAT] 跳转到搜索页
 function goToSearch() {
   router.push('/search')
-}
-
-// [WHAT] 打开资讯详情
-function openNews(news: NewsItem) {
-  currentNews.value = news
-  showNewsDetail.value = true
-}
-
-// [WHAT] 跳转到外部链接
-function openNewsUrl() {
-  if (currentNews.value?.url) {
-    window.open(currentNews.value.url, '_blank')
-  } else {
-    showToast('暂无详情链接')
-  }
 }
 
 // [WHAT] 跳转到基金详情页
@@ -685,21 +627,7 @@ function goToDetail(code: string) {
       </div>
     </div>
     
-    <!-- 公告栏（已隐藏） -->
-    <!-- <div class="notice-bar">
-      <van-icon name="volume-o" class="notice-icon" />
-      <van-swipe 
-        class="notice-swipe" 
-        vertical 
-        :autoplay="3000" 
-        :show-indicators="false"
-        :touchable="false"
-      >
-        <van-swipe-item v-for="(notice, idx) in notices" :key="idx">
-          {{ notice }}
-        </van-swipe-item>
-      </van-swipe>
-    </div> -->
+
 
     <!-- 下拉刷新列表 -->
     <van-pull-refresh 
@@ -971,82 +899,9 @@ function goToDetail(code: string) {
         </div>
       </div>
       
-      <!-- 快捷入口 -->
-      <div class="quick-actions" style="display: none;">
-        <div class="action-item" @click="router.push('/search')">
-          <div class="action-icon">
-            <van-icon name="search" size="22" />
-          </div>
-          <span>搜索</span>
-        </div>
-        <div class="action-item" @click="router.push('/compare')">
-          <div class="action-icon">
-            <van-icon name="balance-o" size="22" />
-          </div>
-          <span>对比</span>
-        </div>
-        <div class="action-item" @click="router.push('/calculator')">
-          <div class="action-icon">
-            <van-icon name="gold-coin-o" size="22" />
-          </div>
-          <span>定投</span>
-        </div>
-        <div class="action-item" @click="router.push('/manager-rank')">
-          <div class="action-icon">
-            <van-icon name="friends-o" size="22" />
-          </div>
-          <span>经理</span>
-        </div>
-        <div class="action-item" @click="router.push('/backtest')">
-          <div class="action-icon">
-            <van-icon name="chart-trending-o" size="22" />
-          </div>
-          <span>回测</span>
-        </div>
-        <div class="action-item" @click="router.push('/report')">
-          <div class="action-icon">
-            <van-icon name="description-o" size="22" />
-          </div>
-          <span>报告</span>
-        </div>
-        <div class="action-item" @click="router.push('/calendar')">
-          <div class="action-icon">
-            <van-icon name="calendar-o" size="22" />
-          </div>
-          <span>日历</span>
-        </div>
-        <div class="action-item" @click="router.push('/alerts')">
-          <div class="action-icon">
-            <van-icon name="bell" size="22" />
-          </div>
-          <span>提醒</span>
-        </div>
-      </div>
+
       
-      <!-- 财经资讯 -->
-      <!-- <div class="news-section">
-        <div class="section-header">
-          <span class="section-title">财经资讯</span>
-          <span class="view-more">更多 ></span>
-        </div>
-        <div class="news-list" v-if="!newsLoading && newsList.length > 0">
-          <div 
-            v-for="news in newsList" 
-            :key="news.id" 
-            class="news-item"
-            @click="openNews(news)"
-          >
-            <div class="news-content">
-              <div class="news-title">{{ news.title }}</div>
-              <div class="news-meta">
-                <span class="news-source">{{ news.source }}</span>
-                <span class="news-time">{{ news.time }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <van-loading v-else-if="newsLoading" class="news-loading" />
-      </div> -->
+
       
       <!-- 自选基金标题 -->
       <div class="section-header" v-if="fundStore.watchlist.length > 0">
@@ -1086,41 +941,6 @@ function goToDetail(code: string) {
       <!-- 底部占位 -->
       <div class="bottom-spacer"></div>
     </van-pull-refresh>
-
-    <!-- 资讯详情弹窗 -->
-    <van-popup 
-      v-model:show="showNewsDetail" 
-      position="bottom" 
-      round
-      :style="{ height: '70%' }"
-    >
-      <div class="news-detail" v-if="currentNews">
-        <div class="news-detail-header">
-          <span>资讯详情</span>
-          <van-icon name="cross" @click="showNewsDetail = false" />
-        </div>
-        <div class="news-detail-content">
-          <h3 class="news-detail-title">{{ currentNews.title }}</h3>
-          <div class="news-detail-meta">
-            <span>{{ currentNews.source }}</span>
-            <span>{{ currentNews.time }}</span>
-          </div>
-          <div class="news-detail-summary">
-            {{ currentNews.summary || '暂无摘要内容' }}
-          </div>
-        </div>
-        <div class="news-detail-footer" v-if="currentNews.url">
-          <van-button block type="primary" @click="openNewsUrl">
-            查看原文
-          </van-button>
-        </div>
-        <div class="news-detail-footer" v-else>
-          <van-button block plain @click="showNewsDetail = false">
-            知道了
-          </van-button>
-        </div>
-      </div>
-    </van-popup>
 
     <!-- 前10大重仓股弹窗 -->
     <van-popup 
@@ -1191,11 +1011,11 @@ function goToDetail(code: string) {
         <div class="intraday-popup-chart" v-if="!intradayModal.loading">
           <div v-if="intradayModal.data && intradayModal.data.length > 0" class="intraday-popup-chart-wrapper">
             <div class="intraday-popup-summary">
-              <span class="intraday-popup-latest" :class="intradayModal.data[intradayModal.data.length - 1].growth >= 0 ? 'up' : 'down'">
-                {{ intradayModal.data[intradayModal.data.length - 1].value }}
-                ({{ intradayModal.data[intradayModal.data.length - 1].growth >= 0 ? '+' : '' }}{{ intradayModal.data[intradayModal.data.length - 1].growth }}%)
+              <span class="intraday-popup-latest" :class="intradayModal.data[intradayModal.data.length - 1]!.growth >= 0 ? 'up' : 'down'">
+                {{ intradayModal.data[intradayModal.data.length - 1]!.value }}
+                ({{ intradayModal.data[intradayModal.data.length - 1]!.growth >= 0 ? '+' : '' }}{{ intradayModal.data[intradayModal.data.length - 1]!.growth }}%)
               </span>
-              <span class="intraday-popup-time">{{ intradayModal.data[intradayModal.data.length - 1].time }}</span>
+              <span class="intraday-popup-time">{{ intradayModal.data[intradayModal.data.length - 1]!.time }}</span>
             </div>
             <canvas ref="intradayCanvasRef" class="intraday-popup-canvas"></canvas>
           </div>
@@ -2323,57 +2143,7 @@ function goToDetail(code: string) {
   cursor: pointer;
 }
 
-/* 快捷入口 - 交易终端风格 */
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 16px 12px;
-  margin: 0 12px 12px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-}
 
-.action-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 4px;
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: all 0.2s;
-}
-
-.action-item:active {
-  background: var(--bg-active);
-  transform: scale(0.95);
-}
-
-.action-icon {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-elevated) 100%);
-  border-radius: var(--radius-md);
-  color: var(--color-primary);
-  border: 1px solid var(--border-color);
-  transition: all 0.2s;
-}
-
-.action-item:active .action-icon {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 12px rgba(255, 193, 7, 0.2);
-}
-
-.action-item span {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
 
 /* 自选基金标题 */
 .section-header {
@@ -2394,104 +2164,7 @@ function goToDetail(code: string) {
   color: var(--text-secondary);
 }
 
-/* 财经资讯 - 交易终端风格 */
-.news-section {
-  margin: 0 12px 12px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-}
 
-.news-section .section-header {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(90deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
-}
-
-.news-section .section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.news-section .section-title::before {
-  content: '';
-  display: inline-block;
-  width: 3px;
-  height: 16px;
-  background: var(--color-primary);
-  border-radius: 2px;
-}
-
-.news-list {
-  padding: 0;
-}
-
-.news-item {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-light);
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.news-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 0;
-  background: var(--color-secondary);
-  transition: height 0.2s;
-}
-
-.news-item:active::before {
-  height: 60%;
-}
-
-.news-item:last-child {
-  border-bottom: none;
-}
-
-.news-item:active {
-  background: var(--bg-hover);
-}
-
-.news-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.news-title {
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.news-meta {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.news-source {
-  color: var(--color-primary);
-}
-
-.news-loading {
-  padding: 24px;
-  display: flex;
-  justify-content: center;
-}
 
 /* 全球主要指数样式 */
 .index-grid.market-index-grid {
@@ -2660,62 +2333,6 @@ function goToDetail(code: string) {
 
 .dialog-footer {
   padding-top: 16px;
-}
-
-/* 资讯详情弹窗 */
-.news-detail {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-secondary);
-}
-
-.news-detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.news-detail-content {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.news-detail-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.5;
-  margin: 0 0 12px;
-}
-
-.news-detail-meta {
-  display: flex;
-  gap: 16px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.news-detail-summary {
-  font-size: 15px;
-  line-height: 1.8;
-  color: var(--text-primary);
-}
-
-.news-detail-footer {
-  padding: 16px;
-  border-top: 1px solid var(--border-color);
-  flex-shrink: 0;
 }
 
 /* 移动端和网页端控制 */

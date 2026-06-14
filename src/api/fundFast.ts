@@ -3,8 +3,9 @@
 // [DEPS] 天天基金公开接口
 
 import { cache, CACHE_TTL } from './cache'
-import { isTradingTime, persistCache } from './tiantianApi'
+import { persistCache } from './tiantianApi'
 import type { FundEstimate, NetValueRecord } from '@/types/fund'
+import { initJsonpCallback, registerJsonpHandler } from './jsonp'
 
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
@@ -69,53 +70,47 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>
 }
 
-let pendingRequests: PendingRequest[] = []
-let pendingNetValueRequests: {
+const pendingRequests: PendingRequest[] = []
+const pendingNetValueRequests: {
   code: string
   resolve: (data: { netValue: number; date: string; changeRate: number } | null) => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
 }[] = []
-let jsonpInitialized = false
 
-function initJsonpCallback() {
-  if (jsonpInitialized) return
-  jsonpInitialized = true
+registerJsonpHandler((data: any) => {
+  // [WHY] 防御性检查：data 或 fundcode 可能为 undefined
+  // [EDGE] 某些基金类型（ETF联接、期货）不支持估值，会返回 undefined
+  if (!data || !data.fundcode) {
+    return  // 静默忽略，不输出警告
+  }
+  const index = pendingRequests.findIndex(req => req.code === data.fundcode)
+  if (index !== -1) {
+    const req = pendingRequests[index]!
+    clearTimeout(req.timeout)
+    pendingRequests.splice(index, 1)
+    req.resolve(data)
+    return
+  }
 
-    ; (window as any).jsonpgz = (data: any) => {
-      // [WHY] 防御性检查：data 或 fundcode 可能为 undefined
-      // [EDGE] 某些基金类型（ETF联接、期货）不支持估值，会返回 undefined
-      if (!data || !data.fundcode) {
-        return  // 静默忽略，不输出警告
-      }
-      const index = pendingRequests.findIndex(req => req.code === data.fundcode)
-      if (index !== -1) {
-        const req = pendingRequests[index]!
-        clearTimeout(req.timeout)
-        pendingRequests.splice(index, 1)
-        req.resolve(data)
-        return
-      }
+  // [WHAT] 处理净值请求
+  const navIndex = pendingNetValueRequests.findIndex(req => req.code === data.fundcode)
+  if (navIndex !== -1 && pendingNetValueRequests[navIndex]) {
+    const req = pendingNetValueRequests[navIndex]!
+    clearTimeout(req.timeout)
+    pendingNetValueRequests.splice(navIndex, 1)
 
-      // [WHAT] 处理净值请求
-      const navIndex = pendingNetValueRequests.findIndex(req => req.code === data.fundcode)
-      if (navIndex !== -1 && pendingNetValueRequests[navIndex]) {
-        const req = pendingNetValueRequests[navIndex]!
-        clearTimeout(req.timeout)
-        pendingNetValueRequests.splice(navIndex, 1)
-
-        // [WHY] 优先使用 dwjz（最新公布净值），而非 gsz（实时估值）
-        // [WHY] 交易时间内账户显示的收益是基于昨日净值计算的，使用估值会导致成本净值和份额计算不准确
-        const result = {
-          netValue: parseFloat(data.dwjz || data.gsz || '0') || 0,
-          date: data.jzrq || '',
-          changeRate: parseFloat(data.gszzl || '0') || 0
-        }
-        req.resolve(result)
-      }
-      // [NOTE] 未匹配的响应静默忽略，可能是重复响应或超时后的响应
+    // [WHY] 优先使用 dwjz（最新公布净值），而非 gsz（实时估值）
+    // [WHY] 交易时间内账户显示的收益是基于昨日净值计算的，使用估值会导致成本净值和份额计算不准确
+    const result = {
+      netValue: parseFloat(data.dwjz || data.gsz || '0') || 0,
+      date: data.jzrq || '',
+      changeRate: parseFloat(data.gszzl || '0') || 0
     }
-}
+    req.resolve(result)
+  }
+  // [NOTE] 未匹配的响应静默忽略，可能是重复响应或超时后的响应
+})
 
 // ========== 实时估值API（优化版） ==========
 
@@ -204,8 +199,8 @@ export async function fetchFundEstimatesBatch(codes: string[]): Promise<Map<stri
     try {
       const data = await fetchFundEstimateFast(code)
       results.set(code, data)
-    } catch {
-      // 静默失败
+    } catch (err) {
+      console.error('批量获取估值失败:', code, err)
     }
   })
 
@@ -392,9 +387,9 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
         }
 
         const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || ''
-        const headerCells = (headerRow.match(/<th[\s\S]*?>([\s\S]*?)<\/th>/gi) || []).map(th => th.replace(/<[^>]*>/g, '').trim())
+        const headerCells = (headerRow.match(/<th[\s\S]*?>([\s\S]*?)<\/th>/gi) || []).map((th: string) => th.replace(/<[^>]*>/g, '').trim())
         let idxCode = -1, idxName = -1, idxWeight = -1
-        headerCells.forEach((h, i) => {
+        headerCells.forEach((h: string, i: number) => {
           const t = h.replace(/\s+/g, '')
           if (idxCode < 0 && (t.includes('股票代码') || t.includes('证券代码'))) idxCode = i
           if (idxName < 0 && (t.includes('股票名称') || t.includes('证券名称'))) idxName = i
@@ -406,7 +401,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 
         const holdings: HoldingStock[] = []
         for (const r of dataRows) {
-          const tds = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim())
+          const tds = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map((td: string) => td.replace(/<[^>]*>/g, '').trim())
           if (!tds.length) continue
 
           let stockCode = ''
@@ -417,14 +412,14 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
             const m = tds[idxCode].match(/(\d{6})/)
             stockCode = m ? m[1] : tds[idxCode]
           } else {
-            const codeIdx = tds.findIndex(txt => /^\d{6}$/.test(txt))
+            const codeIdx = tds.findIndex((txt: string) => /^\d{6}$/.test(txt))
             if (codeIdx >= 0) stockCode = tds[codeIdx]
           }
 
           if (idxName >= 0 && tds[idxName]) {
             stockName = tds[idxName]
           } else if (stockCode) {
-            const i = tds.findIndex(txt => txt && txt !== stockCode && !/%$/.test(txt))
+            const i = tds.findIndex((txt: string) => txt && txt !== stockCode && !/%$/.test(txt))
             stockName = i >= 0 ? tds[i] : ''
           }
 
@@ -432,7 +427,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
             const wm = tds[idxWeight].match(/([\d.]+)\s*%/)
             stockWeight = wm ? `${wm[1]}%` : tds[idxWeight]
           } else {
-            const wIdx = tds.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt))
+            const wIdx = tds.findIndex((txt: string) => /\d+(?:\.\d+)?\s*%/.test(txt))
             stockWeight = wIdx >= 0 ? (tds[wIdx].match(/([\d.]+)\s*%/)?.[1] + '%') : ''
           }
 
@@ -781,7 +776,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // })
 
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  const today = now.toISOString().split('T')[0]!
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
 
@@ -932,8 +927,8 @@ export async function fetchFundAccurateBatch(codes: string[]): Promise<Map<strin
     try {
       const data = await fetchFundAccurateData(code)
       results.set(code, data)
-    } catch {
-      // 静默失败
+    } catch (err) {
+      console.error('批量获取准确数据失败:', code, err)
     }
   }))
 

@@ -1065,8 +1065,8 @@ function fetchMarketOverviewInBackground(currentData: MarketOverview): void {
           persistCache.set(cacheKey, result)
           console.log('[MarketOverview] 后台更新成功')
         }
-      } catch {
-        // 静默失败
+      } catch (err) {
+        console.error('[MarketOverview] 后台更新失败:', err)
       }
     }, 100)
   }
@@ -1727,8 +1727,7 @@ export async function fetchFundScale(fundCode: string): Promise<FundScale> {
       // [WHAT] 解析 jsonpgz({...}) 格式
       const match = text.match(/jsonpgz\(([\s\S]*)\)/)
       if (match) {
-        const data = JSON.parse(match[1])
-        // 估值接口不包含规模，返回默认值
+        const data = JSON.parse(match[1]!)
         // 但可以确认基金存在
         if (data.fundcode) {
           cache.set(cacheKey, defaultScale, CACHE_TTL.LONG)
@@ -1793,7 +1792,7 @@ export async function fetchFundStyle(fundCode: string): Promise<FundStyle> {
     // 格式：var Data_assetAllocation = {...}
     const assetMatch = text.match(/var\s+Data_assetAllocation\s*=\s*(\{[\s\S]*?\});/)
     if (assetMatch) {
-      const assetData = JSON.parse(assetMatch[1])
+      const assetData = JSON.parse(assetMatch[1]!)
       // [WHAT] 获取最新一期的资产配置
       if (assetData.categories && assetData.series) {
         const latest = assetData.series.length - 1
@@ -1810,7 +1809,7 @@ export async function fetchFundStyle(fundCode: string): Promise<FundStyle> {
     const styleMatch = text.match(/var\s+swithSameType\s*=\s*(\[[\s\S]*?\]);/)
     if (styleMatch) {
       try {
-        const styleData = JSON.parse(styleMatch[1])
+        const styleData = JSON.parse(styleMatch[1]!)
         // [WHAT] 根据同类基金分类判断风格
         for (const item of styleData) {
           if (item[0] && typeof item[0] === 'string') {
@@ -1975,16 +1974,14 @@ export async function fetchHolderStructure(fundCode: string): Promise<HolderStru
     // 格式：var Data_holderStructure = {...}
     const match = text.match(/var\s+Data_holderStructure\s*=\s*(\{[\s\S]*?\});/)
     if (match) {
-      const data = JSON.parse(match[1])
-      if (data.series && data.categories) {
-        const latestIdx = data.categories.length - 1
-        if (latestIdx >= 0) {
-          defaultData.reportDate = data.categories[latestIdx] || '--'
-          // series[0] 机构, series[1] 个人, series[2] 内部
-          defaultData.institutionRatio = data.series[0]?.data?.[latestIdx] || 0
-          defaultData.personalRatio = data.series[1]?.data?.[latestIdx] || 100
-          defaultData.internalRatio = data.series[2]?.data?.[latestIdx] || 0
-        }
+      const data = JSON.parse(match[1]!)
+      const latestIdx = data.categories.length - 1
+      if (latestIdx >= 0) {
+        defaultData.reportDate = data.categories[latestIdx] || '--'
+        // series[0] 机构, series[1] 个人, series[2] 内部
+        defaultData.institutionRatio = data.series[0]?.data?.[latestIdx] || 0
+        defaultData.personalRatio = data.series[1]?.data?.[latestIdx] || 100
+        defaultData.internalRatio = data.series[2]?.data?.[latestIdx] || 0
       }
     }
     
@@ -2035,7 +2032,7 @@ export async function fetchFundRankInfo(fundCode: string): Promise<FundRankInfo 
     const match = text.match(/var\s+Data_rateInSimilarType\s*=\s*(\[[\s\S]*?\]);/)
     if (!match) return null
     
-    const data = JSON.parse(match[1])
+    const data = JSON.parse(match[1]!)
     
     const parseRank = (item: [string, number, number] | undefined) => {
       if (!item) return { rank: 0, total: 0, percentile: 0 }

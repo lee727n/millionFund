@@ -161,9 +161,9 @@ export const useHoldingStore = defineStore('holding', () => {
 
       results.forEach((data, index) => {
         if (data) {
-          updateHoldingWithAccurateData(holdingsList[index].code, data)
+          updateHoldingWithAccurateData(holdingsList[index]!.code, data)
         } else {
-          const item = holdings.value.find((h) => h.code === holdingsList[index].code)
+          const item = holdings.value.find((h) => h.code === holdingsList[index]!.code)
           if (item) item.loading = false
         }
       })
@@ -180,7 +180,7 @@ export const useHoldingStore = defineStore('holding', () => {
     const index = holdings.value.findIndex((h) => h.code === code)
     if (index === -1) return
 
-    const holding = holdings.value[index]
+    const holding = holdings.value[index]!
     const currentValue = data.currentValue
 
     // console.log('更新持仓数据:', { code, currentValue, data })
@@ -227,7 +227,7 @@ export const useHoldingStore = defineStore('holding', () => {
           value: item.netValue,
           change: item.changeRate
         }))
-        trendPrediction = predictTrend(netValuePoints)
+        trendPrediction = predictTrend(netValuePoints) ?? undefined
       }
     } catch (error) {
       console.error('计算趋势预测失败:', error)

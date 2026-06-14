@@ -1,21 +1,20 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# [WHY] ProGuard rules for Capacitor Android app
+# [WHAT] 防止混淆移除通过反射调用的 Capacitor 插件类和方法
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# [WHY] Capacitor 核心通过反射调用插件方法
+-keep class com.getcapacitor.** { *; }
+-keep class com.fundapp.realtime.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# [WHY] WebView JavaScript 桥接接口需保持原生方法名
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# [WHY] Gson 序列化/反序列化需要保留成员字段名
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
+
+# [WHY] 保留行号信息便于线上崩溃堆栈定位
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

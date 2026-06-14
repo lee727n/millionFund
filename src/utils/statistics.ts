@@ -150,15 +150,15 @@ export function calculateReturnAnalysis(data: NetValuePoint[]): ReturnAnalysis |
   const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date))
   const n = sorted.length
   
-  const firstNav = sorted[0].value
-  const lastNav = sorted[n - 1].value
-  const startDate = sorted[0].date
-  const endDate = sorted[n - 1].date
+  const firstNav = sorted[0]!.value
+  const lastNav = sorted[n - 1]!.value
+  const startDate = sorted[0]!.date
+  const endDate = sorted[n - 1]!.date
   
   // [WHAT] 计算日收益率序列
   const dailyReturns: number[] = []
   for (let i = 1; i < n; i++) {
-    const ret = (sorted[i].value - sorted[i - 1].value) / sorted[i - 1].value
+    const ret = (sorted[i]!.value - sorted[i - 1]!.value) / sorted[i - 1]!.value
     dailyReturns.push(ret)
   }
   
@@ -184,19 +184,19 @@ export function calculateReturnAnalysis(data: NetValuePoint[]): ReturnAnalysis |
   let maxDrawdown = 0
   let maxDrawdownStart = startDate
   let maxDrawdownEnd = endDate
-  let peak = sorted[0].value
-  let peakDate = sorted[0].date
+  let peak = sorted[0]!.value
+  let peakDate = sorted[0]!.date
   
   for (let i = 1; i < n; i++) {
-    if (sorted[i].value > peak) {
-      peak = sorted[i].value
-      peakDate = sorted[i].date
+    if (sorted[i]!.value > peak) {
+      peak = sorted[i]!.value
+      peakDate = sorted[i]!.date
     }
-    const drawdown = (peak - sorted[i].value) / peak
+    const drawdown = (peak - sorted[i]!.value) / peak
     if (drawdown > maxDrawdown) {
       maxDrawdown = drawdown
       maxDrawdownStart = peakDate
-      maxDrawdownEnd = sorted[i].date
+      maxDrawdownEnd = sorted[i]!.date
     }
   }
   
@@ -359,14 +359,14 @@ export function simulateDIP(
   
   if (records.length === 0) return null
   
-  const lastNav = sorted[sorted.length - 1].value
+  const lastNav = sorted[sorted.length - 1]!.value
   const currentValue = totalShares * lastNav
   const totalReturn = currentValue - totalCost
   const returnRate = (totalReturn / totalCost) * 100
   
   // 计算年化收益
-  const firstDate = new Date(records[0].date)
-  const lastDate = new Date(sorted[sorted.length - 1].date)
+  const firstDate = new Date(records[0]!.date)
+  const lastDate = new Date(sorted[sorted.length - 1]!.date)
   const years = (lastDate.getTime() - firstDate.getTime()) / (365 * 24 * 60 * 60 * 1000)
   const annualizedReturn = years > 0 
     ? (Math.pow(1 + returnRate / 100, 1 / years) - 1) * 100 
@@ -421,7 +421,7 @@ export function analyzeBestDIPDay(data: NetValuePoint[]): BestDIPDay[] {
       }
     }
     
-    const lastNav = sorted[sorted.length - 1].value
+    const lastNav = sorted[sorted.length - 1]!.value
     const returnRate = totalCost > 0 
       ? ((totalShares * lastNav - totalCost) / totalCost) * 100 
       : 0
@@ -482,7 +482,7 @@ export function calculateCorrelation(
     const sorted = [...fund.data].sort((a, b) => a.date.localeCompare(b.date))
     const returns: number[] = []
     for (let i = 1; i < sorted.length; i++) {
-      returns.push((sorted[i].value - sorted[i - 1].value) / sorted[i - 1].value)
+      returns.push((sorted[i]!.value - sorted[i - 1]!.value) / sorted[i - 1]!.value)
     }
     returnSeries.push(returns)
   }
@@ -495,16 +495,16 @@ export function calculateCorrelation(
     matrix[i] = []
     for (let j = 0; j < n; j++) {
       if (i === j) {
-        matrix[i][j] = 1
+        matrix[i]![j] = 1
       } else {
-        const corr = pearsonCorrelation(returnSeries[i], returnSeries[j])
-        matrix[i][j] = round(corr, 3)
+        const corr = pearsonCorrelation(returnSeries[i]!, returnSeries[j]!)
+        matrix[i]![j] = round(corr, 3)
         
         // 记录高相关性配对（>0.7且i<j避免重复）
         if (i < j && corr > 0.7) {
           highCorrelationPairs.push({
-            fund1: { code: codes[i], name: names[i] },
-            fund2: { code: codes[j], name: names[j] },
+            fund1: { code: codes[i]!, name: names[i]! },
+            fund2: { code: codes[j]!, name: names[j]! },
             correlation: round(corr, 3),
             suggestion: corr > 0.9 
               ? '高度相关，建议减持其一' 
@@ -520,7 +520,7 @@ export function calculateCorrelation(
   let count = 0
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      totalCorr += Math.abs(matrix[i][j])
+      totalCorr += Math.abs(matrix[i]![j]!)
       count++
     }
   }
@@ -571,10 +571,10 @@ export function predictTrend(data: NetValuePoint[]): TrendPrediction | null {
   
   // [WHAT] 分析信号
   const signals: TrendSignal[] = []
-  const lastPrice = values[n - 1]
-  const lastMa5 = ma5[ma5.length - 1]
-  const lastMa10 = ma10[ma10.length - 1]
-  const lastMa20 = ma20[ma20.length - 1]
+  const lastPrice = values[n - 1]!
+  const lastMa5 = ma5[ma5.length - 1]!
+  const lastMa10 = ma10[ma10.length - 1]!
+  const lastMa20 = ma20[ma20.length - 1]!
   
   // MA信号
   if (lastMa5 > lastMa10 && lastMa10 > lastMa20) {
@@ -656,7 +656,7 @@ export function predictTrend(data: NetValuePoint[]): TrendPrediction | null {
     strength: round(strength, 0),
     confidence: round(Math.abs(buyStrength - sellStrength) / 2 + 50, 0),
     shortTermTrend: trend === 'up' ? '短期看涨' : trend === 'down' ? '短期看跌' : '短期震荡',
-    mediumTermTrend: lastMa20 > ma20[ma20.length - 10] ? '中期上行' : '中期下行',
+    mediumTermTrend: lastMa20 > ma20[ma20.length - 10]! ? '中期上行' : '中期下行',
     supportLevel: round(recentLow, 4),
     resistanceLevel: round(recentHigh, 4),
     signals
@@ -773,11 +773,11 @@ function pearsonCorrelation(x: number[], y: number[]): number {
   let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0
   
   for (let i = 0; i < n; i++) {
-    sumX += x[i]
-    sumY += y[i]
-    sumXY += x[i] * y[i]
-    sumX2 += x[i] * x[i]
-    sumY2 += y[i] * y[i]
+    sumX += x[i]!
+    sumY += y[i]!
+    sumXY += x[i]! * y[i]!
+    sumX2 += x[i]! * x[i]!
+    sumY2 += y[i]! * y[i]!
   }
   
   const numerator = n * sumXY - sumX * sumY
@@ -801,7 +801,7 @@ function calculateRSI(values: number[], period: number): number {
   let gains = 0, losses = 0
   
   for (let i = values.length - period; i < values.length; i++) {
-    const change = values[i] - values[i - 1]
+    const change = values[i]! - values[i - 1]!
     if (change > 0) gains += change
     else losses -= change
   }
@@ -829,10 +829,10 @@ function calculateEMA(values: number[], period: number): number {
   if (values.length === 0) return 0
   
   const multiplier = 2 / (period + 1)
-  let ema = values[0]
+  let ema = values[0]!
   
   for (let i = 1; i < values.length; i++) {
-    ema = (values[i] - ema) * multiplier + ema
+    ema = (values[i]! - ema) * multiplier + ema
   }
   
   return ema

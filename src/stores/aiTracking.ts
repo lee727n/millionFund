@@ -95,7 +95,7 @@ export const useAITrackingStore = defineStore('aiTracking', () => {
     // 如果 fromIndex < toIndex，移除元素后 toIndex 需要减 1
     const adjustedToIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
 
-    records.value.splice(adjustedToIndex, 0, movedRecord)
+    records.value.splice(adjustedToIndex, 0, movedRecord!)
     saveToLocalStorage()
   }
 

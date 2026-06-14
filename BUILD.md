@@ -31,22 +31,38 @@ npx cap sync
 
 ### 4. 构建 APK
 
+在构建前确保 `JAVA_HOME` 环境变量已指向 JDK 21。如果已在系统 PATH 中可直接运行：
+
 **Debug 版本**（用于开发测试）：
+
+```bash
+# Linux / macOS
+cd android
+./gradlew assembleDebug
+```
 
 ```powershell
 # Windows PowerShell
-$env:JAVA_HOME = "D:\android\jbr"  # 替换为你的 JDK 路径
 cd android
 .\gradlew.bat assembleDebug
 ```
+
+> 如果遇到 `JAVA_HOME` 未设置错误，先设置 JDK 路径：
+> - Linux/macOS: `export JAVA_HOME=/path/to/jdk-21`
+> - Windows: `$env:JAVA_HOME = "C:\path\to\jdk-21"`
 
 输出路径：`android/app/build/outputs/apk/debug/app-debug.apk`
 
 **Release 版本**（用于发布）：
 
+```bash
+# Linux / macOS
+cd android
+./gradlew assembleRelease
+```
+
 ```powershell
 # Windows PowerShell
-$env:JAVA_HOME = "D:\android\jbr"  # 替换为你的 JDK 路径
 cd android
 .\gradlew.bat assembleRelease
 ```
@@ -98,10 +114,13 @@ signingConfigs {
 
 如果遇到 `JAVA_HOME is set to an invalid directory` 错误：
 
-1. 找到 JDK 路径（Android Studio 通常自带 JBR）
-2. 设置环境变量：
-   - Windows: `$env:JAVA_HOME = "你的JDK路径"`
-   - Linux/Mac: `export JAVA_HOME=/path/to/jdk`
+1. 确认已安装 JDK 21（可以通过 `java -version` 验证）
+2. 找到 JDK 安装路径：
+   - **Android Studio JBR**: 通常位于 Android Studio 安装目录下的 `jbr/` 文件夹
+   - **独立安装**: Linux/macOS 通常在 `/usr/lib/jvm/`，Windows 在 `C:\Program Files\Java\`
+3. 设置环境变量：
+   - Linux/macOS: `export JAVA_HOME=/path/to/jdk-21`
+   - Windows PowerShell: `$env:JAVA_HOME = "C:\path\to\jdk-21"`
 
 ### Gradle 下载慢
 
@@ -151,4 +170,4 @@ npx cap open android
 
 ## 联系方式
 
-如有问题，请提交 [Issue](https://github.com/xiriovo/fund-app/issues)。
+如有问题，请提交 [Issue](https://github.com/ghshhf/millionFund/issues)。

@@ -1,54 +1,44 @@
 # AI百万实盘
 
-一款功能丰富的开源基金管理工具，专为 Android 平台打造。
+一款功能丰富的开源基金管理系统，专为 Android 平台打造。支持自选基金实时估值、持仓盈亏管理、AI 调仓追踪、趋势分析等。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android-green.svg)
 
+## 核心功能
 
-## 功能特点
+- **实时估值** — 秒级刷新基金实时估值数据（支持盘中估值 / 收盘净值）
+- **自选管理** — 添加自选基金，按来源（支付宝/腾讯/京东）分类筛选
+- **持仓追踪** — 记录持仓份额和成本，自动计算浮动盈亏和收益率
+- **AI 调仓追踪** — 记录调仓记录，复盘调仓效果，支持成功率统计
+- **趋势分析** — 包含均线系统、支撑阻力位预测、相关性分析
+- **市场概览** — 查看主要股指、全球指数实时行情
+- **基金详情** — 完整的基金信息展示，包含分时图、净值走势、持仓分析
+- **深度数据** — 资产配置、持有人结构、同类排名、风格分析
 
-### 网盘APK快速开始
-- **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平台
-通过网盘分享的文件：app-3.0.apk
-链接: https://pan.baidu.com/s/1zHB4qTsLORK5cXzgBY2WJA 提取码: iqdh
+## 更新记录
 
-### 核心功能
-- **实时估值** - 秒级刷新基金实时估值数据
-- **趋势行情** - 直观板块分析基金的趋势
-- **基金详情** - 完整的基金信息展示
+### v1.8.0
+- 启用 TypeScript strict 模式，修复 233 个类型错误，提升运行时稳定性
+- 提取硬编码的基金来源配置，便于扩展
+- 配置 Capacitor allowNavigation，修复原生 WebView 跨域请求
+- 添加 404 路由和 scrollBehavior，优化导航体验
+- 移除无用依赖和废弃的 watch 监听
 
-### 功能介绍
-- **更多功能介绍** - 功能介绍，使用技巧可关注douyin视频哈
-![douyin视频](docs/images/9.png)
+### v1.7.0
+- 添加 Material Design 3 样式系统
+- 添加 ProGuard/R8 混淆配置，减小 APK 体积
+- 修复 JSONP 全局回调冲突，解决请求丢失问题
+- 添加 CSP 安全头，防范 XSS 攻击
+- 完善 ESLint 配置和类型检查脚本
 
-
-### 新版本特性
-- **全新UI** - 主页增加量化观察，量化追踪大V持仓。帮你精准跟上热点
-![量化观察](docs/images/5.png)
-- **均线系统** - 支持均线参考，低于黄线买入，高于黄线卖出。让你的操作变得简单。拉高收益
-![小周期均线](docs/images/2.png)
-![大周期均线](docs/images/3.png)
-- **AI追踪** - 新增AI追踪功能，根据日期添加调仓记录。帮你追踪每一次调仓。同时支持AI分析。不遗忘以前的调仓记录
-  精准复盘调仓效果。帮你优化调仓动作
-![AI追踪](docs/images/4.png)
-- **AI追踪简版** - 新增简单版AI追踪，红色表示调仓成功，绿色表示调仓失败。
-![AI追踪简版](docs/images/6.png)
-- **全新设计移动端首页** - 新增全新设计移动端首页布局，提升用户体验。
-![全新设计移动端首页](docs/images/8.png)
 ## 快速开始
-
-### AI策略验证
-  
-欢迎关注支付宝盘友圈：**AI百万实盘**
-
-### 本地开发
 
 ```bash
 # 克隆项目
-git clone https://github.com/lee727n/millionFund
+git clone https://github.com/ghshhf/millionFund
 cd millionFund
 
 # 安装依赖
@@ -81,9 +71,12 @@ APK 输出位置：
 
 - **前端框架**：Vue 3 + TypeScript
 - **构建工具**：Vite 7
-- **UI 组件**：Vant 4
+- **UI 组件**：Vant 4 (Material Design 3 风格)
 - **移动打包**：Capacitor 7
 - **路由管理**：Vue Router 4
+- **状态管理**：Pinia 3
+- **数据可视化**：Lightweight Charts
+- **OCR 识别**：Tesseract.js
 
 ## 免责声明
 
@@ -93,9 +86,7 @@ APK 输出位置：
 - 基金估值数据仅供参考，以基金公司公布的净值为准
 - 数据刷新有延迟，仅供学习和参考
 - **投资有风险，理财需谨慎**
-- 下载后请在 24 小时内删除
 
 ## 开源协议
 
 本项目基于 [MIT License](./LICENSE) 开源。
-

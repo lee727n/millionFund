@@ -158,7 +158,7 @@ const filteredData = computed(() => {
   const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
   
   // [WHY] 先按时间排序，再过滤指定天数范围
-  let rawData = [...chartData.value]
+  const rawData = [...chartData.value]
   
   // [WHAT] 调试信息：使用 error 级别确保输出到 logcat
   const debugInfo = {
@@ -248,7 +248,7 @@ const performanceData = computed((): PerformancePoint[] => {
   })
   
   // [WHAT] 找到基金起始时间对应的沪深300值
-  const fundStartTime = data[0]?.time
+  const fundStartTime = data[0]!.time
   
   // [WHY] 找到 >= 基金起始时间的第一个沪深300数据点作为基准
   let hs300FirstValue = 1
@@ -462,10 +462,10 @@ function drawPerformanceChart(
   if (fundPoints.length > 0) {
     // [WHAT] 填充渐变区域
     ctx.beginPath()
-    ctx.moveTo(fundPoints[0].x, zeroY)
+    ctx.moveTo(fundPoints[0]!.x, zeroY)
     
     for (let i = 0; i < fundPoints.length; i++) {
-      const p = fundPoints[i]
+      const p = fundPoints[i]!
       if (i === 0) {
         ctx.lineTo(p.x, p.y)
         continue
@@ -474,10 +474,10 @@ function drawPerformanceChart(
       if (fundPoints.length < 3) {
         ctx.lineTo(p.x, p.y)
       } else {
-        const p0 = fundPoints[Math.max(i - 1, 0)]
-        const p1 = fundPoints[i]
-        const p2 = fundPoints[Math.min(i + 1, fundPoints.length - 1)]
-        const p3 = fundPoints[Math.min(i + 2, fundPoints.length - 1)]
+        const p0 = fundPoints[Math.max(i - 1, 0)]!
+        const p1 = fundPoints[i]!
+        const p2 = fundPoints[Math.min(i + 1, fundPoints.length - 1)]!
+        const p3 = fundPoints[Math.min(i + 2, fundPoints.length - 1)]!
         
         const tension = 6
         const cp1x = p1.x + (p2.x - p0.x) / tension
@@ -489,7 +489,7 @@ function drawPerformanceChart(
       }
     }
     
-    ctx.lineTo(fundPoints[fundPoints.length - 1].x, zeroY)
+    ctx.lineTo(fundPoints[fundPoints.length - 1]!.x, zeroY)
     ctx.closePath()
     
     // [WHY] 根据最终涨跌决定颜色
@@ -500,16 +500,16 @@ function drawPerformanceChart(
     
     // [WHAT] 绘制曲线
     ctx.beginPath()
-    ctx.moveTo(fundPoints[0].x, fundPoints[0].y)
+    ctx.moveTo(fundPoints[0]!.x, fundPoints[0]!.y)
     
     for (let i = 1; i < fundPoints.length; i++) {
       if (fundPoints.length < 3) {
-        ctx.lineTo(fundPoints[i].x, fundPoints[i].y)
+        ctx.lineTo(fundPoints[i]!.x, fundPoints[i]!.y)
       } else {
-        const p0 = fundPoints[Math.max(i - 1, 0)]
-        const p1 = fundPoints[i]
-        const p2 = fundPoints[Math.min(i + 1, fundPoints.length - 1)]
-        const p3 = fundPoints[Math.min(i + 2, fundPoints.length - 1)]
+        const p0 = fundPoints[Math.max(i - 1, 0)]!
+        const p1 = fundPoints[i]!
+        const p2 = fundPoints[Math.min(i + 1, fundPoints.length - 1)]!
+        const p3 = fundPoints[Math.min(i + 2, fundPoints.length - 1)]!
         
         const tension = 6
         const cp1x = p1.x + (p2.x - p0.x) / tension
@@ -535,10 +535,10 @@ function drawPerformanceChart(
     
     if (hs300Points.length > 1) {
       ctx.beginPath()
-      ctx.moveTo(hs300Points[0].x, hs300Points[0].y)
+      ctx.moveTo(hs300Points[0]!.x, hs300Points[0]!.y)
       
       for (let i = 1; i < hs300Points.length; i++) {
-        ctx.lineTo(hs300Points[i].x, hs300Points[i].y)
+        ctx.lineTo(hs300Points[i]!.x, hs300Points[i]!.y)
       }
       
       ctx.strokeStyle = '#f0b90b' // 黄色
@@ -550,7 +550,7 @@ function drawPerformanceChart(
   
   // ========== 绘制最新点标记 ==========
   if (fundPoints.length > 0) {
-    const lastPoint = fundPoints[fundPoints.length - 1]
+    const lastPoint = fundPoints[fundPoints.length - 1]!
     const isUp = fundPerformanceChange.value >= 0
     
     // 脉冲动画点
@@ -854,8 +854,8 @@ function drawChart() {
     // [WHAT] 绘制沪深300曲线（黄色）- 相对趋势对比
     if (showHS300.value && hs300Data.value.length > 0) {
       // [WHY] 过滤与基金数据相同时间范围的沪深300数据
-      const fundStartTime = data[0]?.time
-      const fundEndTime = data[data.length - 1]?.time
+      const fundStartTime = data[0]!.time
+      const fundEndTime = data[data.length - 1]!.time
       
       const filteredHS300 = hs300Data.value.filter(item => {
         return item.time >= fundStartTime && item.time <= fundEndTime
@@ -880,11 +880,11 @@ function drawChart() {
 
         if (hs300Points.length > 1) {
           ctx.beginPath()
-          ctx.moveTo(hs300Points[0].x, hs300Points[0].y)
+          ctx.moveTo(hs300Points[0]!.x, hs300Points[0]!.y)
           
           // [HOW] 使用直线连接沪深300点（数据点可能不连续）
           for (let i = 1; i < hs300Points.length; i++) {
-            ctx.lineTo(hs300Points[i].x, hs300Points[i].y)
+            ctx.lineTo(hs300Points[i]!.x, hs300Points[i]!.y)
           }
           
           ctx.strokeStyle = '#f5a623' // 黄色
@@ -979,7 +979,7 @@ function drawChart() {
     } else {
       // K 线模式：显示日期
       const parts = point.time.split('-')
-      label = parts.length >= 3 ? `${parts[1]}-${parts[2].split(' ')[0]}` : point.time.slice(-5)
+      label = parts.length >= 3 ? `${parts[1]}-${parts[2]!.split(' ')[0]}` : point.time.slice(-5)
     }
     ctx.fillText(label, x, height - 5)
   }

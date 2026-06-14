@@ -3,7 +3,7 @@
 // [DEPS] 依赖 localStorage 持久化主题设置
 
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'auto'
 

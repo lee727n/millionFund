@@ -75,7 +75,7 @@ watch(
       'ai-tracking': 'ai'
     }
     if (name && tabMap[name as string]) {
-      activeTab.value = tabMap[name as string]
+      activeTab.value = tabMap[name as string]!
     }
   },
   { immediate: true }
@@ -88,7 +88,7 @@ function onTabChange(name: string | number) {
     holding: '/holding'
   }
   if (routeMap[name as string]) {
-    router.push(routeMap[name as string])
+    router.push(routeMap[name as string]!)
   }
 }
 

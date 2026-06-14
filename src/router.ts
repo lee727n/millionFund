@@ -5,6 +5,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior() {
+    return { top: 0 }
+  },
   routes: [
     {
       path: '/',
@@ -35,6 +38,10 @@ const router = createRouter({
       name: 'ai-tracking',
       component: () => import('@/views/AITracking.vue'),
       meta: { title: 'AI追踪' }
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/'
     }
   ]
 })

@@ -113,11 +113,11 @@ export const useFundStore = defineStore('fund', () => {
       results.forEach((result, index) => {
         if (result) {
           if (result.type === 'fast' || result.type === 'basic') {
-            updateFundData(codes[index], result.data)
+            updateFundData(codes[index]!, result.data)
           } else if (result.type === 'accurate') {
             // [WHAT] 从 accurate 数据构建兼容格式
             const d = result.data
-            updateFundData(codes[index], {
+            updateFundData(codes[index]!, {
               fundcode: d.code,
               name: d.name,
               gsz: String(d.currentValue),
@@ -151,8 +151,8 @@ export const useFundStore = defineStore('fund', () => {
     try {
       const data = await fetchFundEstimateFast(code)
       updateFundData(code, data)
-    } catch {
-      // 静默失败
+    } catch (err) {
+      console.error('刷新基金估值失败:', code, err)
     }
   }
 

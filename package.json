@@ -2,23 +2,41 @@
   "name": "fund-app",
   "private": true,
   "version": "1.8.0",
+  "description": "AI百万实盘 - 全平台基金管理系统，支持实时估值、持仓管理、AI调仓追踪",
+  "author": "millionFund",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
+    "lint": "eslint 'src/**/*.{ts,vue}'",
+    "lint:fix": "eslint 'src/**/*.{ts,vue}' --fix",
+    "typecheck": "vue-tsc --noEmit",
     "update-funds": "node scripts/fetch-fund-list.mjs",
     "cap:init": "npx cap init",
     "cap:add:android": "npx cap add android",
-    "cap:sync": "npm run build && npx cap sync",
-    "cap:open:android": "npx cap open android"
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npm run build && npx cap copy",
+    "cap:sync:android": "npm run build && npx cap copy android && npx cap sync android",
+    "cap:sync:ios": "npm run build && npx cap copy ios && npx cap sync ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "build:all": "bash scripts/build-all.sh",
+    "build:android": "npm run build && npx cap copy && npx cap sync android",
+    "build:ios": "npm run build && npx cap copy && npx cap sync ios",
+    "electron:dev": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux",
+    "build:all-platforms": "node scripts/build-all-platforms.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.5",
     "@capacitor/app": "^7.1.1",
     "@capacitor/core": "^7.0.0",
-    "@capacitor/filesystem": "^8.1.2",
-    "@vant/use": "^1.6.0",
+    "@capacitor/ios": "^7.6.6",
     "lightweight-charts": "^5.1.0",
     "pinia": "^3.0.0",
     "tesseract.js": "^7.0.0",
@@ -29,13 +47,82 @@
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",
     "@types/node": "^24.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
     "@vant/auto-import-resolver": "^1.2.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/tsconfig": "^0.8.1",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^10.9.2",
     "typescript": "~5.9.3",
     "unplugin-auto-import": "^19.0.0",
     "unplugin-vue-components": "^28.0.0",
     "vite": "^7.2.4",
+    "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.1.4"
+  },
+  "build": {
+    "appId": "com.fundapp.realtime",
+    "productName": "AI百万实盘",
+    "copyright": "MIT License",
+    "directories": {
+      "output": "release/desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AI百万实盘"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png",
+      "category": "public.app-category.finance"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png",
+      "category": "Finance"
+    }
   }
 }

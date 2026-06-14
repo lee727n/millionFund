@@ -10,6 +10,7 @@ import { useAITrackingStore } from '@/stores/aiTracking'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { fetchLatestNetValue } from '@/api/fundFast'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
+import { getSourceLabel } from '@/config/sources'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
 import { saveHoldings, saveSourceFilter, getSourceFilter } from '@/utils/storage'
 import { isWeb, isMobile } from '@/utils/platform'
@@ -90,11 +91,11 @@ function filterBySource(source: string) {
     if (currentSourceFilter.value === source) {
       currentSourceFilter.value = ''
       saveSourceFilter('')
-      showToast(`已取消${source === 'ali' ? '支付宝' : source === 'TX' ? '腾讯' : '京东'}筛选`)
+      showToast(`已取消${getSourceLabel(source)}筛选`)
     } else {
       currentSourceFilter.value = source
       saveSourceFilter(source)
-      showToast(`已筛选 ${source === 'ali' ? '支付宝' : source === 'TX' ? '腾讯' : '京东'} 来源的基金`)
+      showToast(`已筛选 ${getSourceLabel(source)} 来源的基金`)
     }
   }
 }
@@ -283,7 +284,7 @@ async function submitForm() {
     name: formData.value.name,
     buyNetValue: currentNetValue.value,
     shares: calculatedShares.value,
-    buyDate: new Date().toISOString().split('T')[0],
+    buyDate: new Date().toISOString().split('T')[0]!,
     holdingDays: 0,
     createdAt: Date.now()
   }
@@ -592,16 +593,16 @@ async function batchImport() {
     const results = []
     
     for (const index of validIndices) {
-      const item = batchItems.value[index]
+      const item = batchItems.value[index]!
       
-      batchItems.value[index].loading = true
-      batchItems.value[index].error = ''
+      batchItems.value[index]!.loading = true
+      batchItems.value[index]!.error = ''
       
       try {
         console.log('开始处理基金:', item.code)
         
         if (holdingStore.hasHolding(item.code)) {
-          batchItems.value[index].error = '该基金已存在，无需重复添加'
+          batchItems.value[index]!.error = '该基金已存在，无需重复添加'
           console.log('基金已存在:', item.code)
           results.push(null)
           continue
@@ -610,14 +611,14 @@ async function batchImport() {
         const searchResults = await searchFund(item.code, 1)
         console.log('搜索结果:', searchResults)
         if (searchResults.length === 0) {
-          batchItems.value[index].error = '基金不存在'
+          batchItems.value[index]!.error = '基金不存在'
           console.log('基金不存在:', item.code)
           results.push(null)
           continue
         }
         
-        const fund = searchResults[0]
-        batchItems.value[index].name = fund.name
+        const fund = searchResults[0]!
+        batchItems.value[index]!.name = fund.name
         console.log('找到基金:', fund.name)
         
         let netValue = 1
@@ -647,7 +648,7 @@ async function batchImport() {
           name: fund.name,
           buyNetValue: buyNetValue,
           shares: shares,
-          buyDate: new Date().toISOString().split('T')[0],
+          buyDate: new Date().toISOString().split('T')[0]!,
           holdingDays: 0,
           industrySectors: industrySectors,
           source: item.source,
@@ -661,11 +662,11 @@ async function batchImport() {
         console.log('添加成功:', fund.code)
         results.push(fund.code)
       } catch (error) {
-        batchItems.value[index].error = '导入失败'
+        batchItems.value[index]!.error = '导入失败'
         console.error('批量导入失败:', error)
         results.push(null)
       } finally {
-        batchItems.value[index].loading = false
+        batchItems.value[index]!.loading = false
       }
       
       await new Promise(resolve => setTimeout(resolve, 300))
@@ -850,7 +851,7 @@ async function refreshHoldings() {
                 <span class="update-status-tag" :class="holding.isUpdated ? 'updated' : 'not-updated'">
                   {{ holding.isUpdated ? '已更新' : '未更新' }}
                 </span>
-                <span class="amount">¥{{ formatMoney(holding.marketValue) }}</span>
+                <span class="amount">¥{{ formatMoney(holding.marketValue ?? 0) }}</span>
               </div>
               <div class="item-actions">
               </div>
