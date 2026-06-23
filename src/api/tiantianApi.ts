@@ -223,7 +223,7 @@ export async function fetchPeriodReturnExt(code: string): Promise<PeriodReturnEx
   return unifiedCache.getOrSet(
     cacheKey,
     async () => {
-      const url = `/api/pingzhongdata/pingzhongdata/${code}.js?v=${Date.now()}`
+      const url = `https://pingzhongdata.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
       const text = await http.text(url, { timeout: 15000 })
       const periodData = parseJsVariable<any[]>(text, 'Data_rateInSimilarPers498') || []
 
@@ -272,7 +272,7 @@ export async function fetchDividendRecords(fundCode: string): Promise<DividendRe
     cacheKey,
     async () => {
       const cbName = `de_cb_${Date.now()}`
-      const url = `/api/apifund/f10/fhsp?fundcode=${fundCode}&callback=${cbName}&_=${Date.now()}`
+      const url = `https://api.fund.eastmoney.com/f10/fhsp?fundcode=${fundCode}&callback=${cbName}&_=${Date.now()}`
       const text = await http.text(url)
 
       const jsonStart = text.indexOf('({') + 1
