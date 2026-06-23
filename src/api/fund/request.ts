@@ -246,7 +246,7 @@ export async function fetchFundEstimateViaHttp(
   gztime: string
   dwjz: string
 } | null> {
-  const url = `/api/fundgz/js/${code}.js?rt=${Date.now()}`
+  const url = `https://fundgz.eastmoney.com/js/${code}.js?rt=${Date.now()}`
   
   try {
     const text = await http.text(url, { timeout: timeoutMs })
@@ -293,7 +293,7 @@ export async function fetchPingzhongData<T>(
   fallback: T,
   timeoutMs = 15000
 ): Promise<T> {
-  const url = `/api/pingzhongdata/pingzhongdata/${code}.js?v=${Date.now()}`
+  const url = `https://pingzhongdata.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
   return fetchJsData(url, varNames, parser, fallback, timeoutMs)
 }
 
