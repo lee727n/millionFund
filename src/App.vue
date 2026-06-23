@@ -6,6 +6,7 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useNetworkStore } from '@/stores/network'
+import { useAlertChecker } from '@/composables/useAlertChecker'
 
 // [WHAT] 网络状态 store - 初始化并在组件生命周期内管理
 const networkStore = useNetworkStore()
@@ -13,6 +14,9 @@ const networkStore = useNetworkStore()
 onMounted(() => {
   networkStore.init()
 })
+
+// [WHAT] 涨跌提醒检查器 - 定时检查估值并触发提醒
+useAlertChecker()
 
 onUnmounted(() => {
   networkStore.cleanup()
