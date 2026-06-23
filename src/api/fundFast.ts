@@ -118,21 +118,8 @@ export function queueGlobalVarScript<T>(
         const result = await extract()
         finish(result)
       } catch (e) {
-        logger.warn('[fundFast] queueGlobalVarScript failed, fallback to JSONP', { url, error: e })
-        // [EDGE] fetch 失败时降级为 JSONP（生产环境 CORS 受限时）
-        const script = document.createElement('script')
-        script.id = scriptId
-        script.src = url
-        script.onload = async () => {
-          try {
-            const result = await extract()
-            finish(result)
-          } catch {
-            finish(emptyResult)
-          }
-        }
-        script.onerror = () => finish(emptyResult)
-        document.body.appendChild(script)
+        logger.warn('[fundFast] queueGlobalVarScript failed', { url, error: e })
+        finish(emptyResult)
       }
     }
 
@@ -185,8 +172,8 @@ export async function fetchFundEstimateFast(code: string): Promise<FundEstimate>
     return new Promise(async (resolve, reject) => {
       try {
         // [M6] 使用 fetch + 正则解析，替代 JSONP
-        // 开发环境通过 Vite 代理，生产环境需要配置 CORS 代理
-        const url = `/api/fundgz/${code}.js?rt=${Date.now()}`
+        // 直接请求外部 API，避免代理 404
+        const url = `https://fundgz.eastmoney.com/js/${code}.js?rt=${Date.now()}`
         const text = await http.text(url)
 
         // 解析 jsonpgz({...}) 格式
@@ -283,9 +270,9 @@ export async function fetchFundList(): Promise<FundInfo[]> {
   // [M6] 回退到远程接口，优先 fetch + new Function，失败则降级 JSONP
   // 开发环境通过 Vite 代理，生产环境需要配置 CORS 代理
   return new Promise(async (resolve, reject) => {
-    // 优先尝试 fetch（开发环境通过代理）
+      // 优先尝试 fetch（直接请求外部 API）
     try {
-      const url = `/api/fund/js/fundcode_search.js?rt=${Date.now()}`
+      const url = `https://fund.eastmoney.com/fund/js/fundcode_search.js?rt=${Date.now()}`
       const text = await http.text(url)
       // 用 new Function 执行 JS，提取 window.r
       new Function(text)()
@@ -509,8 +496,8 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
   if (cached) return cached
 
   // [M6] 迁移到 fetch + new Function（替代 JSONP）
-  // pingzhongdata 返回 JS 代码：Data_netWorthTrend = [...]; fS_name = "..."
-  const url = `/api/pingzhongdata/${code}.js?v=${Date.now()}`
+  // 直接请求外部 API
+  const url = `https://pingzhongdata.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
   const text = await http.text(url)
 
   // 用正则提取 Data_netWorthTrend 数组
@@ -695,7 +682,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 
         if (tencentCodes) {
           try {
-            const qtUrl = `/api/qttencent?q=${tencentCodes}`
+            const qtUrl = `https://qt.gtimg.cn/q?q=${tencentCodes}`
             const qtRes = await fetch(qtUrl)
             if (qtRes.ok) {
               const qtText = await qtRes.text()
@@ -843,7 +830,7 @@ export async function fetchFundBasicInfo(code: string): Promise<{
   // [M6] 优先 fetch + new Function，失败则降级 JSONP
   try {
     const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const url = `/api/fundmobapi/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
     const text = await http.text(url)
 
     // 用 new Function 执行 JS，通过 callback 捕获数据
@@ -937,7 +924,7 @@ export async function fetchLatestNetValue(code: string): Promise<{
 
   // [M6] 使用 fetch + 正则解析，替代 JSONP
   try {
-    const url = `/api/fundgz/${code}.js?rt=${Date.now()}`
+    const url = `https://fundgz.eastmoney.com/js/${code}.js?rt=${Date.now()}`
     const text = await http.text(url)
 
     // 解析 jsonpgz({...}) 格式
