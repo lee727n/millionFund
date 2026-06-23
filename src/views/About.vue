@@ -251,7 +251,10 @@ const apkQrUrl = computed(() =>
 )
 
 const platformLabel = computed(() => ({
-  android: 'Android', ios: 'iOS', electron: 'Windows/Mac/Linux 桌面端',
+  web: 'Web 浏览器',
+  android: 'Android',
+  ios: 'iOS',
+  electron: 'Windows/Mac/Linux 桌面端',
 }[getPlatform()] || 'Web 浏览器'))
 
 const showAndroid = computed(() => !isAndroid())
