@@ -15,7 +15,8 @@ export const CURRENT_TAG = `v${APP_VERSION}` as const
 export const APP_INFO = {
   name: 'AI百万实盘',
   version: APP_VERSION,
-  description: '全平台基金管理系统 - 实时估值 · AI调仓追踪 · 多源资讯',
+  releaseDate: '2026-06-23',
+  description: '全平台基金管理系统 - 实时估值 · AI调仓追踪 · 涨跌提醒 · 多源资讯',
   author: 'millionFund',
   license: 'MIT',
   github: GITHUB_URL,
