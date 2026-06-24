@@ -54,3 +54,4 @@ public/icon_old.png
 components.d.ts
 coverage/
 \n# E2E 测试报告（包含大文件和二进制数据）\nplaywright-report/
+test-results/
