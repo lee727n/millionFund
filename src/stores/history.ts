@@ -148,7 +148,7 @@ export const useHistoryStore = defineStore('history', () => {
    */
   function formatDateLabel(dateStr: string): string {
     const parts = dateStr.split('-')
-    if (parts.length === 3) {
+    if (parts.length === 3 && parts[1] && parts[2]) {
       return `${parseInt(parts[1])}/${parseInt(parts[2])}`
     }
     return dateStr

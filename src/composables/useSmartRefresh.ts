@@ -57,7 +57,7 @@ export function useSmartRefresh<T>(
   const {
     interval = 3000,
     immediate = false,
-    cacheTTL = UNIFIED_CACHE_TTL.REALTIME,
+    cacheTTL = UNIFIED_CACHE_TTL.TRADING_ESTIMATE,
     cacheKeyPrefix = 'smart_refresh',
   } = options
 

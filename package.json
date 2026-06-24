@@ -11,7 +11,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vite build",
     "build:web": "npm run build",
     "build:android": "node scripts/build-all-platforms.mjs android",
     "build:ios": "node scripts/build-all-platforms.mjs ios",
