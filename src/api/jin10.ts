@@ -139,7 +139,7 @@ export async function fetchEconomicCalendar(date: string = ''): Promise<Calendar
     const url = `${baseUrl}/api/get_economic_calendar`
     
     // [FIX] 使用字符串拼接代替 URLSearchParams，避免 TypeScript 类型错误
-    const urlWithParams = `${url}?date=${encodeURIComponent(targetDate)}`
+    const urlWithParams = `${url}?date=${encodeURIComponent(String(targetDate))}`
 
     const data = await http.get<{ data: any[] }>(urlWithParams)
 
@@ -158,9 +158,9 @@ export async function fetchEconomicCalendar(date: string = ''): Promise<Calendar
       return calendarList
     }
 
-    return fallbackCalendarList(targetDate)
+    return fallbackCalendarList(String(targetDate))
   } catch {
-    return fallbackCalendarList(targetDate)
+    return fallbackCalendarList(String(targetDate))
   }
 }
 
