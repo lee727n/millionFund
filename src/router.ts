@@ -16,6 +16,12 @@ const router = createRouter({
       meta: { title: '自选' }
     },
     {
+      path: '/portfolio',
+      name: 'portfolio',
+      component: () => import('@/views/Portfolio.vue'),
+      meta: { title: '资产总览' }
+    },
+    {
       path: '/holding',
       name: 'holding',
       component: () => import('@/views/Holding.vue'),
