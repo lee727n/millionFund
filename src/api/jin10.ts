@@ -65,7 +65,7 @@ export async function fetchNewsList(page = 1, pageSize = 20, category = 'all'): 
   if (cached) return cached
 
   try {
-    const url = 'https://www.jin10.com/api/get_news_list'
+    const url = '/api/jin10/api/get_news_list'
     const params = new URLSearchParams({
       page: String(page),
       limit: String(pageSize),
@@ -100,7 +100,7 @@ export async function fetchFlashNews(): Promise<FlashItem[]> {
   if (cached) return cached
 
   try {
-    const url = 'https://flash-api.jin10.com/get_flash_list'
+    const url = '/api/jin10/flash-api/get_flash_list'
     const params = new URLSearchParams({
       limit: '20',
     })
@@ -131,7 +131,7 @@ export async function fetchEconomicCalendar(date?: string): Promise<CalendarItem
   if (cached) return cached
 
   try {
-    const url = 'https://www.jin10.com/api/get_economic_calendar'
+    const url = '/api/jin10/api/get_economic_calendar'
     const params = new URLSearchParams({
       date: targetDate!,
     })

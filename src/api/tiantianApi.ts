@@ -2,11 +2,10 @@
 // [WHAT] 交易日判断、基金期间涨幅、费率、分红、公告、初始化工具
 // [DEPS] HTTP 请求 + 正则解析（替代 JSONP script 注入） + unifiedCache 双层缓存
 
-import { fetchJsData, parseJsVariable } from './fund/request'
+import { parseJsVariable } from './fund/request'
 import { unifiedCache, UNIFIED_CACHE_TTL } from './unifiedCache'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
-import { handleApiError } from '@/utils/errorHandler'
 
 // ========== 交易时段类型 ==========
 
@@ -61,7 +60,7 @@ async function fetchYearHolidaysFromApi(year: number): Promise<void> {
   for (const apiUrl of apiSources) {
     try {
       const data = await http.json<Record<string, any>>(apiUrl)
-      let holidayDates: string[] = []
+      const holidayDates: string[] = []
 
       if (apiUrl.includes('timor.tech')) {
         if (data?.code === 0 && data?.holiday) {

@@ -33,7 +33,7 @@ const { indices, globalIndices, tradingSession, currentTime, isRefreshing, loadI
 const showTopHoldingsPopup = ref(false)
 const topHoldingsFund = ref<{ code: string; name: string } | null>(null)
 
-async function openTopHoldings(fund: any, event: Event) {
+async function openTopHoldings(fund: HoldingRecord, event: Event) {
   event.stopPropagation()
   topHoldingsFund.value = { code: fund.code, name: fund.name }
   showTopHoldingsPopup.value = true
@@ -42,7 +42,7 @@ async function openTopHoldings(fund: any, event: Event) {
 const showIntradayPopup = ref(false)
 const intradayFund = ref<{ code: string; name: string } | null>(null)
 
-function openIntradayModal(fund: any, event: Event) {
+function openIntradayModal(fund: HoldingRecord, event: Event) {
   event.stopPropagation()
   intradayFund.value = { code: fund.code, name: fund.name }
   showIntradayPopup.value = true

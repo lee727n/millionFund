@@ -4,7 +4,6 @@
 
 import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
-import { createApiError, type ApiError } from '@/types/error'
 
 /**
  * 并发控制配置

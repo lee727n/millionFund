@@ -6,7 +6,7 @@ import eyeIcon from '@/assets/eye.png'
 import { getSourceLabel } from '@/config/sources'
 
 defineProps<{
-  fund: any
+  fund: HoldingRecord
   uiMode: 'simple' | 'full'
   tradingSession?: string
 }>()
@@ -25,7 +25,7 @@ const sourceIconMap: Record<string, string> = {
 }
 
 // 获取基金名称颜色类
-function getFundNameClass(fund: any, tradingSession?: string) {
+function getFundNameClass(fund: HoldingRecord, tradingSession?: string) {
   const isInTrading = tradingSession === 'morning' || tradingSession === 'afternoon'
   
   if (isInTrading) {

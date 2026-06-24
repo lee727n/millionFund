@@ -177,7 +177,6 @@ const showAdd = ref(false)
 const showFundPicker = ref(false)
 const showTypePicker = ref(false)
 const showDirectionPicker = ref(false)
-const showTimePicker = ref(false)
 
 const form = reactive({
   fundCode: '',
@@ -193,7 +192,7 @@ const form = reactive({
 })
 
 const fundOptions = computed(() => {
-  return holdingFunds.map((f: any) => ({
+  return holdingFunds.map((f: HoldingRecord) => ({
     text: `${f.name} (${f.code})`,
     value: f.code,
   }))
@@ -228,19 +227,14 @@ function onPickDirection(item: any) {
   showDirectionPicker.value = false
 }
 
-function onPickTime(time: string) {
-  form.scheduleTime = time
-  showTimePicker.value = false
-}
-
-function typeLabel(rule: any) {
+function typeLabel(rule: AlertRule) {
   if (rule.type === 'threshold') return '净值阈值提醒'
   if (rule.type === 'change') return '涨跌幅提醒'
   if (rule.type === 'scheduled') return '定时推送'
   return ''
 }
 
-function detailLabel(rule: any) {
+function detailLabel(rule: AlertRule) {
   if (rule.type === 'threshold') return `${rule.direction === 'above' ? '≥' : '≤'} ${rule.threshold}`
   if (rule.type === 'change') return `±${rule.changePercent}%`
   if (rule.type === 'scheduled') return `每日 ${rule.scheduleTime}`

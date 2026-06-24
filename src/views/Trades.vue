@@ -158,7 +158,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { showConfirmDialog } from 'vant'
-import { DatePicker } from 'vant'
 import { useTradeStore } from '@/stores/trade'
 import { useHoldingStore } from '@/stores/holding'
 import type { TradeRecord } from '@/types/fund'

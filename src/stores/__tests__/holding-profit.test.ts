@@ -1,7 +1,7 @@
 // [WHY] 持仓收益计算测试 - 验证边界情况处理
 // [WHAT] 测试 buyNetValue=0、currentValue=0、shares=0 等边界情况
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import type { HoldingRecord, HoldingWithProfit } from '@/types/fund'
 
 // [WHAT] 模拟收益计算函数（从 holding.ts 提取的核心逻辑）

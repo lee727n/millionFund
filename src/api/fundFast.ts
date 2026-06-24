@@ -90,8 +90,8 @@ export function queueGlobalVarScript<T>(
   return new Promise<T>((resolve) => {
     const runner = async () => {
       // [M6] 迁移到 fetch + new Function（替代 JSONP）
-      const scriptId = `gv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-
+      // scriptId 已移除 - 不再需要动态脚本标签
+      
       // 请求前清零旧数据，防止读到上一个脚本残留
       cleanupVars.forEach((v) => {
         ;(window as any)[v] = null
@@ -128,21 +128,7 @@ export function queueGlobalVarScript<T>(
   })
 }
 
-// ========== JSONP请求队列 ==========
-interface PendingRequest {
-  code: string
-  resolve: (data: FundEstimate) => void
-  reject: (error: Error) => void
-  timeout: ReturnType<typeof setTimeout>
-}
 
-const pendingRequests: PendingRequest[] = []
-const pendingNetValueRequests: {
-  code: string
-  resolve: (data: { netValue: number; date: string; changeRate: number } | null) => void
-  reject: (error: Error) => void
-  timeout: ReturnType<typeof setTimeout>
-}[] = []
 
 
 // ========== 实时估值API（优化版） ==========

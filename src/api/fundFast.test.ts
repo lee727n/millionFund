@@ -1,5 +1,5 @@
 // [WHY] fundFast.ts 单元测试：测试纯函数（跳过 JSONP 函数）
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   clearFundCache,
   clearAllCache,
