@@ -4,9 +4,10 @@ import TXIcon from '@/assets/TX.jpg'
 import JDIcon from '@/assets/JD.jpg'
 import eyeIcon from '@/assets/eye.png'
 import { getSourceLabel } from '@/config/sources'
+import type { HoldingWithProfit } from '@/stores/holding'
 
 defineProps<{
-  fund: HoldingRecord
+  fund: HoldingWithProfit
   uiMode: 'simple' | 'full'
   tradingSession?: string
 }>()
@@ -25,7 +26,7 @@ const sourceIconMap: Record<string, string> = {
 }
 
 // 获取基金名称颜色类
-function getFundNameClass(fund: HoldingRecord, tradingSession?: string) {
+function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
   const isInTrading = tradingSession === 'morning' || tradingSession === 'afternoon'
   
   if (isInTrading) {
@@ -47,7 +48,7 @@ function getFundNameClass(fund: HoldingRecord, tradingSession?: string) {
     <div class="index-name web-only">
       <div class="fund-name-content">
         <div class="fund-name-left">
-          <img :src="sourceIconMap[fund.source]" class="source-icon-small" :alt="getSourceLabel(fund.source)" />
+          <img :src="sourceIconMap[fund.source || 'observe']" class="source-icon-small" :alt="getSourceLabel(fund.source || 'observe')" />
         </div>
         <div class="fund-name-middle">
           <span v-if="fund.isQDII" class="qdii-tag">QD</span>
@@ -104,7 +105,7 @@ function getFundNameClass(fund: HoldingRecord, tradingSession?: string) {
       <div class="mobile-item-row mobile-item-row-1">
         <div class="fund-name-content">
           <div class="fund-name-left">
-            <img :src="sourceIconMap[fund.source]" class="source-icon-small" :alt="getSourceLabel(fund.source)" />
+            <img :src="sourceIconMap[fund.source || 'observe']" class="source-icon-small" :alt="getSourceLabel(fund.source || 'observe')" />
           </div>
           <div class="fund-name-middle">
             <span v-if="fund.isQDII" class="qdii-tag">QD</span>

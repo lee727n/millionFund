@@ -13,6 +13,7 @@ import { getSourceLabel } from '@/config/sources'
 import { logger, copyLogsToClipboard, exportLogsAsText } from '@/utils/logger'
 import { useHomeData } from '@/composables/useHomeData'
 import { useActionSheet } from '@/composables/useActionSheet'
+import type { HoldingWithProfit } from '@/stores/holding'
 import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
 import QuickActionsBar from '@/components/QuickActionsBar.vue'
@@ -33,7 +34,7 @@ const { indices, globalIndices, tradingSession, currentTime, isRefreshing, loadI
 const showTopHoldingsPopup = ref(false)
 const topHoldingsFund = ref<{ code: string; name: string } | null>(null)
 
-async function openTopHoldings(fund: HoldingRecord, event: Event) {
+async function openTopHoldings(fund: HoldingWithProfit, event: Event) {
   event.stopPropagation()
   topHoldingsFund.value = { code: fund.code, name: fund.name }
   showTopHoldingsPopup.value = true
@@ -42,7 +43,7 @@ async function openTopHoldings(fund: HoldingRecord, event: Event) {
 const showIntradayPopup = ref(false)
 const intradayFund = ref<{ code: string; name: string } | null>(null)
 
-function openIntradayModal(fund: HoldingRecord, event: Event) {
+function openIntradayModal(fund: HoldingWithProfit, event: Event) {
   event.stopPropagation()
   intradayFund.value = { code: fund.code, name: fund.name }
   showIntradayPopup.value = true

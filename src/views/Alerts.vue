@@ -165,6 +165,8 @@ import { useRouter } from 'vue-router'
 import { useAlertsStore } from '@/stores/alerts'
 import { useHoldingStore } from '@/stores/holding'
 import { showToast } from 'vant'
+import type { HoldingRecord } from '@/types/fund'
+import type { AlertRule } from '@/stores/alerts'
 
 const router = useRouter()
 const alertsStore = useAlertsStore()
