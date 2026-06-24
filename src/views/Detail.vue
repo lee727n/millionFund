@@ -617,11 +617,11 @@ function formatPercent(num: number): string {
     <div class="top-header">
       <!-- 导航栏 -->
       <div class="nav-bar">
-        <van-icon name="arrow-left" size="22" color="var(--text-primary)" @click="goBack" />
+        <van-icon name="arrow-left" size="22" color="var(--text-primary)" @click="goBack" :data-test-id="'back-button'" />
         <div class="nav-title">
-          <div class="fund-name">{{ fundInfo?.name || '加载中...' }}</div>
+          <div class="fund-name" :data-test-id="'fund-name'">{{ fundInfo?.name || '加载中...' }}</div>
           <div class="fund-info-row">
-            <span class="fund-code">{{ fundCode }}</span>
+            <span class="fund-code" :data-test-id="'fund-code'">{{ fundCode }}</span>
             <span class="info-divider">|</span>
             <span class="estimate-tag" :class="isUp ? 'up' : 'down'">
               {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}
@@ -642,17 +642,17 @@ function formatPercent(num: number): string {
       </div>
       
       <!-- 核心指标 -->
-      <div class="core-metrics" v-if="!isLoading">
+      <div class="core-metrics" v-if="!isLoading" :data-test-id="'valuation-section'">
         <div class="main-change">
           <div class="change-label">当日涨幅 {{ fundInfo?.gztime?.slice(5, 10) || '--' }}</div>
-          <div class="change-value" :class="isUp ? 'up' : 'down'">
+          <div class="change-value" :class="isUp ? 'up' : 'down'" :data-test-id="'valuation-change'">
             {{ formatPercent(priceChangePercent) }}
           </div>
         </div>
         <div class="sub-metrics">
           <div class="metric-item">
             <div class="metric-label">估算净值</div>
-            <div class="metric-value">{{ fundInfo?.gsz || '--' }}</div>
+            <div class="metric-value" :data-test-id="'valuation'">{{ fundInfo?.gsz || '--' }}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">昨日净值</div>
@@ -666,11 +666,11 @@ function formatPercent(num: number): string {
           </div>
         </div>
       </div>
-      <div v-else class="core-metrics loading">
+      <div v-else class="core-metrics loading" :data-test-id="'loading'">
         <van-loading color="var(--text-secondary)" />
       </div>
     </div>
-
+    
     <!-- 持仓数据区 -->
     <div v-if="holdingDetails" class="holding-panel" :class="{ collapsed: !holdingExpanded }">
       <div class="holding-summary" @click="holdingExpanded = !holdingExpanded">
@@ -747,8 +747,8 @@ function formatPercent(num: number): string {
     </div>
 
     <!-- 图表区域 -->
-    <div class="chart-section">
-  
+    <div class="chart-section" :data-test-id="'chart-container'">
+
       
       <ProChart
         :fund-code="fundCode"

@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant UI as Vue Component
+    participant API as fundFast.ts
+    participant HTTP as http.ts
+    participant Cache as cache.ts
+    participant External as External API
+    
+    UI->>API: fetchFundEstimateFast(code)
+    API->>Cache: get(cacheKey)
+    
+    alt Cache Hit
+        Cache-->>API: return cached data
+        API-->>UI: return data
+    else Cache Miss
+        API->>HTTP: text(url)
+        HTTP->>External: fetch(url)
+        External-->>HTTP: return JS text
+        HTTP-->>API: return text
+        
+        alt M6 Migration (fetch + new Function)
+            API->>API: parse text with regex
+            API->>API: execute JS with new Function
+            API->>API: extract data from global variable
+        end
+        
+        API->>Cache: set(cacheKey, data, TTL)
+        API-->>UI: return data
+    end

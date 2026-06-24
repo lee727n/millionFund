@@ -30,7 +30,7 @@ function onSwitchChange(value: boolean) {
         size="20" 
         @update:model-value="onSwitchChange" 
       />
-      <van-icon name="replay" size="22" @click="emit('refresh')" />
+      <van-icon name="replay" size="22" @click="emit('refresh')" data-test-id="refresh-button" />
       <van-icon name="description-o" size="22" @click="emit('copyLogs')" title="复制日志" />
       <van-icon name="setting-o" size="22" @click="emit('goToSettings')" />
     </div>
@@ -41,7 +41,7 @@ function onSwitchChange(value: boolean) {
         size="20" 
         @update:model-value="onSwitchChange" 
       />
-      <van-icon name="replay" size="22" @click="emit('refresh')" />
+      <van-icon name="replay" size="22" @click="emit('refresh')" data-test-id="refresh-button" />
       <van-icon name="description-o" size="22" @click="emit('copyLogs')" />
       <van-icon name="setting-o" size="22" @click="emit('goToSettings')" title="关于" />
     </div>

@@ -1,0 +1,345 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: fund-detail.spec.ts >> 基金详情查看流程 >> should go back to list when clicking back button
+- Location: e2e\fund-detail.spec.ts:122:3
+
+# Error details
+
+```
+Test timeout of 30000ms exceeded.
+```
+
+```
+Error: locator.click: Test timeout of 30000ms exceeded.
+Call log:
+  - waiting for locator('[data-testid="back-button"]')
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: 
+      - generic [ref=e9]:
+        - generic [ref=e10]: 加载中...
+        - generic [ref=e11]:
+          - generic [ref=e12]: "000001"
+          - generic [ref=e13]: "|"
+          - generic [ref=e14]: 估值涨幅 +0.00%
+          - generic [ref=e15]: "|"
+          - generic [ref=e16]: 估值 0.0000
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]: 当日涨幅 --
+        - generic [ref=e20]: +0.00%
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]: 估算净值
+          - generic [ref=e24]: "0"
+        - generic [ref=e25]:
+          - generic [ref=e26]: 昨日净值
+          - generic [ref=e27]: "0"
+        - generic [ref=e28]:
+          - generic [ref=e29]: 最佳回报
+          - generic [ref=e30]: "--"
+  - generic [ref=e32]:
+    - generic [ref=e34]:
+      - generic [ref=e35] [cursor=pointer]: 当日
+      - generic [ref=e36] [cursor=pointer]: 5日
+      - generic [ref=e37] [cursor=pointer]: 1月
+      - generic [ref=e38] [cursor=pointer]: 3月
+      - generic [ref=e39] [cursor=pointer]: 6月
+      - generic [ref=e40] [cursor=pointer]: 1年
+      - generic [ref=e42]: 实时
+    - generic [ref=e44]:
+      - generic [ref=e45]:
+        - generic [ref=e46]: 开
+        - generic [ref=e47]: "0.0000"
+      - generic [ref=e48]:
+        - generic [ref=e49]: 高
+        - generic [ref=e50]: "0.0000"
+      - generic [ref=e51]:
+        - generic [ref=e52]: 低
+        - generic [ref=e53]: "0.0000"
+      - generic [ref=e54]:
+        - generic [ref=e55]: 收
+        - generic [ref=e56]: "0.0000"
+      - generic [ref=e57]:
+        - generic [ref=e58]: 涨跌
+        - generic [ref=e59]: +0.00%
+    - generic [ref=e62]:
+      - generic [ref=e63]: 成交量(Volume)
+      - generic [ref=e64]: "0"
+  - generic [ref=e66]:
+    - img [ref=e68]
+    - paragraph [ref=e86]: 暂无趋势数据
+  - generic [ref=e87]:
+    - generic [ref=e89]: 费率信息
+    - generic [ref=e90]:
+      - generic [ref=e91]:
+        - generic [ref=e92]: 管理费
+        - generic [ref=e93]: 1.50%/年
+      - generic [ref=e94]:
+        - generic [ref=e95]: 托管费
+        - generic [ref=e96]: 0.25%/年
+    - generic [ref=e97]:
+      - generic [ref=e98]: 申购费率
+      - generic [ref=e99]:
+        - generic [ref=e100]: 金额
+        - generic [ref=e101]: 原费率
+        - generic [ref=e102]: 优惠费率
+      - generic [ref=e103]:
+        - generic [ref=e104]: <100万
+        - generic [ref=e105]: 1.5%
+        - generic [ref=e106]: 0.15%
+      - generic [ref=e107]:
+        - generic [ref=e108]: 100-300万
+        - generic [ref=e109]: 1.2%
+        - generic [ref=e110]: 0.12%
+      - generic [ref=e111]:
+        - generic [ref=e112]: 300-500万
+        - generic [ref=e113]: 0.8%
+        - generic [ref=e114]: 0.08%
+      - generic [ref=e115]:
+        - generic [ref=e116]: ≥500万
+        - generic [ref=e117]: 1000元
+        - generic [ref=e118]: 1000元
+    - generic [ref=e119]:
+      - generic [ref=e120]: 赎回费率
+      - generic [ref=e121]:
+        - generic [ref=e122]: 持有期限
+        - generic [ref=e123]: 费率
+      - generic [ref=e124]:
+        - generic [ref=e125]: <7天
+        - generic [ref=e126]: 1.5%
+      - generic [ref=e127]:
+        - generic [ref=e128]: 7-30天
+        - generic [ref=e129]: 0.5%
+      - generic [ref=e130]:
+        - generic [ref=e131]: 30-365天
+        - generic [ref=e132]: 0.5%
+      - generic [ref=e133]:
+        - generic [ref=e134]: 365-730天
+        - generic [ref=e135]: 0.25%
+      - generic [ref=e136]:
+        - generic [ref=e137]: ≥730天
+        - generic [ref=e138]: 免费
+  - generic [ref=e139]:
+    - generic [ref=e141]: 重仓股票
+    - generic [ref=e142]: 暂无持仓数据
+  - generic [ref=e143]:
+    - generic [ref=e145]: 基金公告
+    - generic [ref=e146]:
+      - generic [ref=e147] [cursor=pointer]:
+        - generic [ref=e148]: 公告
+        - generic [ref=e149]:
+          - generic [ref=e150]: 投资有风险，理财需谨慎
+          - generic [ref=e151]: 2026-06-24
+        - generic [ref=e152]: 
+      - generic [ref=e153] [cursor=pointer]:
+        - generic [ref=e154]: 公告
+        - generic [ref=e155]:
+          - generic [ref=e156]: 数据刷新有延迟，仅供学习和参考
+          - generic [ref=e157]: 2026-06-24
+        - generic [ref=e158]: 
+  - generic [ref=e159]:
+    - generic [ref=e160] [cursor=pointer]:
+      - generic [ref=e161]: 
+      - generic [ref=e162]: 修改持仓
+    - generic [ref=e163] [cursor=pointer]:
+      - generic [ref=e164]: 
+      - generic [ref=e165]: 来源
+    - generic [ref=e166] [cursor=pointer]:
+      - generic [ref=e167]: 
+      - generic [ref=e168]: 交易记录
+    - generic [ref=e169] [cursor=pointer]:
+      - generic [ref=e170]: 
+      - generic [ref=e171]: 加自选
+    - generic [ref=e172] [cursor=pointer]:
+      - generic [ref=e173]: 
+      - generic [ref=e174]: 行业板块
+    - generic [ref=e175] [cursor=pointer]:
+      - generic [ref=e176]: 
+      - generic [ref=e177]: 更多
+```
+
+# Test source
+
+```ts
+  8   |  * 基金详情页 Page Object Model
+  9   |  */
+  10  | export class FundDetailPage {
+  11  |   readonly page: Page
+  12  | 
+  13  |   // 页面元素定位器
+  14  |   readonly fundName: Locator
+  15  |   readonly fundCode: Locator
+  16  |   readonly valuation: Locator
+  17  |   readonly valuationChange: Locator
+  18  |   readonly historyNavLink: Locator
+  19  |   readonly periodReturnSection: Locator
+  20  |   readonly refreshButton: Locator
+  21  |   readonly backButton: Locator
+  22  |   readonly loadingIndicator: Locator
+  23  |   readonly chartContainer: Locator
+  24  | 
+  25  |   /**
+  26  |    * 构造函数
+  27  |    * @param page - Playwright Page 对象
+  28  |    */
+  29  |   constructor(page: Page) {
+  30  |     this.page = page
+  31  | 
+  32  |     // 初始化元素定位器（使用 data-testid 属性）
+  33  |     this.fundName = page.locator('[data-testid="fund-name"]')
+  34  |     this.fundCode = page.locator('[data-testid="fund-code"]')
+  35  |     this.valuation = page.locator('[data-testid="valuation"]')
+  36  |     this.valuationChange = page.locator('[data-testid="valuation-change"]')
+  37  |     this.historyNavLink = page.locator('[data-testid="history-nav"]')
+  38  |     this.periodReturnSection = page.locator('[data-testid="period-return"]')
+  39  |     this.refreshButton = page.locator('[data-testid="refresh-button"]')
+  40  |     this.backButton = page.locator('[data-testid="back-button"]')
+  41  |     this.loadingIndicator = page.locator('[data-testid="loading"]')
+  42  |     this.chartContainer = page.locator('[data-testid="chart-container"]')
+  43  |   }
+  44  | 
+  45  |   /**
+  46  |    * 导航到基金详情页
+  47  |    * @param code - 基金代码
+  48  |    */
+  49  |   async goto(code: string): Promise<void> {
+  50  |     await this.page.goto(`/detail/${code}`)
+  51  |     await this.page.waitForLoadState('networkidle')
+  52  |   }
+  53  | 
+  54  |   /**
+  55  |    * 获取基金名称
+  56  |    * @returns 基金名称
+  57  |    */
+  58  |   async getFundName(): Promise<string> {
+  59  |     return (await this.fundName.textContent()) || ''
+  60  |   }
+  61  | 
+  62  |   /**
+  63  |    * 获取基金代码
+  64  |    * @returns 基金代码
+  65  |    */
+  66  |   async getFundCode(): Promise<string> {
+  67  |     return (await this.fundCode.textContent()) || ''
+  68  |   }
+  69  | 
+  70  |   /**
+  71  |    * 获取实时估值
+  72  |    * @returns 估值数值
+  73  |    */
+  74  |   async getValuation(): Promise<string> {
+  75  |     return (await this.valuation.textContent()) || ''
+  76  |   }
+  77  | 
+  78  |   /**
+  79  |    * 获取估值变化
+  80  |    * @returns 估值变化（包含涨跌百分比）
+  81  |    */
+  82  |   async getValuationChange(): Promise<string> {
+  83  |     return (await this.valuationChange.textContent()) || ''
+  84  |   }
+  85  | 
+  86  |   /**
+  87  |    * 点击查看历史净值
+  88  |    */
+  89  |   async viewHistory(): Promise<void> {
+  90  |     await this.historyNavLink.click()
+  91  |     await this.page.waitForLoadState('networkidle')
+  92  |   }
+  93  | 
+  94  |   /**
+  95  |    * 刷新估值
+  96  |    */
+  97  |   async refreshValuation(): Promise<void> {
+  98  |     await this.refreshButton.click()
+  99  |     // 等待刷新完成
+  100 |     await this.loadingIndicator.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+  101 |     await this.loadingIndicator.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+  102 |   }
+  103 | 
+  104 |   /**
+  105 |    * 返回基金列表页
+  106 |    */
+  107 |   async goBack(): Promise<void> {
+> 108 |     await this.backButton.click()
+      |                           ^ Error: locator.click: Test timeout of 30000ms exceeded.
+  109 |     await this.page.waitForLoadState('networkidle')
+  110 |   }
+  111 | 
+  112 |   /**
+  113 |    * 验证页面已加载
+  114 |    * @param code - 期望的基金代码
+  115 |    */
+  116 |   async expectPageLoaded(code: string): Promise<void> {
+  117 |     await expect(this.page).toHaveURL(new RegExp(`/detail/${code}`))
+  118 |     await expect(this.fundCode).toContainText(code)
+  119 |   }
+  120 | 
+  121 |   /**
+  122 |    * 验证估值显示
+  123 |    */
+  124 |   async expectValuationVisible(): Promise<void> {
+  125 |     await expect(this.valuation).toBeVisible()
+  126 |     const valuationText = await this.getValuation()
+  127 |     expect(valuationText).not.toBe('')
+  128 |   }
+  129 | 
+  130 |   /**
+  131 |    * 验证历史净值图表显示
+  132 |    */
+  133 |   async expectHistoryChartVisible(): Promise<void> {
+  134 |     await expect(this.chartContainer).toBeVisible()
+  135 |   }
+  136 | 
+  137 |   /**
+  138 |    * 验证阶段涨幅显示
+  139 |    */
+  140 |   async expectPeriodReturnVisible(): Promise<void> {
+  141 |     await expect(this.periodReturnSection).toBeVisible()
+  142 |   }
+  143 | 
+  144 |   /**
+  145 |    * 验证刷新按钮工作
+  146 |    */
+  147 |   async expectRefreshWorks(): Promise<void> {
+  148 |     const valuationBefore = await this.getValuation()
+  149 |     await this.refreshValuation()
+  150 |     // 这里只是验证刷新按钮可点击，不验证估值变化（因为可能是相同的）
+  151 |     await this.expectValuationVisible()
+  152 |   }
+  153 | 
+  154 |   /**
+  155 |    * 等待估值自动刷新（用于测试智能刷新功能）
+  156 |    * @param timeout - 超时时间（毫秒），默认 10000
+  157 |    */
+  158 |   async waitForAutoRefresh(timeout: number = 10000): Promise<void> {
+  159 |     // 记录初始估值
+  160 |     const initialValuation = await this.getValuation()
+  161 | 
+  162 |     // 等待估值变化或超时
+  163 |     await this.page.waitForFunction(
+  164 |       async (initial) => {
+  165 |         const current = document.querySelector('[data-testid="valuation"]')?.textContent
+  166 |         return current !== initial
+  167 |       },
+  168 |       initialValuation,
+  169 |       { timeout }
+  170 |     )
+  171 |   }
+  172 | }
+  173 | 
+```

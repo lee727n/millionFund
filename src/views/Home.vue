@@ -546,10 +546,11 @@ function goToDetail(code: string) {
       v-model="fundStore.isRefreshing" 
       @refresh="onRefresh"
       class="fund-list-container"
+      :data-test-id="'loading'"
     >
 
       <!-- [WHY] 渲染错误的降级显示：给用户刷新的机会而不是白屏 -->
-      <div v-if="hasError" class="error-fallback">
+      <div v-if="hasError" class="error-fallback" :data-test-id="'error-message'">
         <div class="error-icon">⚠️</div>
         <div class="error-title">页面加载出现问题</div>
         <div class="error-detail">{{ errorMessage || '部分数据暂时无法加载' }}</div>

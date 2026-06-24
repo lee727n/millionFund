@@ -188,18 +188,20 @@ function isInWatchlist(code: string): boolean {
     <!-- 搜索栏 -->
     <van-nav-bar title="搜索基金" left-arrow @click-left="goBack">
       <template #right>
-        <span v-if="isSearching" class="searching-text">搜索中...</span>
+        <span v-if="isSearching" class="searching-text" :data-test-id="'loading'">搜索中...</span>
       </template>
     </van-nav-bar>
 
     <!-- 搜索输入框 -->
-    <van-search
-      v-model="keyword"
-      placeholder="输入基金代码或名称"
-      show-action
-      autofocus
-      @cancel="goBack"
-    />
+    <div data-test-id="search-input">
+      <van-search
+        v-model="keyword"
+        placeholder="输入基金代码或名称"
+        show-action
+        autofocus
+        @cancel="goBack"
+      />
+    </div>
 
     <!-- 搜索历史 -->
     <div v-if="!keyword && searchHistory.length > 0" class="search-history">
@@ -221,17 +223,19 @@ function isInWatchlist(code: string): boolean {
     </div>
 
     <!-- 搜索结果列表 -->
-    <div class="search-results">
+    <div class="search-results" :data-test-id="'search-results'">
       <div 
         v-for="fund in searchResults"
         :key="fund.code"
         class="fund-item"
         @click="goToDetail(fund.code)"
+        :data-test-id="'fund-item'"
+        :data-code="fund.code"
       >
         <div class="fund-info">
-          <div class="fund-name">{{ fund.name }}</div>
+          <div class="fund-name" :data-test-id="'fund-name'">{{ fund.name }}</div>
           <div class="fund-meta">
-            <span class="fund-code">{{ fund.code }}</span>
+            <span class="fund-code" :data-test-id="'fund-code'">{{ fund.code }}</span>
             <van-tag plain size="medium" class="fund-type-tag">{{ fund.type }}</van-tag>
           </div>
         </div>
@@ -240,12 +244,13 @@ function isInWatchlist(code: string): boolean {
             v-if="fund.gszzl" 
             class="fund-change" 
             :class="getChangeClass(fund.gszzl)"
+            :data-test-id="'fund-change'"
           >
             {{ formatChange(fund.gszzl) }}
           </span>
           <span v-else class="fund-change empty">--</span>
         </div>
-        <div class="fund-action">
+        <div class="fund-action" :data-test-id="'add-fund-button'">
           <van-icon
             :name="isInWatchlist(fund.code) ? 'success' : 'plus'"
             :color="isInWatchlist(fund.code) ? '#07c160' : '#1989fa'"

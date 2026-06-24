@@ -44,6 +44,8 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
     class="index-item"
     :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down']"
     @click="emit('click')"
+    :data-test-id="'fund-item'"
+    :data-code="fund.code"
   >
     <div class="index-name web-only">
       <div class="fund-name-content">

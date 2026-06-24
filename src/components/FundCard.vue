@@ -89,21 +89,23 @@ onUnmounted(() => {
       @touchstart="onTouchStart"
       @touchend="onTouchEnd"
       @touchmove="onTouchMove"
+      :data-test-id="'fund-item'"
+      :data-code="fund.code"
     >
       <!-- 左侧：基金信息 -->
       <div class="fund-info">
-        <div class="fund-name">{{ fund.name || '加载中...' }}</div>
-        <div class="fund-code">{{ fund.code }}</div>
+        <div class="fund-name" :data-test-id="'fund-name'">{{ fund.name || '加载中...' }}</div>
+        <div class="fund-code" :data-test-id="'fund-code'">{{ fund.code }}</div>
       </div>
       
       <!-- 中间：估值信息（带闪烁效果） -->
-      <div class="fund-value" :class="[changeClass, flashClass]">
+      <div class="fund-value" :class="[changeClass, flashClass]" :data-test-id="'fund-valuation'">
         <div class="estimate-value">{{ displayValue }}</div>
-        <div class="estimate-change">{{ displayChange }}</div>
+        <div class="estimate-change" :data-test-id="'fund-estimate-change'">{{ displayChange }}</div>
       </div>
 
       <!-- 右侧：删除按钮 -->
-      <div class="delete-icon" @click.stop="emit('delete', fund.code)">
+      <div class="delete-icon" @click.stop="emit('delete', fund.code)" :data-test-id="'delete-button'">
         <van-icon name="delete-o" size="20" color="#ff4444" />
       </div>
     </div>

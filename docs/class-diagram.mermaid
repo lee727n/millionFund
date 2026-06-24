@@ -1,0 +1,92 @@
+classDiagram
+    class HttpUtil {
+        +json<T>(url: string, options: HttpOptions): Promise~T~
+        +text(url: string, options: HttpOptions): Promise~string~
+        +get<T>(url: string, options: HttpOptions): Promise~T~
+        +post<T>(url: string, body: unknown, options: HttpOptions): Promise~T~
+    }
+    
+    class CacheManager {
+        -cacheMap: Map~string, CacheEntry~
+        -maxEntries: number
+        +get<T>(key: string): T | null
+        +set<T>(key: string, value: T, ttl: number): void
+        +delete(key: string): void
+        +clear(): void
+    }
+    
+    class UnifiedCache {
+        +getMemory<T>(key: string): T | null
+        +setMemory<T>(key: string, value: T, ttl: number): void
+        +getPersistent<T>(key: string): T | null
+        +setPersistent<T>(key: string, value: T, ttl: number): void
+        +getOrSet<T>(key: string, factory: () => Promise~T~, options: CacheOptions): Promise~T~
+    }
+    
+    class FundFastAPI {
+        +fetchFundEstimateFast(code: string): Promise~FundEstimate~
+        +fetchFundEstimatesBatch(codes: string[]): Promise~Map~string, FundEstimate~~
+        +fetchFundList(): Promise~FundInfo[]~
+        +searchFund(keyword: string, limit: number): Promise~FundInfo[]~
+        +fetchNetValueHistoryFast(code: string, days: number): Promise~NetValueResult~
+        +fetchFundAccurateData(code: string, isQDII: boolean): Promise~FundAccurateData~
+        +fetchTopHoldings(code: string): Promise~HoldingStock[]~
+        -queueGlobalVarScript<T>(url: string, extract: () => T, cleanupVars: string[], emptyResult: T): Promise~T~
+    }
+    
+    class TiantianApi {
+        +isTradingTime(): boolean
+        +getTradingSession(): TradingSession
+        +fetchPeriodReturnExt(code: string): Promise~PeriodReturnExt[]~
+        +fetchDividendRecords(fundCode: string): Promise~DividendRecord[]~
+        +fetchFundFees(fundCode: string): Promise~FundFeeInfo~
+        +fetchFundAnnouncements(fundCode: string): Promise~FundAnnouncement[]~
+        +initHolidayData(): Promise~void~
+    }
+    
+    class PerformanceMonitor {
+        +markStart(label: string): void
+        +markEnd(label: string): number
+        +getMetrics(): PerformanceMetrics
+        +logMetrics(): void
+        -metrics: Map~string, MetricEntry~
+    }
+    
+    class SmartRefresh {
+        -refreshInterval: number
+        -isTradingTime: boolean
+        +startRefresh(callback: () => void): void
+        +stopRefresh(): void
+        +setRefreshFrequency(frequency: number): void
+        -updateRefreshFrequency(): void
+    }
+    
+    class FundEstimate {
+        +fundcode: string
+        +name: string
+        +gsz: string
+        +gszzl: string
+        +gztime: string
+        +dwjz: string
+        +jzrq: string
+    }
+    
+    class FundAccurateData {
+        +code: string
+        +name: string
+        +nav: number
+        +navDate: string
+        +estimate: number
+        +estimateTime: string
+        +currentValue: number
+        +dayChange: number
+        +dataSource: string
+    }
+    
+    HttpUtil <.. FundFastAPI : uses
+    HttpUtil <.. TiantianApi : uses
+    CacheManager <.. FundFastAPI : uses
+    UnifiedCache <.. TiantianApi : uses
+    FundFastAPI ..> FundEstimate : returns
+    FundFastAPI ..> FundAccurateData : returns
+    PerformanceMonitor ..> SmartRefresh : used by
