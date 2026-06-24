@@ -127,4 +127,66 @@ describe('useHoldingStore - 持仓管理', () => {
     await store.refreshEstimates()
     expect(store.isRefreshing).toBe(false)
   })
+
+  it('fetchPortfolioSummary：计算资产汇总', () => {
+    const store = useHoldingStore()
+    store.addOrUpdateHolding({
+      ...defaultHolding,
+      assetClass: 'fund',
+      currentValue: 1.22,
+      marketValue: 1220,
+      profit: 220,
+      profitRate: 18.03,
+      todayProfit: 20.37,
+      loading: false,
+    })
+
+    const summary = store.fetchPortfolioSummary()
+
+    expect(summary.totalValueCNY).toBeCloseTo(1220)
+    expect(summary.totalProfitCNY).toBeCloseTo(220)
+    expect(summary.todayChangeCNY).toBeCloseTo(20.37)
+    expect(summary.byAssetClass.fund.count).toBe(1)
+    expect(summary.byAssetClass.fund.value).toBeCloseTo(1220)
+  })
+
+  it('fetchPortfolioSummary：按资产类别分组', () => {
+    const store = useHoldingStore()
+    store.addOrUpdateHolding({
+      ...defaultHolding,
+      code: '000001',
+      assetClass: 'fund',
+      marketValue: 10000,
+      profit: 1000,
+      loading: false,
+    })
+    store.addOrUpdateHolding({
+      ...defaultHolding,
+      code: '600001',
+      name: 'A股测试',
+      assetClass: 'astock',
+      marketValue: 5000,
+      profit: -500,
+      loading: false,
+    })
+
+    const summary = store.fetchPortfolioSummary()
+
+    expect(summary.byAssetClass.fund.count).toBe(1)
+    expect(summary.byAssetClass.fund.value).toBeCloseTo(10000)
+    expect(summary.byAssetClass.astock.count).toBe(1)
+    expect(summary.byAssetClass.astock.value).toBeCloseTo(5000)
+    expect(summary.totalValueCNY).toBeCloseTo(15000)
+    expect(summary.totalProfitCNY).toBeCloseTo(500)
+  })
+
+  it('assetClass 默认值为 fund', () => {
+    const store = useHoldingStore()
+    store.addOrUpdateHolding(defaultHolding) // 不设置 assetClass
+    expect(store.holdings[0]?.assetClass).toBeUndefined()
+    // 但 fetchPortfolioSummary 应该将其视为 'fund'
+    store.holdings[0]?.__v_isRef ? undefined : (store.holdings[0]!.assetClass = store.holdings[0]?.assetClass || 'fund')
+    const summary = store.fetchPortfolioSummary()
+    expect(summary.byAssetClass.fund.count).toBe(1)
+  })
 })
