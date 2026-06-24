@@ -9,6 +9,60 @@ import type { FundEstimate, FundInfo, NetValueRecord } from '@/types/fund'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
 
+// ========== 安全 JS 执行辅助函数 ==========
+// [WHY] CSP 已移除 unsafe-eval，不能使用 new Function() 或 eval()
+// [HOW] 用正则提取 JS 赋值语句的右值，再用 JSON.parse() 解析
+
+/**
+ * 从 JS 文本中安全提取变量值（替代 new Function()）
+ * 支持格式：var Data_xxx = [...] 或 Data_xxx = {...}
+ * 返回值已是解析后的 JS 值（数组/对象/字符串等）
+ */
+function safeExtractJSVar(jsText: string, varName: string): any {
+  // 匹配 "var Name = ..." 或 "Name = ..."，直到语句结束
+  // 使用括号计数来正确匹配嵌套的 [] 和 {}
+  const regex = new RegExp(
+    `(?:var\\s+)?${varName}\\s*=\\s*` +
+    `([\\s\\S]*?)` +
+    `(?:;\\s*(?://|var\\s|function\\s|fS_|$))`,
+    'm'
+  )
+  const m = jsText.match(regex)
+  if (!m || !m[1]) return undefined
+
+  const raw = m[1].trim()
+
+  // 尝试直接 JSON.parse
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // 忽略，继续尝试修复
+  }
+
+  // 尝试修复常见非 JSON 语法后解析
+  try {
+    const fixed = raw
+      .replace(/'([^']*)'/g, '"$1"')   // 单引号 → 双引号
+      .replace(/,\s*]/g, ']')            // 数组尾逗号
+      .replace(/,\s*}/g, '}')            // 对象尾逗号
+      .replace(/undefined/g, 'null')     // undefined → null
+    return JSON.parse(fixed)
+  } catch {
+    // 解析失败，返回 undefined
+    return undefined
+  }
+}
+
+/** 解析 JSONP 响应，提取回调参数中的 JSON */
+function safeParseJSONP(text: string): any {
+  // 匹配 jsonpgz({...}) 或 callback({...})
+  const m = text.match(/^[^{]*(\{[\s\S]*\})[^}]*$/)
+  if (m && m[1]) {
+    try { return JSON.parse(m[1]) } catch { /* */ }
+  }
+  return null
+}
+
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
   const keys = ['estimate', 'netvalue', 'kline', 'period']
@@ -111,10 +165,12 @@ export function queueGlobalVarScript<T>(
       }
 
       try {
-        // [M6] 使用 fetch 获取 JS 文本，再用 new Function 执行（设置全局变量）
         const text = await http.text(url)
-        // 可信源（天天基金网），使用 new Function 执行 JS 以设置全局变量
-        new Function(text)()
+        // 安全提取 JS 变量（替代 new Function）
+        for (const v of cleanupVars) {
+          const val = safeExtractJSVar(text, v)
+          if (val !== undefined) (window as any)[v] = val
+        }
         const result = await extract()
         finish(result)
       } catch (e) {
@@ -260,10 +316,15 @@ export async function fetchFundList(): Promise<FundInfo[]> {
     try {
       const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
       const text = await http.text(url)
-      // 用 new Function 执行 JS，提取 window.r
-      new Function(text)()
-      const raw = (globalThis as any).r
-      if (!Array.isArray(raw)) {
+      // 安全提取 window.r（替代 new Function）
+      const rMatch = text.match(/window\.r\s*=\s*([\s\S]*?);/)
+      let raw: any[] | null = null
+      if (rMatch && rMatch[1]) {
+        try { raw = JSON.parse(rMatch[1]) } catch {
+          try { raw = JSON.parse(rMatch[1].replace(/'([^']*)'/g, '"$1"')) } catch {}
+        }
+      }
+      if (!raw || !Array.isArray(raw)) {
         throw new Error('基金列表数据格式错误')
       }
       _fundListCache = raw.map((item: string[]) => ({
@@ -495,8 +556,7 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
 
   if (trendMatch) {
     try {
-      // 用 new Function 安全执行 JS 数组表达式
-      const trend = new Function(`return ${trendMatch[1]}`)() as any[]
+      const trend = JSON.parse(trendMatch[1]!) as any[]
       const recentData = trend.slice(-days)
       records = recentData.map((item: any) => {
         // item.x 可能是时间戳或 Date 字符串
@@ -819,11 +879,12 @@ export async function fetchFundBasicInfo(code: string): Promise<{
     const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
     const text = await http.text(url)
 
-    // 用 new Function 执行 JS，通过 callback 捕获数据
+    // 安全解析 JSONP（替代 new Function）
     let capturedData: any = null
-    ;(window as any)[callbackName] = (data: any) => { capturedData = data }
-    new Function(text)()
-    delete (window as any)[callbackName]
+    const jsonpMatch = text.match(/\(([\s\S]*)\)\s*;?\s*$/m)
+    if (jsonpMatch && jsonpMatch[1]) {
+      try { capturedData = JSON.parse(jsonpMatch[1]) } catch {}
+    }
 
     if (!capturedData || !capturedData.Datas) {
       throw new Error('基金详情数据格式错误')
@@ -1521,11 +1582,12 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
     const url = `/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
     const text = await http.text(url)
 
-    // 用 new Function 执行 JS，通过 callback 捕获数据
+    // 安全解析 JSONP（替代 new Function）
     let capturedData: any = null
-    ;(window as any)[callbackName] = (data: any) => { capturedData = data }
-    new Function(text)()
-    delete (window as any)[callbackName]
+    const jsonpMatch = text.match(/\(([\s\S]*)\)\s*;?\s*$/m)
+    if (jsonpMatch && jsonpMatch[1]) {
+      try { capturedData = JSON.parse(jsonpMatch[1]) } catch {}
+    }
 
     if (capturedData?.data?.diff) {
       capturedData.data.diff.forEach((item: any, idx: number) => {
