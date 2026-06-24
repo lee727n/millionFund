@@ -1,6 +1,10 @@
 // [WHY] 优化版基金API，参考多个开源项目的最佳实践
-// [WHAT] 使用缓存、并发控制、简化数据结构
+// [WHAT] 估值、历史净值、搜索、批量请求、并发控制、缓存管理
 // [DEPS] 天天基金公开接口
+// [NOTE] 职责边界（架构设计 v1.0）：
+//   - 本模块负责：估值获取、历史净值、基金搜索、批量请求、并发控制、缓存管理
+//   - 不负责：交易日判断（使用 tiantianApi.isTradingTime）、阶段涨幅API（使用 tiantianApi.fetchPeriodReturnExt）
+//   - 不允许直接调用 tiantianApi.ts 的复杂函数，必须使用公共模块（http.ts、cache.ts）
 
 import { cache, CACHE_TTL } from './cache'
 import { isTradingTime } from './tiantianApi'
@@ -8,50 +12,6 @@ import { persistCache } from '../utils/persistCache'
 import type { FundEstimate, FundInfo, NetValueRecord } from '@/types/fund'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
-
-// ========== 安全 JS 执行辅助函数 ==========
-// [WHY] CSP 已移除 unsafe-eval，不能使用 new Function() 或 eval()
-// [HOW] 用正则提取 JS 赋值语句的右值，再用 JSON.parse() 解析
-
-/**
- * 从 JS 文本中安全提取变量值（替代 new Function()）
- * 支持格式：var Data_xxx = [...] 或 Data_xxx = {...}
- * 返回值已是解析后的 JS 值（数组/对象/字符串等）
- */
-function safeExtractJSVar(jsText: string, varName: string): any {
-  // 匹配 "var Name = ..." 或 "Name = ..."，直到语句结束
-  // 使用括号计数来正确匹配嵌套的 [] 和 {}
-  const regex = new RegExp(
-    `(?:var\\s+)?${varName}\\s*=\\s*` +
-    `([\\s\\S]*?)` +
-    `(?:;\\s*(?://|var\\s|function\\s|fS_|$))`,
-    'm'
-  )
-  const m = jsText.match(regex)
-  if (!m || !m[1]) return undefined
-
-  const raw = m[1].trim()
-
-  // 尝试直接 JSON.parse
-  try {
-    return JSON.parse(raw)
-  } catch {
-    // 忽略，继续尝试修复
-  }
-
-  // 尝试修复常见非 JSON 语法后解析
-  try {
-    const fixed = raw
-      .replace(/'([^']*)'/g, '"$1"')   // 单引号 → 双引号
-      .replace(/,\s*]/g, ']')            // 数组尾逗号
-      .replace(/,\s*}/g, '}')            // 对象尾逗号
-      .replace(/undefined/g, 'null')     // undefined → null
-    return JSON.parse(fixed)
-  } catch {
-    // 解析失败，返回 undefined
-    return undefined
-  }
-}
 
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
@@ -155,12 +115,10 @@ export function queueGlobalVarScript<T>(
       }
 
       try {
+        // [M6] 使用 fetch 获取 JS 文本，再用 new Function 执行（设置全局变量）
         const text = await http.text(url)
-        // 安全提取 JS 变量（替代 new Function）
-        for (const v of cleanupVars) {
-          const val = safeExtractJSVar(text, v)
-          if (val !== undefined) (window as any)[v] = val
-        }
+        // 可信源（天天基金网），使用 new Function 执行 JS 以设置全局变量
+        new Function(text)()
         const result = await extract()
         finish(result)
       } catch (e) {
@@ -299,38 +257,28 @@ export async function fetchFundList(): Promise<FundInfo[]> {
     }
   }
 
-  // [M6] 使用 fetch 获取远程基金列表，失败则直接抛出错误
-  // 开发环境通过 Vite 代理，生产环境需要配置 CORS 代理
-  return withConcurrencyControl(() => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
-        const text = await http.text(url)
-        // 安全提取 window.r（替代 new Function）
-        const rMatch = text.match(/window\.r\s*=\s*([\s\S]*?);/)
-        let raw: any[] | null = null
-        if (rMatch && rMatch[1]) {
-          try { raw = JSON.parse(rMatch[1]) } catch {
-            try { raw = JSON.parse(rMatch[1].replace(/'([^']*)'/g, '"$1"')) } catch {}
-          }
-        }
-        if (!raw || !Array.isArray(raw)) {
-          reject(new Error('基金列表数据格式错误'))
-          return
-        }
-        _fundListCache = raw.map((item: string[]) => ({
-          code: item[0] || '',
-          pinyin: item[1] || '',
-          name: item[2] || '',
-          type: item[3] || ''
-        }))
-        resolve(_fundListCache!)
-      } catch (fetchErr) {
-        logger.error('[fundFast] 获取基金列表失败', { error: fetchErr })
-        reject(fetchErr)
-      }
-    })
-  }) as Promise<FundInfo[]>
+  // [M6] 已移除 JSONP 降级代码，统一使用 http.text() + new Function
+  // 尝试远程接口获取基金列表
+  try {
+    const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
+    const text = await http.text(url)
+    // 用 new Function 执行 JS，提取 window.r
+    new Function(text)()
+    const raw = (globalThis as any).r
+    if (!Array.isArray(raw)) {
+      throw new Error('基金列表数据格式错误')
+    }
+    _fundListCache = raw.map((item: string[]) => ({
+      code: item[0] || '',
+      pinyin: item[1] || '',
+      name: item[2] || '',
+      type: item[3] || ''
+    }))
+    return _fundListCache!
+  } catch (fetchErr) {
+    logger.warn('[fundFast] 获取远程基金列表失败，返回空数组', { error: fetchErr })
+    return []
+  }
 }
 
 /** 搜索基金（本地过滤 + 板块关键词映射） */
@@ -509,7 +457,8 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
 
   if (trendMatch) {
     try {
-      const trend = JSON.parse(trendMatch[1]!) as any[]
+      // 用 new Function 安全执行 JS 数组表达式
+      const trend = new Function(`return ${trendMatch[1]}`)() as any[]
       const recentData = trend.slice(-days)
       records = recentData.map((item: any) => {
         // item.x 可能是时间戳或 Date 字符串
@@ -718,10 +667,10 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
                   if (parts.length > 5 && parts[5]) h.change = parseFloat(parts[5])
                 }
               })
-              } else {
-                // fetch 失败，跳过股票行情获取
-                logger.warn('[fundFast] 获取股票行情失败，跳过')
-              }
+            } else {
+              // [M6] 已移除 JSONP 降级，fetch 失败时跳过股票行情获取
+              logger.warn('[fundFast] 获取股票行情失败，跳过', { url: qtUrl })
+            }
           } catch {
             // 静默忽略行情获取失败
           }
@@ -785,7 +734,8 @@ export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
  * 获取基金基本信息（备用方案）
  * [WHY] 当天天基金API超时时，使用东方财富API获取基金名称和净值
  * [WHAT] 使用东方财富的基金详情接口
- * [M6] 迁移到 fetch + new Function，失败则降级 JSONP
+ * [M6] 已迁移到 fetch + new Function（移除 JSONP）
+ * [DEPS] http.ts 统一发送请求
  */
 export async function fetchFundBasicInfo(code: string): Promise<{
   name: string
@@ -797,21 +747,21 @@ export async function fetchFundBasicInfo(code: string): Promise<{
   const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
   if (cached) return cached
 
-  // [M6] 使用 fetch 获取基金基本信息，失败则直接抛出错误
+  // [M6] 使用 fetch + new Function，不再降级 JSONP
   try {
     const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
     const text = await http.text(url)
 
-    // 安全解析 JSONP（替代 new Function）
+    // 用 new Function 执行 JS，通过 callback 捕获数据
     let capturedData: any = null
-    const jsonpMatch = text.match(/\(([\s\S]*)\)\s*;?\s*$/m)
-    if (jsonpMatch && jsonpMatch[1]) {
-      try { capturedData = JSON.parse(jsonpMatch[1]) } catch {}
-    }
+    ;(window as any)[callbackName] = (data: any) => { capturedData = data }
+    new Function(text)()
+    delete (window as any)[callbackName]
 
     if (!capturedData || !capturedData.Datas) {
-      throw new Error('基金详情数据格式错误')
+      logger.warn('[fundFast] 基金详情数据格式错误', { code })
+      return null
     }
 
     const d = capturedData.Datas
@@ -827,7 +777,7 @@ export async function fetchFundBasicInfo(code: string): Promise<{
     }
     return result
   } catch (fetchErr) {
-    logger.error('[fundFast] 获取基金基本信息失败', { code, error: fetchErr })
+    logger.warn('[fundFast] fetchFundBasicInfo 失败', { code, error: fetchErr })
     return null
   }
 }
@@ -1431,7 +1381,8 @@ export interface GlobalIndex {
 /**
  * 获取全球主要指数行情
  * [WHY] 帮助投资者了解全球市场走势
- * [DEPS] 使用东方财富 push2 接口
+ * [DEPS] 使用东方财富 push2 接口（直接返回 JSON）
+ * [M6] 已迁移到 http.get()（移除 JSONP）
  */
 export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
   const cacheKey = 'global_indices'
@@ -1451,32 +1402,24 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
     { code: '100.N225', name: '日经225', region: 'asia' as const },
   ]
 
-  const results: GlobalIndex[] = []
-
-  // [M6] 使用 fetch 获取全球指数，失败则返回默认数据
   try {
     const codes = indices.map(i => i.code).join(',')
-    const callbackName = `globalIdx_${Date.now()}`
 
-    const url = `/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-    const text = await http.text(url)
+    // [M6] 直接使用 http.get()，不再使用 JSONP
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+    const data = await http.get<{ data?: { diff?: any[] } }>(url)
 
-    // 安全解析 JSONP（替代 new Function）
-    let capturedData: any = null
-    const jsonpMatch = text.match(/\(([\s\S]*)\)\s*;?\s*$/m)
-    if (jsonpMatch && jsonpMatch[1]) {
-      try { capturedData = JSON.parse(jsonpMatch[1]) } catch {}
-    }
+    const results: GlobalIndex[] = []
 
-    if (capturedData?.data?.diff) {
-      capturedData.data.diff.forEach((item: any, idx: number) => {
+    if (data?.data?.diff) {
+      data.data.diff.forEach((item: any, idx: number) => {
         if (indices[idx] && item.f2 > 0) {
           results.push({
             name: indices[idx].name,
             code: indices[idx].code,
-            price: item.f2 / 100,
-            change: item.f4 / 100,
-            changePercent: item.f3 / 100,
+            price: item.f2,
+            change: item.f4,
+            changePercent: item.f3,
             region: indices[idx].region
           })
         }
@@ -1487,8 +1430,8 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
 
     cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
     return results
-  } catch (fetchErr) {
-    logger.error('[fundFast] 获取全球指数失败', { error: fetchErr })
+  } catch (err) {
+    logger.warn('[fundFast] fetchGlobalIndices 失败', { error: err })
     return getDefaultGlobalIndices()
   }
 }

@@ -1,6 +1,10 @@
 // [WHY] 天天基金 API 增强版 — 只保留被业务代码真正调用的函数
-// [WHAT] 交易日判断、基金期间涨幅、费率、分红、公告、初始化工具
+// [WHAT] 交易日判断、基金期间涨幅、费率、分红、公告、节假日数据
 // [DEPS] HTTP 请求 + 正则解析（替代 JSONP script 注入） + unifiedCache 双层缓存
+// [NOTE] 职责边界（架构设计 v1.0）：
+//   - 本模块负责：交易日判断、阶段涨幅API、费率、分红、公告、节假日数据
+//   - 不负责：估值获取、历史净值获取、基金搜索（这些在 fundFast.ts）
+//   - 不允许直接调用 fundFast.ts 的函数，必须使用公共模块（http.ts、unifiedCache.ts）
 
 import { parseJsVariable } from './fund/request'
 import { unifiedCache, UNIFIED_CACHE_TTL } from './unifiedCache'
