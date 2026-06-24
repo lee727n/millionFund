@@ -9,11 +9,14 @@ export type AssetClass =
   | 'astock'      // A股
   | 'hkstock'     // 港股
   | 'usstock'     // 美股
-  | 'crypto'      // 加密货币
+  | 'bond'        // 债券
   | 'convertible' // 可转债
   | 'reits'       // REITs
   | 'gold'        // 黄金
   | 'commodity'   // 大宗商品
+  | 'future'      // 期货
+  | 'forex'       // 外汇
+  | 'crypto'      // 加密货币
 
 /**
  * 统一持仓记录
@@ -77,14 +80,17 @@ export interface PortfolioSummary {
 /**
  * 资产类别显示配置
  */
-export const ASSET_CLASS_CONFIG: Record<AssetClass, { label: string; color: string }> = {
-  fund:        { label: '基金',   color: '#3b82f6' },
-  astock:      { label: 'A股',   color: '#ef4444' },
-  hkstock:     { label: '港股',   color: '#f59e0b' },
-  usstock:     { label: '美股',   color: '#22c55e' },
-  crypto:      { label: '加密货币', color: '#8b5cf6' },
-  convertible: { label: '可转债',  color: '#ec4899' },
-  reits:       { label: 'REITs',  color: '#06b6d4' },
-  gold:        { label: '黄金',   color: '#eab308' },
-  commodity:   { label: '大宗商品', color: '#84cc16' }
+export const ASSET_CLASS_CONFIG: Record<AssetClass, { label: string; color: string; icon: string }> = {
+  fund:        { label: '基金',   color: '#3b82f6', icon: '💰' },
+  astock:      { label: 'A股',   color: '#ef4444', icon: '📈' },
+  hkstock:     { label: '港股',   color: '#f59e0b', icon: '🇭🇰' },
+  usstock:     { label: '美股',   color: '#22c55e', icon: '🇺🇸' },
+  bond:        { label: '债券',   color: '#6366f1', icon: '📊' },
+  convertible:  { label: '可转债', color: '#ec4899', icon: '🔄' },
+  reits:       { label: 'REITs',  color: '#06b6d4', icon: '🏢' },
+  gold:        { label: '黄金',   color: '#eab308', icon: '🥇' },
+  commodity:   { label: '大宗商品', color: '#84cc16', icon: '🛢️' },
+  future:      { label: '期货',   color: '#f97316', icon: '⚡' },
+  fore:       { label: '外汇',   color: '#14b8a6', icon: '💱' },
+  crypto:      { label: '加密货币', color: '#8b5cf6', icon: '🪙' }
 }
