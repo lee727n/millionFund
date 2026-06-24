@@ -1,22 +1,53 @@
 <script setup lang="ts">
 // [WHY] 资产总览页面 - 展示所有资产的汇总信息和分配情况
 // [WHAT] 显示总资产、今日盈亏、累计盈亏、资产分配图、持仓列表
+// [WHAT] 添加历史走势图，展示资产总值变化趋势
 
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useHoldingStore } from '@/stores/holding'
+import { useHistoryStore } from '@/stores/history'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import type { AssetClass } from '@/types/holding'
 import { ASSET_CLASS_CONFIG } from '@/types/holding'
 
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js'
+import { Line } from 'vue-chartjs'
+
+// 注册 Chart.js 组件
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+)
+
 const router = useRouter()
 const holdingStore = useHoldingStore()
+const historyStore = useHistoryStore()
 
 // 是否正在刷新
 const isRefreshing = ref(false)
 
 // 资产分配视图模式：'pie' | 'bar'
 const allocationViewMode = ref<'pie' | 'bar'>('pie')
+
+// 走势图时间范围：7, 30, 90 天
+const trendDays = ref(30)
 
 // 资产汇总
 const summary = computed(() => holdingStore.portfolioSummary)
@@ -30,12 +61,70 @@ const sortedHoldings = computed(() => {
   })
 })
 
+// 走势图数据
+const trendData = computed(() => {
+  return historyStore.getTrend(trendDays.value)
+})
+
+// 走势图配置
+const chartData = computed(() => {
+  return {
+    labels: trendData.value.dates,
+    datasets: [
+      {
+        label: '资产总值',
+        data: trendData.value.values,
+        borderColor: '#1989fa',
+        backgroundColor: 'rgba(25, 137, 250, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 6
+      }
+    ]
+  }
+})
+
+const chartOptions = computed(() => {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => {
+            const value = context.parsed.y
+            return `¥${(value / 10000).toFixed(2)}万`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        ticks: {
+          callback: (value: number) => {
+            return `${(value / 10000).toFixed(0)}万`
+          }
+        }
+      }
+    }
+  }
+})
+
 // 加载数据
 async function loadData() {
   isRefreshing.value = true
   try {
     await holdingStore.refreshEstimates()
     await holdingStore.fetchPortfolioSummary()
+
+    // 保存当日快照（如果还没有）
+    if (summary.value && !historyStore.hasTodaySnapshot()) {
+      historyStore.saveCurrentSnapshot(summary.value)
+    }
   } catch (err) {
     showToast('刷新失败')
     console.error('[Portfolio] 加载数据失败', err)
@@ -89,6 +178,11 @@ function toggleAllocationView() {
   allocationViewMode.value = allocationViewMode.value === 'pie' ? 'bar' : 'pie'
 }
 
+// 切换走势图时间范围
+function setTrendDays(days: number) {
+  trendDays.value = days
+}
+
 // 计算饼图的 conic-gradient
 const pieChartGradient = computed(() => {
   if (!summary.value) return ''
@@ -121,6 +215,10 @@ const activeAssetClasses = computed(() => {
 })
 
 onMounted(async () => {
+  // 加载历史数据
+  historyStore.loadHistory()
+
+  // 加载当前数据
   await loadData()
 })
 </script>
@@ -152,6 +250,49 @@ onMounted(async () => {
             ({{ summary ? formatPercent(summary.totalProfitRate) : '0.00%' }})
           </span>
         </div>
+      </div>
+    </div>
+
+    <!-- 历史走势图 -->
+    <div class="section-card" v-if="trendData.dates.length > 0">
+      <div class="section-header">
+        <h3 class="section-title">📈 资产走势</h3>
+      </div>
+
+      <!-- 时间范围切换 -->
+      <div class="trend-tabs">
+        <van-button
+          size="small"
+          :plain="trendDays !== 7"
+          :type="trendDays === 7 ? 'primary' : 'default'"
+          @click="setTrendDays(7)"
+          class="trend-tab"
+        >
+          7天
+        </van-button>
+        <van-button
+          size="small"
+          :plain="trendDays !== 30"
+          :type="trendDays === 30 ? 'primary' : 'default'"
+          @click="setTrendDays(30)"
+          class="trend-tab"
+        >
+          30天
+        </van-button>
+        <van-button
+          size="small"
+          :plain="trendDays !== 90"
+          :type="trendDays === 90 ? 'primary' : 'default'"
+          @click="setTrendDays(90)"
+          class="trend-tab"
+        >
+          90天
+        </van-button>
+      </div>
+
+      <!-- 走势图 -->
+      <div class="chart-container">
+        <Line :data="chartData" :options="chartOptions" />
       </div>
     </div>
 
@@ -362,6 +503,23 @@ onMounted(async () => {
   font-size: 12px;
   padding: 4px 12px;
   height: 28px;
+}
+
+/* 走势图 */
+.trend-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.trend-tab {
+  flex: 1;
+  font-size: 12px;
+}
+
+.chart-container {
+  height: 250px;
+  position: relative;
 }
 
 /* 资产分配 */
