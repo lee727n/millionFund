@@ -26,14 +26,14 @@ export class FundListPage {
   constructor(page: Page) {
     this.page = page
 
-    // 初始化元素定位器（使用 data-testid 属性）
-    this.searchInput = page.locator('[data-testid="search-input"]')
-    this.searchButton = page.locator('[data-testid="search-button"]')
-    this.addFundButton = page.locator('[data-testid="add-fund-button"]')
-    this.fundItems = page.locator('[data-testid="fund-item"]')
-    this.refreshButton = page.locator('[data-testid="refresh-button"]')
-    this.loadingIndicator = page.locator('[data-testid="loading"]')
-    this.errorMessage = page.locator('[data-testid="error-message"]')
+    // 初始化元素定位器（使用 data-test-id 属性）
+    this.searchInput = page.locator('[data-test-id="search-input"]')
+    this.searchButton = page.locator('[data-test-id="search-button"]')
+    this.addFundButton = page.locator('[data-test-id="add-fund-button"]')
+    this.fundItems = page.locator('[data-test-id="fund-item"]')
+    this.refreshButton = page.locator('[data-test-id="refresh-button"]')
+    this.loadingIndicator = page.locator('[data-test-id="loading"]')
+    this.errorMessage = page.locator('[data-test-id="error-message"]')
   }
 
   /**

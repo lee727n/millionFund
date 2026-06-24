@@ -28,15 +28,16 @@ export class FundSearchPage {
     this.page = page
 
     // 初始化元素定位器（使用 data-test-id 属性）
-    // van-search 组件的输入框（通过 data-test-id 定位）
+    // van-search 组件的输入框
     this.searchInput = page.locator('[data-test-id="search-input"] input')
-    // 搜索按钮（如果有明确的搜索按钮，否则使用取消按钮）
-    this.searchButton = page.locator('[data-test-id="search-button"]')
+    // Search.vue 没有独立的搜索按钮，搜索是即时的（watch + 防抖）
+    // 这里保留一个占位符，实际测试中不需要点击搜索按钮
+    this.searchButton = page.locator('[data-test-id="search-input"]')
     // 搜索结果容器
     this.searchResults = page.locator('[data-test-id="search-results"]')
-    // 搜索结果项（使用 data-test-id）
+    // 搜索结果项
     this.searchResultItems = page.locator('[data-test-id="fund-item"]')
-    // 添加按钮（使用 data-test-id）
+    // 添加按钮（在 fund-action 内的 van-icon）
     this.addButtons = page.locator('[data-test-id="add-fund-button"] .van-icon')
     // 空结果提示
     this.emptyResultMessage = page.locator('.van-empty')
@@ -90,7 +91,7 @@ export class FundSearchPage {
    * @param name - 基金名称（可选）
    */
   async expectResultContains(code: string, name?: string): Promise<void> {
-    const resultItem = this.page.locator('.fund-item', { hasText: code })
+    const resultItem = this.page.locator('[data-test-id="fund-item"]', { hasText: code })
     await expect(resultItem).toBeVisible()
 
     if (name) {
@@ -152,8 +153,8 @@ export class FundSearchPage {
    */
   async getResultInfo(index: number = 0): Promise<{ code: string; name: string }> {
     const item = this.searchResultItems.nth(index)
-    const code = (await item.locator('.fund-code').textContent()) || ''
-    const name = (await item.locator('.fund-name').textContent()) || ''
+    const code = (await item.locator('[data-test-id="fund-code"]').textContent()) || ''
+    const name = (await item.locator('[data-test-id="fund-name"]').textContent()) || ''
     return { code, name }
   }
 }

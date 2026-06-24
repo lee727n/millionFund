@@ -29,17 +29,17 @@ export class FundDetailPage {
   constructor(page: Page) {
     this.page = page
 
-    // 初始化元素定位器（使用 data-testid 属性）
-    this.fundName = page.locator('[data-testid="fund-name"]')
-    this.fundCode = page.locator('[data-testid="fund-code"]')
-    this.valuation = page.locator('[data-testid="valuation"]')
-    this.valuationChange = page.locator('[data-testid="valuation-change"]')
-    this.historyNavLink = page.locator('[data-testid="history-nav"]')
-    this.periodReturnSection = page.locator('[data-testid="period-return"]')
-    this.refreshButton = page.locator('[data-testid="refresh-button"]')
-    this.backButton = page.locator('[data-testid="back-button"]')
-    this.loadingIndicator = page.locator('[data-testid="loading"]')
-    this.chartContainer = page.locator('[data-testid="chart-container"]')
+    // 初始化元素定位器（使用 data-test-id 属性）
+    this.fundName = page.locator('[data-test-id="fund-name"]')
+    this.fundCode = page.locator('[data-test-id="fund-code"]')
+    this.valuation = page.locator('[data-test-id="valuation"]')
+    this.valuationChange = page.locator('[data-test-id="valuation-change"]')
+    this.historyNavLink = page.locator('[data-test-id="history-nav"]')
+    this.periodReturnSection = page.locator('[data-test-id="period-return"]')
+    this.refreshButton = page.locator('[data-test-id="refresh-button"]')
+    this.backButton = page.locator('[data-test-id="back-button"]')
+    this.loadingIndicator = page.locator('[data-test-id="loading"]')
+    this.chartContainer = page.locator('[data-test-id="chart-container"]')
   }
 
   /**
