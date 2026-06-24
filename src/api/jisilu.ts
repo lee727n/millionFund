@@ -4,6 +4,7 @@
 
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
+import type { ConvertibleBond, ConvertibleBondDetail } from '@/types/convertible'
 
 const CACHE_TTL = {
   CONVERTIBLE: 60,
@@ -19,8 +20,10 @@ export interface ConvertibleBond {
   code: string
   name: string
   price: number          // 现价
+  change: number         // 涨跌额
   changePercent: number  // 涨跌幅 %
-  premium: number        // 转股溢价率 %
+  premiumRate: number    // 溢价率 %
+  residualDuration: number // 剩余年限（年）
   remainingSize: number  // 剩余规模（亿）
   rating: string         // 评级
   callDays: number       // 距到期天数
@@ -84,12 +87,21 @@ export async function fetchConvertibleBonds(count = 20): Promise<ConvertibleBond
     if (data?.rows && Array.isArray(data.rows)) {
       const list: ConvertibleBond[] = data.rows.slice(0, count).map((row: any) => {
         const cell = row.cell || row
+        const price = parseFloat(cell.price || '0')
+        const prevClose = parseFloat(cell.prev_close || cell.price_close || '0')
+        const change = prevClose > 0 ? price - prevClose : 0
+        const premiumRate = parseFloat(cell.premium_rt || '0')
+        // 剩余年限（年）= 距到期天数 / 365
+        const residualDuration = parseInt(cell.call_days || '0') / 365
+
         return {
           code: cell.bond_id || '',
           name: cell.bond_nm || '',
-          price: parseFloat(cell.price || '0'),
+          price,
+          change: parseFloat(change.toFixed(2)),
           changePercent: parseFloat(cell.change_rt || '0'),
-          premium: parseFloat(cell.premium_rt || '0'),
+          premiumRate,
+          residualDuration: parseFloat(residualDuration.toFixed(2)),
           remainingSize: parseFloat(cell.remain_size || '0'),
           rating: cell.rating_cd || '',
           callDays: parseInt(cell.call_days || '0'),
@@ -99,9 +111,89 @@ export async function fetchConvertibleBonds(count = 20): Promise<ConvertibleBond
       setCache(cacheKey, list, CACHE_TTL.CONVERTIBLE)
       return list
     }
-    return fallbackConvertibleBonds()
+    // 兜底数据也限制数量
+    return fallbackConvertibleBonds().slice(0, count)
   } catch {
-    return fallbackConvertibleBonds()
+    return fallbackConvertibleBonds().slice(0, count)
+  }
+}
+
+/**
+ * 获取可转债列表
+ * [WHAT] 封装 fetchConvertibleBonds，提供更直观的命名
+ * @param count 返回数量（默认 20）
+ * @returns 可转债列表
+ */
+export async function fetchConvertibleList(count = 20): Promise<ConvertibleBond[]> {
+  return fetchConvertibleBonds(count)
+}
+
+/**
+ * 获取可转债实时行情
+ * [WHAT] 根据转债代码批量查询实时行情
+ * @param codes 转债代码数组（如：['113050', '110079']）
+ * @returns 可转债行情数据数组
+ */
+export async function fetchConvertibleQuote(codes: string[]): Promise<ConvertibleBond[]> {
+  if (!codes || codes.length === 0) {
+    return []
+  }
+
+  // 检查缓存
+  const cacheKey = `jsl_cb_quote_${codes.join(',')}`
+  const cached = getCache<ConvertibleBond[]>(cacheKey)
+  if (cached) return cached
+
+  try {
+    // 集思录 API 支持批量查询
+    const url = `https://www.jisilu.cn/data/cbnew/cb_list/?___t=${Date.now()}`
+    const data = await http.post<{ rows: any[] }>(url, {
+      page: 1,
+      rp: 100, // 获取较多数据，然后过滤
+    }, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.jisilu.cn/',
+      },
+    })
+
+    if (data?.rows && Array.isArray(data.rows)) {
+      const list: ConvertibleBond[] = data.rows
+        .map((row: any) => {
+          const cell = row.cell || row
+          const bondCode = cell.bond_id || ''
+          // 只返回指定的转债代码
+          if (!codes.includes(bondCode)) return null
+
+          const price = parseFloat(cell.price || '0')
+          const prevClose = parseFloat(cell.prev_close || cell.price_close || '0')
+          const change = prevClose > 0 ? price - prevClose : 0
+          const premiumRate = parseFloat(cell.premium_rt || '0')
+          const residualDuration = parseInt(cell.call_days || '0') / 365
+
+          return {
+            code: bondCode,
+            name: cell.bond_nm || '',
+            price,
+            change: parseFloat(change.toFixed(2)),
+            changePercent: parseFloat(cell.change_rt || '0'),
+            premiumRate,
+            residualDuration: parseFloat(residualDuration.toFixed(2)),
+            remainingSize: parseFloat(cell.remain_size || '0'),
+            rating: cell.rating_cd || '',
+            callDays: parseInt(cell.call_days || '0'),
+            ytm: parseFloat(cell.ytm_rt || '0'),
+          }
+        })
+        .filter((item): item is ConvertibleBond => item !== null)
+
+      setCache(cacheKey, list, CACHE_TTL.CONVERTIBLE)
+      return list
+    }
+    return fallbackConvertibleQuotes(codes)
+  } catch {
+    return fallbackConvertibleQuotes(codes)
   }
 }
 
@@ -207,14 +299,26 @@ export async function fetchFundLadder(): Promise<FundLadder[]> {
 
 // ========== 兜底数据 ==========
 
-function fallbackConvertibleBonds(): ConvertibleBond[] {
+/**
+ * 可转债兜底数据
+ * [WHAT] API 失败时使用模拟数据
+ */
+export function fallbackConvertibleBonds(): ConvertibleBond[] {
   return [
-    { code: '113050', name: '南银转债', price: 125.80, changePercent: 0.35, premium: -0.5, remainingSize: 8.5, rating: 'AAA', callDays: 1280, ytm: -1.2 },
-    { code: '110079', name: '杭银转债', price: 122.50, changePercent: 0.28, premium: 1.2, remainingSize: 10.2, rating: 'AAA', callDays: 1350, ytm: -0.8 },
-    { code: '110059', name: '浦发转债', price: 108.20, changePercent: -0.15, premium: 35.8, remainingSize: 500.0, rating: 'AAA', callDays: 980, ytm: 2.1 },
-    { code: '123172', name: '神马转债', price: 118.60, changePercent: 1.25, premium: -2.8, remainingSize: 3.2, rating: 'AA', callDays: 1580, ytm: -0.5 },
-    { code: '128136', name: '药石转债', price: 112.30, changePercent: -0.45, premium: 18.5, remainingSize: 5.8, rating: 'AA', callDays: 1420, ytm: 1.5 },
+    { code: '113050', name: '南银转债', price: 125.80, change: 0.44, changePercent: 0.35, premiumRate: -0.5, residualDuration: 3.51, remainingSize: 8.5, rating: 'AAA', callDays: 1280, ytm: -1.2 },
+    { code: '110079', name: '杭银转债', price: 122.50, change: 0.34, changePercent: 0.28, premiumRate: 1.2, residualDuration: 3.70, remainingSize: 10.2, rating: 'AAA', callDays: 1350, ytm: -0.8 },
+    { code: '110059', name: '浦发转债', price: 108.20, change: -0.16, changePercent: -0.15, premiumRate: 35.8, residualDuration: 2.68, remainingSize: 500.0, rating: 'AAA', callDays: 980, ytm: 2.1 },
+    { code: '123172', name: '神马转债', price: 118.60, change: 1.47, changePercent: 1.25, premiumRate: -2.8, residualDuration: 4.33, remainingSize: 3.2, rating: 'AA', callDays: 1580, ytm: -0.5 },
+    { code: '128136', name: '药石转债', price: 112.30, change: -0.51, changePercent: -0.45, premiumRate: 18.5, residualDuration: 3.89, remainingSize: 5.8, rating: 'AA', callDays: 1420, ytm: 1.5 },
   ]
+}
+
+/**
+ * 兜底数据：根据代码返回对应的可转债行情
+ */
+function fallbackConvertibleQuotes(codes: string[]): ConvertibleBond[] {
+  const allFallbacks = fallbackConvertibleBonds()
+  return allFallbacks.filter(bond => codes.includes(bond.code))
 }
 
 function fallbackLofPremiums(): LofPremium[] {
