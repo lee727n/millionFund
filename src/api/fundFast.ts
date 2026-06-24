@@ -53,16 +53,6 @@ function safeExtractJSVar(jsText: string, varName: string): any {
   }
 }
 
-/** 解析 JSONP 响应，提取回调参数中的 JSON */
-function safeParseJSONP(text: string): any {
-  // 匹配 jsonpgz({...}) 或 callback({...})
-  const m = text.match(/^[^{]*(\{[\s\S]*\})[^}]*$/)
-  if (m && m[1]) {
-    try { return JSON.parse(m[1]) } catch { /* */ }
-  }
-  return null
-}
-
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
   const keys = ['estimate', 'netvalue', 'kline', 'period']
