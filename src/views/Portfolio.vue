@@ -32,7 +32,7 @@ async function loadData() {
   isRefreshing.value = true
   try {
     await holdingStore.refreshEstimates()
-    holdingStore.fetchPortfolioSummary()
+    await holdingStore.fetchPortfolioSummary()
   } catch (err) {
     showToast('刷新失败')
     console.error('[Portfolio] 加载数据失败', err)
@@ -76,9 +76,8 @@ function getAssetClassColor(assetClass: string): string {
   return ASSET_CLASS_CONFIG[assetClass as AssetClass]?.color || '#999'
 }
 
-onMounted(() => {
-  holdingStore.initHoldings()
-  holdingStore.fetchPortfolioSummary()
+onMounted(async () => {
+  await loadData()
 })
 </script>
 
