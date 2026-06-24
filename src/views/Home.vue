@@ -21,6 +21,8 @@ import IntradayChartPopup from '@/components/IntradayChartPopup.vue'
 import TopHoldingsPopup from '@/components/TopHoldingsPopup.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
+import type { AssetClass } from '@/types/holding'
+import { ASSET_CLASS_CONFIG } from '@/types/holding'
 
 const router = useRouter()
 const fundStore = useFundStore()
@@ -234,6 +236,9 @@ const sortDirection = ref<'up' | 'down' | 'none'>('down')
 // [WHAT] UI模式：simple=简洁 / full=全功能
 const uiMode = ref<'simple' | 'full'>('simple')
 
+// [WHAT] 当前资产类别筛选（全平台支持）
+const currentAssetClassFilter = ref<AssetClass | ''>('')
+
 // [WHAT] 当前筛选来源
 const currentSourceFilter = ref<string>('')
 
@@ -255,16 +260,19 @@ function sortFunds(funds: any[]) {
   return [...funds]
 }
 
-// [WHAT] 正常账户基金（非观察），受来源筛选影响
+// [WHAT] 正常账户持仓（非观察），受来源和资产类别筛选影响
 const normalHoldings = computed(() => {
   let funds = holdingStore.holdings.filter(fund => fund.source !== 'observe')
   if (currentSourceFilter.value) {
     funds = funds.filter(fund => fund.source === currentSourceFilter.value)
   }
+  if (currentAssetClassFilter.value) {
+    funds = funds.filter(fund => fund.assetClass === currentAssetClassFilter.value)
+  }
   return sortFunds(funds)
 })
 
-// [WHAT] 观察账户基金，始终显示，不受来源筛选影响
+// [WHAT] 观察账户持仓，始终显示，不受筛选影响
 const observeHoldings = computed(() => {
   const funds = holdingStore.holdings.filter(fund => fund.source === 'observe')
   return sortFunds(funds)
@@ -312,6 +320,18 @@ function filterBySource(source: string) {
   } else {
     currentSourceFilter.value = source
     showToast(`已筛选 ${getSourceLabel(source)} 来源的基金`)
+  }
+}
+
+// [WHAT] 按资产类别筛选持仓
+function filterByAssetClass(assetClass: AssetClass | '') {
+  if (currentAssetClassFilter.value === assetClass) {
+    currentAssetClassFilter.value = ''
+    showToast('已取消资产类别筛选')
+  } else {
+    currentAssetClassFilter.value = assetClass
+    const label = assetClass ? ASSET_CLASS_CONFIG[assetClass].label : '全部'
+    showToast(`已筛选：${label}`)
   }
 }
 
@@ -530,7 +550,7 @@ function goToDetail(code: string) {
             </span>
           </div>
         </div>
-      </div>
+    </div>
       <QuickActionsBar
         v-model:auto-refresh-enabled="autoRefreshEnabled"
         @refresh="refreshData"
@@ -539,8 +559,27 @@ function goToDetail(code: string) {
       />
     </div>
     
-
-
+    <!-- 资产类别筛选栏 -->
+    <div class="asset-class-filter" v-if="holdingStore.holdings.length > 0">
+      <div class="filter-tabs">
+        <span 
+          class="filter-tab" 
+          :class="{ active: currentAssetClassFilter === '' }"
+          @click="filterByAssetClass('')"
+        >全部</span>
+        <span 
+          v-for="(config, assetClass) in ASSET_CLASS_CONFIG" 
+          :key="assetClass"
+          class="filter-tab"
+          :class="{ active: currentAssetClassFilter === assetClass }"
+          @click="filterByAssetClass(assetClass as AssetClass)"
+        >
+          {{ config.label }}
+        </span>
+      </div>
+    </div>
+    
+    
     <!-- 下拉刷新列表 -->
     <van-pull-refresh 
       v-model="fundStore.isRefreshing" 
@@ -3163,5 +3202,50 @@ function goToDetail(code: string) {
     font-size: 10px;
     gap: 0;
   }
+}
+
+/* ========== 资产类别筛选栏 ========== */
+.asset-class-filter {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.filter-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-tab {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.filter-tab:hover {
+  background: var(--bg-hover);
+  border-color: var(--color-primary);
+}
+
+.filter-tab.active {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 600;
 }
 </style>
