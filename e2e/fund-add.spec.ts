@@ -94,14 +94,14 @@ test.describe('基金添加流程', () => {
     await searchPage.search('000001')
     await searchPage.addFund(0)
 
-    // 验证本地存储
+    // 验证本地存储（正确的键名是 fund_holdings）
     const holdingData = await page.evaluate(() => {
-      const data = localStorage.getItem('holding')
+      const data = localStorage.getItem('fund_holdings')
       return data ? JSON.parse(data) : null
     })
 
     expect(holdingData).not.toBeNull()
-    expect(holdingData.funds).toContainEqual(expect.objectContaining({ code: '000001' }))
+    expect(holdingData).toContainEqual(expect.objectContaining({ code: '000001' }))
   })
 
   /**

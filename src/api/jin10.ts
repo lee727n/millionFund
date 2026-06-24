@@ -65,14 +65,15 @@ export async function fetchNewsList(page = 1, pageSize = 20, category = 'all'): 
   if (cached) return cached
 
   try {
-    const url = '/api/jin10/api/get_news_list'
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(pageSize),
-      type: category === 'all' ? '' : category,
-    })
+    // [WHY] 生产环境（Capacitor）直接使用绝对 URL，开发环境使用代理相对路径
+    const baseUrl = import.meta.env.DEV ? '/api/jin10' : 'https://www.jin10.com'
+    const url = `${baseUrl}/api/get_news_list`
+    
+    // [FIX] 使用字符串拼接代替 URLSearchParams，避免 TypeScript 类型错误
+    const typeParam = category === 'all' ? '' : category
+    const urlWithParams = `${url}?page=${page}&limit=${pageSize}&type=${encodeURIComponent(typeParam)}`
 
-    const data = await http.get<{ data: any[] }>(`${url}?${params}`)
+    const data = await http.get<{ data: any[] }>(urlWithParams)
 
     if (data && Array.isArray(data.data)) {
       const newsList: NewsItem[] = data.data.map((item: any) => ({
@@ -100,12 +101,14 @@ export async function fetchFlashNews(): Promise<FlashItem[]> {
   if (cached) return cached
 
   try {
-    const url = '/api/jin10/flash-api/get_flash_list'
-    const params = new URLSearchParams({
-      limit: '20',
-    })
+    // [WHY] 生产环境（Capacitor）直接使用绝对 URL，开发环境使用代理相对路径
+    const baseUrl = import.meta.env.DEV ? '/api/jin10' : 'https://www.jin10.com'
+    const url = `${baseUrl}/flash-api/get_flash_list`
+    
+    // [FIX] 使用字符串拼接代替 URLSearchParams，避免 TypeScript 类型错误
+    const urlWithParams = `${url}?limit=20`
 
-    const data = await http.get<{ data: any[] }>(`${url}?${params}`)
+    const data = await http.get<{ data: any[] }>(urlWithParams)
 
     if (data && Array.isArray(data.data)) {
       const flashList: FlashItem[] = data.data.map((item: any) => ({
@@ -124,19 +127,21 @@ export async function fetchFlashNews(): Promise<FlashItem[]> {
   }
 }
 
-export async function fetchEconomicCalendar(date?: string): Promise<CalendarItem[]> {
+export async function fetchEconomicCalendar(date: string = ''): Promise<CalendarItem[]> {
   const targetDate = date || new Date().toISOString().split('T')[0]
   const cacheKey = `calendar_${targetDate}`
   const cached = getCache<CalendarItem[]>(cacheKey)
   if (cached) return cached
 
   try {
-    const url = '/api/jin10/api/get_economic_calendar'
-    const params = new URLSearchParams({
-      date: targetDate!,
-    })
+    // [WHY] 生产环境（Capacitor）直接使用绝对 URL，开发环境使用代理相对路径
+    const baseUrl = import.meta.env.DEV ? '/api/jin10' : 'https://www.jin10.com'
+    const url = `${baseUrl}/api/get_economic_calendar`
+    
+    // [FIX] 使用字符串拼接代替 URLSearchParams，避免 TypeScript 类型错误
+    const urlWithParams = `${url}?date=${encodeURIComponent(targetDate)}`
 
-    const data = await http.get<{ data: any[] }>(`${url}?${params}`)
+    const data = await http.get<{ data: any[] }>(urlWithParams)
 
     if (data && Array.isArray(data.data)) {
       const calendarList: CalendarItem[] = data.data.map((item: any) => ({
@@ -153,9 +158,9 @@ export async function fetchEconomicCalendar(date?: string): Promise<CalendarItem
       return calendarList
     }
 
-    return fallbackCalendarList(targetDate!)
+    return fallbackCalendarList(targetDate)
   } catch {
-    return fallbackCalendarList(targetDate!)
+    return fallbackCalendarList(targetDate)
   }
 }
 

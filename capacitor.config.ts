@@ -14,6 +14,8 @@ const config: CapacitorConfig = {
       'api.fund.eastmoney.com',
       'qt.gtimg.cn',
       'web.ifzq.gtimg.cn',
+      'www.jin10.com',  // [FIX] 添加金十数据域名
+      'www.cls.cn',       // [FIX] 添加财联社域名
       'cdn.jsdelivr.net'
     ]
   }

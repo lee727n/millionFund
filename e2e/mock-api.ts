@@ -55,10 +55,62 @@ export const MOCK_FUNDS = {
  * @param page - Playwright Page 对象
  */
 export async function setupMockAPI(page: Page): Promise<void> {
-  // 拦截基金搜索 API
-  await page.route('**/api.fund.eastmoney.com/**', async (route) => {
+  // 拦截基金估值 API（相对路径，Vite proxy 转发）
+  await page.route('**/api/fundgz/**', async (route) => {
     const url = route.request().url()
-    console.log('[Mock API] Intercepted:', url)
+    console.log('[Mock API] Intercepted valuation API (relative):', url)
+
+    // 提取基金代码
+    const codeMatch = url.match(/fundcode=(\d+)/)
+    const code = codeMatch ? codeMatch[1] : '000001'
+    const fund = MOCK_FUNDS[code as keyof typeof MOCK_FUNDS] || MOCK_FUNDS['000001']
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          fundcode: fund.code,
+          name: fund.name,
+          gsz: fund.valuation,
+          gszzl: fund.change,
+          jzrq: fund.navDate,
+          dwjz: fund.nav,
+        },
+      }),
+    })
+  })
+
+  // 拦截基金估值 API（绝对路径，直接请求外部数据源）
+  await page.route('**/fundgz.1234567.com.cn/**', async (route) => {
+    const url = route.request().url()
+    console.log('[Mock API] Intercepted valuation API (absolute):', url)
+
+    // 提取基金代码
+    const codeMatch = url.match(/fundcode=(\d+)/)
+    const code = codeMatch ? codeMatch[1] : '000001'
+    const fund = MOCK_FUNDS[code as keyof typeof MOCK_FUNDS] || MOCK_FUNDS['000001']
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          fundcode: fund.code,
+          name: fund.name,
+          gsz: fund.valuation,
+          gszzl: fund.change,
+          jzrq: fund.navDate,
+          dwjz: fund.nav,
+        },
+      }),
+    })
+  })
+
+  // 拦截基金搜索 API（相对路径）
+  await page.route('**/api/fund/**', async (route) => {
+    const url = route.request().url()
+    console.log('[Mock API] Intercepted fund API (relative):', url)
 
     // Mock 基金搜索结果
     if (url.includes('search') || url.includes('FundSearch')) {
@@ -88,35 +140,64 @@ export async function setupMockAPI(page: Page): Promise<void> {
     }
   })
 
-  // 拦截基金估值 API
-  await page.route('**/fundgz.1234567.com.cn/**', async (route) => {
+  // 拦截基金搜索 API（绝对路径）
+  await page.route('**/api.fund.eastmoney.com/**', async (route) => {
     const url = route.request().url()
-    console.log('[Mock API] Intercepted valuation API:', url)
+    console.log('[Mock API] Intercepted fund API (absolute):', url)
 
-    // 提取基金代码
-    const codeMatch = url.match(/fundcode=(\d+)/)
-    const code = codeMatch ? codeMatch[1] : '000001'
-    const fund = MOCK_FUNDS[code as keyof typeof MOCK_FUNDS] || MOCK_FUNDS['000001']
-
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          fundcode: fund.code,
-          name: fund.name,
-          gsz: fund.valuation,
-          gszzl: fund.change,
-          jzrq: fund.navDate,
-          dwjz: fund.nav,
-        },
-      }),
-    })
+    // Mock 基金搜索结果
+    if (url.includes('search') || url.includes('FundSearch')) {
+      // 尝试从 URL 或请求体获取搜索关键词
+      const urlParams = new URL(url).searchParams
+      const keyword = urlParams.get('keyword') || urlParams.get('kw') || ''
+      
+      // 过滤匹配的基金
+      const allFunds = Object.values(MOCK_FUNDS)
+      const filteredFunds = keyword 
+        ? allFunds.filter(f => 
+            f.code.includes(keyword) || 
+            f.name.includes(keyword)
+          )
+        : allFunds
+      
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: filteredFunds,
+          total: filteredFunds.length,
+        }),
+      })
+    } else {
+      await route.continue()
+    }
   })
 
-  // 拦截历史净值 API
+  // 拦截历史净值 API（相对路径）
+  await page.route('**/api/fund/**', async (route) => {
+    const url = route.request().url()
+    if (url.includes('F10DataHistory') || url.includes('f10/')) {
+      console.log('[Mock API] Intercepted history API (relative):', url)
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { date: '2026-06-23', nav: '1.2289', change: '+0.56%' },
+            { date: '2026-06-22', nav: '1.2200', change: '-0.32%' },
+            { date: '2026-06-21', nav: '1.2250', change: '+0.89%' },
+          ],
+        }),
+      })
+    } else {
+      await route.continue()
+    }
+  })
+
+  // 拦截历史净值 API（绝对路径）
   await page.route('**/api.fund.eastmoney.com/f10/F10DataHistory/**', async (route) => {
-    console.log('[Mock API] Intercepted history API')
+    console.log('[Mock API] Intercepted history API (absolute)')
 
     await route.fulfill({
       status: 200,
