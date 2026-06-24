@@ -162,7 +162,7 @@ export class FundDetailPage {
     // 等待估值变化或超时
     await this.page.waitForFunction(
       async (initial) => {
-        const current = document.querySelector('[data-testid="valuation"]')?.textContent
+        const current = document.querySelector('[data-test-id="valuation"]')?.textContent
         return current !== initial
       },
       initialValuation,

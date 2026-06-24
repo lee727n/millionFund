@@ -32,6 +32,22 @@ export const MOCK_FUNDS = {
     nav: '1.0008',
     navDate: '2026-06-23',
   },
+  '001186': {
+    code: '001186',
+    name: '富国文体健康股票A',
+    valuation: '2.1234',
+    change: '+0.89%',
+    nav: '2.1100',
+    navDate: '2026-06-23',
+  },
+  '163406': {
+    code: '163406',
+    name: '兴全合润混合',
+    valuation: '1.5678',
+    change: '-0.45%',
+    nav: '1.5723',
+    navDate: '2026-06-23',
+  },
 }
 
 /**
@@ -45,12 +61,26 @@ export async function setupMockAPI(page: Page): Promise<void> {
     console.log('[Mock API] Intercepted:', url)
 
     // Mock 基金搜索结果
-    if (url.includes('search')) {
+    if (url.includes('search') || url.includes('FundSearch')) {
+      // 尝试从 URL 或请求体获取搜索关键词
+      const urlParams = new URL(url).searchParams
+      const keyword = urlParams.get('keyword') || urlParams.get('kw') || ''
+      
+      // 过滤匹配的基金
+      const allFunds = Object.values(MOCK_FUNDS)
+      const filteredFunds = keyword 
+        ? allFunds.filter(f => 
+            f.code.includes(keyword) || 
+            f.name.includes(keyword)
+          )
+        : allFunds
+      
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: Object.values(MOCK_FUNDS),
+          data: filteredFunds,
+          total: filteredFunds.length,
         }),
       })
     } else {

@@ -265,6 +265,7 @@ function isInWatchlist(code: string): boolean {
         v-if="keyword && searchResults.length === 0 && !isSearching"
         image="search"
         description="未找到相关基金"
+        data-test-id="empty-result"
       />
 
       <!-- 搜索提示 -->

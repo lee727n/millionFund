@@ -89,7 +89,7 @@ export class FundListPage {
    * @returns 是否存在
    */
   async isFundInList(code: string): Promise<boolean> {
-    const fundItem = this.page.locator(`[data-testid="fund-item"][data-code="${code}"]`)
+    const fundItem = this.page.locator(`[data-test-id="fund-item"][data-code="${code}"]`)
     return await fundItem.isVisible()
   }
 
@@ -99,8 +99,8 @@ export class FundListPage {
    * @returns 估值信息文本
    */
   async getFundValuation(code: string): Promise<string> {
-    const fundItem = this.page.locator(`[data-testid="fund-item"][data-code="${code}"]`)
-    const valuation = fundItem.locator('[data-testid="fund-valuation"]')
+    const fundItem = this.page.locator(`[data-test-id="fund-item"][data-code="${code}"]`)
+    const valuation = fundItem.locator('[data-test-id="fund-valuation"]')
     return (await valuation.textContent()) || ''
   }
 

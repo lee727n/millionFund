@@ -858,7 +858,7 @@ function goToDetail(code: string) {
           实时掌握涨跌情况和投资收益
         </div>
         <div class="onboarding-actions">
-          <van-button round block type="primary" @click="goToSearch">
+          <van-button round block type="primary" @click="goToSearch" data-test-id="search-button">
             🔍 添加自选基金
           </van-button>
           <van-button round block plain @click="router.push('/holding')">

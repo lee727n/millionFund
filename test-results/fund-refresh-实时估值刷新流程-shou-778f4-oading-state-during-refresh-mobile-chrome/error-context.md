@@ -18,7 +18,7 @@ Test timeout of 30000ms exceeded.
 ```
 Error: locator.click: Test timeout of 30000ms exceeded.
 Call log:
-  - waiting for locator('[data-testid="refresh-button"]')
+  - waiting for locator('[data-test-id="refresh-button"]')
 
 ```
 

@@ -12,13 +12,9 @@
 # Error details
 
 ```
-Error: browserType.launch: Executable doesn't exist at C:\Users\123\AppData\Local\ms-playwright\firefox-1532\firefox\firefox.exe
-╔════════════════════════════════════════════════════════════╗
-║ Looks like Playwright was just installed or updated.       ║
-║ Please run the following command to download new browsers: ║
-║                                                            ║
-║     npx playwright install                                 ║
-║                                                            ║
-║ <3 Playwright Team                                         ║
-╚════════════════════════════════════════════════════════════╝
+Test timeout of 30000ms exceeded while running "beforeEach" hook.
+```
+
+```
+Error: browserContext.close: Protocol error (Browser.removeBrowserContext): can't access property "_maybeDontRestoreTabs", this._windows[aWindow.__SSi] is undefined
 ```

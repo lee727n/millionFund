@@ -18,7 +18,7 @@ Test timeout of 30000ms exceeded.
 ```
 Error: locator.click: Test timeout of 30000ms exceeded.
 Call log:
-  - waiting for locator('[data-testid="history-nav"]')
+  - waiting for locator('[data-test-id="history-nav"]')
 
 ```
 
@@ -206,17 +206,17 @@ Call log:
   29  |   constructor(page: Page) {
   30  |     this.page = page
   31  | 
-  32  |     // 初始化元素定位器（使用 data-testid 属性）
-  33  |     this.fundName = page.locator('[data-testid="fund-name"]')
-  34  |     this.fundCode = page.locator('[data-testid="fund-code"]')
-  35  |     this.valuation = page.locator('[data-testid="valuation"]')
-  36  |     this.valuationChange = page.locator('[data-testid="valuation-change"]')
-  37  |     this.historyNavLink = page.locator('[data-testid="history-nav"]')
-  38  |     this.periodReturnSection = page.locator('[data-testid="period-return"]')
-  39  |     this.refreshButton = page.locator('[data-testid="refresh-button"]')
-  40  |     this.backButton = page.locator('[data-testid="back-button"]')
-  41  |     this.loadingIndicator = page.locator('[data-testid="loading"]')
-  42  |     this.chartContainer = page.locator('[data-testid="chart-container"]')
+  32  |     // 初始化元素定位器（使用 data-test-id 属性）
+  33  |     this.fundName = page.locator('[data-test-id="fund-name"]')
+  34  |     this.fundCode = page.locator('[data-test-id="fund-code"]')
+  35  |     this.valuation = page.locator('[data-test-id="valuation"]')
+  36  |     this.valuationChange = page.locator('[data-test-id="valuation-change"]')
+  37  |     this.historyNavLink = page.locator('[data-test-id="history-nav"]')
+  38  |     this.periodReturnSection = page.locator('[data-test-id="period-return"]')
+  39  |     this.refreshButton = page.locator('[data-test-id="refresh-button"]')
+  40  |     this.backButton = page.locator('[data-test-id="back-button"]')
+  41  |     this.loadingIndicator = page.locator('[data-test-id="loading"]')
+  42  |     this.chartContainer = page.locator('[data-test-id="chart-container"]')
   43  |   }
   44  | 
   45  |   /**
@@ -340,7 +340,7 @@ Call log:
   162 |     // 等待估值变化或超时
   163 |     await this.page.waitForFunction(
   164 |       async (initial) => {
-  165 |         const current = document.querySelector('[data-testid="valuation"]')?.textContent
+  165 |         const current = document.querySelector('[data-test-id="valuation"]')?.textContent
   166 |         return current !== initial
   167 |       },
   168 |       initialValuation,

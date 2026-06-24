@@ -14,14 +14,14 @@
 ```
 Error: expect(locator).toBeVisible() failed
 
-Locator: locator('[data-testid="period-return"]')
+Locator: locator('[data-test-id="period-return"]')
 Expected: visible
 Timeout: 5000ms
 Error: element(s) not found
 
 Call log:
   - Expect "toBeVisible" with timeout 5000ms
-  - waiting for locator('[data-testid="period-return"]')
+  - waiting for locator('[data-test-id="period-return"]')
 
 ```
 
@@ -35,8 +35,8 @@ Call log:
 # Test source
 
 ```ts
-  41  |     this.loadingIndicator = page.locator('[data-testid="loading"]')
-  42  |     this.chartContainer = page.locator('[data-testid="chart-container"]')
+  41  |     this.loadingIndicator = page.locator('[data-test-id="loading"]')
+  42  |     this.chartContainer = page.locator('[data-test-id="chart-container"]')
   43  |   }
   44  | 
   45  |   /**
@@ -160,7 +160,7 @@ Call log:
   162 |     // 等待估值变化或超时
   163 |     await this.page.waitForFunction(
   164 |       async (initial) => {
-  165 |         const current = document.querySelector('[data-testid="valuation"]')?.textContent
+  165 |         const current = document.querySelector('[data-test-id="valuation"]')?.textContent
   166 |         return current !== initial
   167 |       },
   168 |       initialValuation,

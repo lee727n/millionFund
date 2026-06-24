@@ -40,7 +40,7 @@ export class FundSearchPage {
     // 添加按钮（在 fund-action 内的 van-icon）
     this.addButtons = page.locator('[data-test-id="add-fund-button"] .van-icon')
     // 空结果提示
-    this.emptyResultMessage = page.locator('.van-empty')
+    this.emptyResultMessage = page.locator('[data-test-id="empty-result"]')
     // 搜索中文本
     this.loadingIndicator = page.locator('[data-test-id="loading"]')
     // 错误提示（如果有）
