@@ -15,6 +15,9 @@ const holdingStore = useHoldingStore()
 // 是否正在刷新
 const isRefreshing = ref(false)
 
+// 资产分配视图模式：'pie' | 'bar'
+const allocationViewMode = ref<'pie' | 'bar'>('pie')
+
 // 资产汇总
 const summary = computed(() => holdingStore.portfolioSummary)
 
@@ -76,6 +79,42 @@ function getAssetClassColor(assetClass: string): string {
   return ASSET_CLASS_CONFIG[assetClass as AssetClass]?.color || '#999'
 }
 
+// 切换资产分配视图
+function toggleAllocationView() {
+  allocationViewMode.value = allocationViewMode.value === 'pie' ? 'bar' : 'pie'
+}
+
+// 计算饼图的 conic-gradient
+const pieChartGradient = computed(() => {
+  if (!summary.value) return ''
+
+  const slices: string[] = []
+  let currentAngle = 0
+
+  const assetClasses = Object.entries(summary.value.byAssetClass)
+    .filter(([_, config]) => config.count > 0)
+    .sort((a, b) => b[1].value - a[1].value)
+
+  for (const [assetClass, config] of assetClasses) {
+    const angle = config.weight * 360
+    const startAngle = currentAngle
+    const endAngle = currentAngle + angle
+
+    slices.push(`${getAssetClassColor(assetClass)} ${startAngle}deg ${endAngle}deg`)
+    currentAngle = endAngle
+  }
+
+  return `conic-gradient(${slices.join(', ')})`
+})
+
+// 获取有持仓的资产类别列表
+const activeAssetClasses = computed(() => {
+  if (!summary.value) return []
+  return Object.entries(summary.value.byAssetClass)
+    .filter(([_, config]) => config.count > 0)
+    .sort((a, b) => b[1].value - a[1].value)
+})
+
 onMounted(async () => {
   await loadData()
 })
@@ -113,13 +152,47 @@ onMounted(async () => {
 
     <!-- 资产分配 -->
     <div class="section-card" v-if="summary">
-      <h3 class="section-title">📊 资产分配</h3>
+      <div class="section-header">
+        <h3 class="section-title">📊 资产分配</h3>
+        <van-button
+          size="small"
+          plain
+          @click="toggleAllocationView"
+          class="toggle-btn"
+        >
+          {{ allocationViewMode === 'pie' ? '条形图' : '饼图' }}
+        </van-button>
+      </div>
 
-      <div class="asset-allocation">
+      <!-- 饼图视图 -->
+      <div v-if="allocationViewMode === 'pie'" class="pie-chart-container">
+        <div class="pie-chart" :style="{ background: pieChartGradient }">
+          <div class="pie-chart-inner">
+            <div class="pie-total">{{ formatMoney(summary.totalValueCNY) }}</div>
+            <div class="pie-label">总资产(元)</div>
+          </div>
+        </div>
+
+        <!-- 图例 -->
+        <div class="pie-legend">
+          <div
+            v-for="[assetClass, config] in activeAssetClasses"
+            :key="assetClass"
+            class="legend-item"
+          >
+            <span class="legend-dot" :style="{ backgroundColor: getAssetClassColor(assetClass) }"></span>
+            <span class="legend-label">{{ getAssetClassLabel(assetClass) }}</span>
+            <span class="legend-value">{{ (config.weight * 100).toFixed(1) }}%</span>
+            <span class="legend-amount">¥{{ formatMoney(config.value) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 条形图视图 -->
+      <div v-else class="asset-allocation">
         <div
-          v-for="(config, assetClass) in summary.byAssetClass"
+          v-for="[assetClass, config] in activeAssetClasses"
           :key="assetClass"
-          v-show="config.count > 0"
           class="asset-row"
         >
           <div class="asset-label">
@@ -261,11 +334,24 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .section-title {
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 16px;
   color: #333;
+  margin: 0;
+}
+
+.toggle-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  height: 28px;
 }
 
 /* 资产分配 */
@@ -312,6 +398,87 @@ onMounted(async () => {
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
+}
+
+/* 饼图 */
+.pie-chart-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pie-chart {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.pie-chart-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.pie-total {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.pie-label {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+/* 图例 */
+.pie-legend {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  color: #333;
+  min-width: 60px;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: #666;
+  min-width: 50px;
+}
+
+.legend-amount {
+  margin-left: auto;
+  color: #999;
+  font-size: 13px;
 }
 
 /* 持仓列表 */
