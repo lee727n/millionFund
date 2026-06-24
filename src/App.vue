@@ -75,7 +75,7 @@ onUnmounted(() => {
 const activeTab = ref('home')
 
 // [WHAT] 需要隐藏底部导航的页面
-const hiddenTabbarPages = ['search', 'detail', 'trades', 'news']
+const hiddenTabbarPages = ['search', 'detail', 'trades']
 const showTabbar = computed(() => !hiddenTabbarPages.includes(route.name as string))
 
 // [WHY] 路由变化时同步更新 tab 状态
@@ -85,7 +85,8 @@ watch(
     const tabMap: Record<string, string> = {
       home: 'home',
       holding: 'holding',
-      'ai-tracking': 'ai'
+      'ai-tracking': 'ai',
+      news: 'news'
     }
     if (name && tabMap[name as string]) {
       activeTab.value = tabMap[name as string]!
@@ -99,6 +100,7 @@ function onTabChange(name: string | number) {
   const routeMap: Record<string, string> = {
     home: '/',
     holding: '/holding',
+    news: '/news',
     ai: '/ai-tracking'
   }
   if (routeMap[name as string]) {
@@ -143,6 +145,7 @@ function goToAITracking() {
         </div>
       </div>
       <van-tabbar-item name="home" icon="home-o">趋势行情</van-tabbar-item>
+      <van-tabbar-item name="news" icon="description-o">资讯</van-tabbar-item>
     </van-tabbar>
   </div>
 </template>
