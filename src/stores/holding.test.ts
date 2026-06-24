@@ -183,9 +183,10 @@ describe('useHoldingStore - 持仓管理', () => {
   it('assetClass 默认值为 fund', () => {
     const store = useHoldingStore()
     store.addOrUpdateHolding(defaultHolding) // 不设置 assetClass
+    // initHoldings 会将 assetClass 默认为 'fund'（见 holding.ts:145）
+    // 但 addOrUpdateHolding 不会，需要手动检查默认值逻辑
     expect(store.holdings[0]?.assetClass).toBeUndefined()
-    // 但 fetchPortfolioSummary 应该将其视为 'fund'
-    store.holdings[0]?.__v_isRef ? undefined : (store.holdings[0]!.assetClass = store.holdings[0]?.assetClass || 'fund')
+    // fetchPortfolioSummary 内会将 undefined assetClass 视为 'fund'
     const summary = store.fetchPortfolioSummary()
     expect(summary.byAssetClass.fund.count).toBe(1)
   })
