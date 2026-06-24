@@ -43,7 +43,7 @@ onMounted(() => {
   
   plugins.App.addListener('backButton', () => {
     // [WHY] 如果不在主页，正常返回上一页
-    const mainPages = ['home', 'holding']
+    const mainPages = ['home', 'watchlist', 'portfolio', 'news', 'mine']
     const isMainPage = mainPages.includes(route.name as string)
     
     if (!isMainPage && window.history.length > 1) {
@@ -75,7 +75,7 @@ onUnmounted(() => {
 const activeTab = ref('home')
 
 // [WHAT] 需要隐藏底部导航的页面
-const hiddenTabbarPages = ['search', 'detail', 'trades']
+const hiddenTabbarPages = ['search', 'detail', 'trades', 'ai-tracking']
 const showTabbar = computed(() => !hiddenTabbarPages.includes(route.name as string))
 
 // [WHY] 路由变化时同步更新 tab 状态
@@ -84,9 +84,10 @@ watch(
   (name) => {
     const tabMap: Record<string, string> = {
       home: 'home',
-      holding: 'holding',
-      'ai-tracking': 'ai',
-      news: 'news'
+      watchlist: 'watchlist',
+      portfolio: 'portfolio',
+      news: 'news',
+      mine: 'mine'
     }
     if (name && tabMap[name as string]) {
       activeTab.value = tabMap[name as string]!
@@ -99,17 +100,14 @@ watch(
 function onTabChange(name: string | number) {
   const routeMap: Record<string, string> = {
     home: '/',
-    holding: '/holding',
+    watchlist: '/watchlist',
+    portfolio: '/portfolio',
     news: '/news',
-    ai: '/ai-tracking'
+    mine: '/mine'
   }
   if (routeMap[name as string]) {
     router.push(routeMap[name as string]!)
   }
-}
-
-function goToAITracking() {
-  router.push('/ai-tracking')
 }
 </script>
 
@@ -138,14 +136,11 @@ function goToAITracking() {
       v-model="activeTab"
       @change="onTabChange"
     >
-      <van-tabbar-item name="holding" icon="balance-list-o">我的持仓</van-tabbar-item>
-      <div class="tabbar-center-placeholder" :class="{ 'is-active': activeTab === 'ai' }" @click="goToAITracking">
-        <div class="tabbar-raised-button">
-          <span>AI<br>追踪</span>
-        </div>
-      </div>
-      <van-tabbar-item name="home" icon="home-o">趋势行情</van-tabbar-item>
+      <van-tabbar-item name="home" icon="home-o">首页</van-tabbar-item>
+      <van-tabbar-item name="watchlist" icon="star-o">自选</van-tabbar-item>
+      <van-tabbar-item name="portfolio" icon="bar-chart-o">资产</van-tabbar-item>
       <van-tabbar-item name="news" icon="description-o">资讯</van-tabbar-item>
+      <van-tabbar-item name="mine" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
   </div>
 </template>
@@ -216,47 +211,6 @@ function goToAITracking() {
   background: linear-gradient(180deg, #0ea5e9, #22d3ee) !important;
   color: #05263b !important;
   font-weight: 600;
-}
-
-/* 中间占位区域 */
-.tabbar-center-placeholder {
-  flex: 0 0 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  position: relative;
-}
-
-/* 突出圆形按钮 - 悬浮在 tabbar 上方 */
-.tabbar-raised-button {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 -2px 12px rgba(102, 126, 234, 0.4);
-  z-index: 10;
-  margin-top: -20px;
-  transition: all 0.3s;
-  text-decoration: none;
-}
-
-.tabbar-raised-button span {
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.3;
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* 选中时的蓝色渐变 */
-.tabbar-center-placeholder.is-active .tabbar-raised-button {
-  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
-  box-shadow: 0 -2px 12px rgba(14, 165, 233, 0.4);
 }
 
 /* ========== 网络状态提示条 ========== */

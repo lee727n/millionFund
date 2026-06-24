@@ -76,6 +76,18 @@ const router = createRouter({
       meta: { title: '关于' }
     },
     {
+      path: '/watchlist',
+      name: 'watchlist',
+      component: () => import('@/views/Home.vue'),
+      meta: { title: '自选' }
+    },
+    {
+      path: '/mine',
+      name: 'mine',
+      component: () => import('@/views/Holding.vue'),
+      meta: { title: '我的' }
+    },
+    {
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/Alerts.vue'),
