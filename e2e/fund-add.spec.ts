@@ -94,14 +94,17 @@ test.describe('基金添加流程', () => {
     await searchPage.search('000001')
     await searchPage.addFund(0)
 
-    // 验证本地存储（正确的键名是 fund_holdings）
-    const holdingData = await page.evaluate(() => {
-      const data = localStorage.getItem('fund_holdings')
+    // [FIX] 等待 localStorage 异步保存完成
+    await page.waitForTimeout(2000)
+
+    // 验证本地存储（自选列表的键名是 fund_watchlist，存储格式是字符串数组）
+    const watchlistData = await page.evaluate(() => {
+      const data = localStorage.getItem('fund_watchlist')
       return data ? JSON.parse(data) : null
     })
 
-    expect(holdingData).not.toBeNull()
-    expect(holdingData).toContainEqual(expect.objectContaining({ code: '000001' }))
+    expect(watchlistData).not.toBeNull()
+    expect(watchlistData).toContain('000001')
   })
 
   /**
