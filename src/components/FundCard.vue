@@ -7,11 +7,15 @@ import type { WatchlistItem } from '@/types/fund'
 import { formatNetValue, formatPercent, getChangeStatus } from '@/utils/format'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useTimer } from '@/composables/useTimer'
+import type { AssetClass } from '@/types/holding'
+import { ASSET_CLASS_CONFIG } from '@/types/holding'
 
 const { safeTimeout, clearSafeTimeout } = useTimer()
 
 const props = defineProps<{
   fund: WatchlistItem
+  /** 资产类别（可选，用于持仓卡片显示类别标签）*/
+  assetClass?: string
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +54,17 @@ const displayChange = computed(() => {
 
 const displayValue = computed(() => {
   return formatNetValue(props.fund.estimateValue || 0)
+})
+
+// [WHAT] 资产类别标签（如果提供了 assetClass）
+const assetClassLabel = computed(() => {
+  if (!props.assetClass) return ''
+  return ASSET_CLASS_CONFIG[props.assetClass as AssetClass]?.label || props.assetClass
+})
+
+const assetClassColor = computed(() => {
+  if (!props.assetClass) return ''
+  return ASSET_CLASS_CONFIG[props.assetClass as AssetClass]?.color || '#999'
 })
 
 // [WHAT] 长按检测
@@ -94,7 +109,17 @@ onUnmounted(() => {
     >
       <!-- 左侧：基金信息 -->
       <div class="fund-info">
-        <div class="fund-name" :data-test-id="'fund-name'">{{ fund.name || '加载中...' }}</div>
+        <div class="fund-name" :data-test-id="'fund-name'">
+          {{ fund.name || '加载中...' }}
+          <!-- 资产类别标签 -->
+          <span 
+            v-if="assetClassLabel" 
+            class="asset-class-badge"
+            :style="{ background: assetClassColor }"
+          >
+            {{ assetClassLabel }}
+          </span>
+        </div>
         <div class="fund-code" :data-test-id="'fund-code'">{{ fund.code }}</div>
       </div>
       
@@ -151,6 +176,18 @@ onUnmounted(() => {
 .fund-code {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* 资产类别标签 */
+.asset-class-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  vertical-align: middle;
 }
 
 .fund-value {
