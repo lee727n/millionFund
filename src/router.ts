@@ -76,6 +76,18 @@ const router = createRouter({
       meta: { title: '关于' }
     },
     {
+      path: '/holding/add',
+      name: 'holding-add',
+      component: () => import('@/views/HoldingEdit.vue'),
+      meta: { title: '添加持仓' }
+    },
+    {
+      path: '/holding/edit/:code',
+      name: 'holding-edit',
+      component: () => import('@/views/HoldingEdit.vue'),
+      meta: { title: '编辑持仓' }
+    },
+    {
       path: '/watchlist',
       name: 'watchlist',
       component: () => import('@/views/Home.vue'),
@@ -92,6 +104,18 @@ const router = createRouter({
       name: 'alerts',
       component: () => import('@/views/Alerts.vue'),
       meta: { title: '涨跌提醒' }
+    },
+    {
+      path: '/holding/add',
+      name: 'holding-add',
+      component: () => import('@/views/HoldingEdit.vue'),
+      meta: { title: '添加持仓' }
+    },
+    {
+      path: '/holding/edit/:code',
+      name: 'holding-edit',
+      component: () => import('@/views/HoldingEdit.vue'),
+      meta: { title: '编辑持仓' }
     },
     {
       path: '/:pathMatch(.*)*',

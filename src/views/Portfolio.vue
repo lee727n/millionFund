@@ -55,6 +55,11 @@ function goToHoldingDetail(item: any) {
   router.push(`/detail/${item.code}`)
 }
 
+// 跳转到添加持仓页面
+function goToAddHolding() {
+  router.push('/holding/add')
+}
+
 // 格式化金额
 function formatMoney(value: number): string {
   if (Math.abs(value) >= 10000) {
@@ -212,7 +217,12 @@ onMounted(async () => {
 
     <!-- 持仓列表 -->
     <div class="section-card">
-      <h3 class="section-title">💼 持仓列表（按盈亏排序）</h3>
+      <div class="section-header">
+        <h3 class="section-title">💼 持仓列表（按盈亏排序）</h3>
+        <van-button size="small" type="primary" @click="goToAddHolding">
+          + 添加
+        </van-button>
+      </div>
 
       <van-pull-refresh v-model="isRefreshing" @refresh="onRefresh">
         <van-list>
