@@ -299,75 +299,38 @@ export async function fetchFundList(): Promise<FundInfo[]> {
     }
   }
 
-  // [M6] 回退到远程接口，优先 fetch + new Function，失败则降级 JSONP
+  // [M6] 使用 fetch 获取远程基金列表，失败则直接抛出错误
   // 开发环境通过 Vite 代理，生产环境需要配置 CORS 代理
-  return new Promise(async (resolve, reject) => {
-      // 优先尝试 fetch（直接请求外部 API）
-    try {
-      const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
-      const text = await http.text(url)
-      // 安全提取 window.r（替代 new Function）
-      const rMatch = text.match(/window\.r\s*=\s*([\s\S]*?);/)
-      let raw: any[] | null = null
-      if (rMatch && rMatch[1]) {
-        try { raw = JSON.parse(rMatch[1]) } catch {
-          try { raw = JSON.parse(rMatch[1].replace(/'([^']*)'/g, '"$1"')) } catch {}
+  return withConcurrencyControl(() => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
+        const text = await http.text(url)
+        // 安全提取 window.r（替代 new Function）
+        const rMatch = text.match(/window\.r\s*=\s*([\s\S]*?);/)
+        let raw: any[] | null = null
+        if (rMatch && rMatch[1]) {
+          try { raw = JSON.parse(rMatch[1]) } catch {
+            try { raw = JSON.parse(rMatch[1].replace(/'([^']*)'/g, '"$1"')) } catch {}
+          }
         }
+        if (!raw || !Array.isArray(raw)) {
+          reject(new Error('基金列表数据格式错误'))
+          return
+        }
+        _fundListCache = raw.map((item: string[]) => ({
+          code: item[0] || '',
+          pinyin: item[1] || '',
+          name: item[2] || '',
+          type: item[3] || ''
+        }))
+        resolve(_fundListCache!)
+      } catch (fetchErr) {
+        logger.error('[fundFast] 获取基金列表失败', { error: fetchErr })
+        reject(fetchErr)
       }
-      if (!raw || !Array.isArray(raw)) {
-        throw new Error('基金列表数据格式错误')
-      }
-      _fundListCache = raw.map((item: string[]) => ({
-        code: item[0] || '',
-        pinyin: item[1] || '',
-        name: item[2] || '',
-        type: item[3] || ''
-      }))
-      resolve(_fundListCache!)
-      return
-    } catch (fetchErr) {
-      logger.warn('[fundFast] fetch 基金列表失败，降级 JSONP', { error: fetchErr })
-    }
-
-    // 降级为 JSONP
-    const cbId = `fundlist_${Date.now()}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      reject(new Error('获取基金列表超时'))
-    }, 30000)
-
-    ; (globalThis as any).r = null
-
-    function cleanup() {
-      clearTimeout(timeout)
-      const s = document.getElementById(cbId)
-      if (s) document.body.removeChild(s)
-    }
-
-    const script = document.createElement('script')
-    script.id = cbId
-    script.src = `https://fund.eastmoney.com/js/fundcode_search.js?rt=${Date.now()}`
-    script.onload = () => {
-      cleanup()
-      const raw = (globalThis as any).r
-      if (!Array.isArray(raw)) {
-        reject(new Error('基金列表数据格式错误'))
-        return
-      }
-      _fundListCache = raw.map((item: string[]) => ({
-        code: item[0] || '',
-        pinyin: item[1] || '',
-        name: item[2] || '',
-        type: item[3] || ''
-      }))
-      resolve(_fundListCache!)
-    }
-    script.onerror = () => {
-      cleanup()
-      reject(new Error('获取基金列表失败'))
-    }
-    document.body.appendChild(script)
-  })
+    })
+  }) as Promise<FundInfo[]>
 }
 
 /** 搜索基金（本地过滤 + 板块关键词映射） */
@@ -755,39 +718,10 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
                   if (parts.length > 5 && parts[5]) h.change = parseFloat(parts[5])
                 }
               })
-            } else {
-              // 降级：fetch 失败则用 JSONP（生产环境 CORS 受限时）
-              await new Promise<void>((resQuote) => {
-                const scriptQuote = document.createElement('script')
-                scriptQuote.src = `https://qt.gtimg.cn/q=${tencentCodes}`
-                scriptQuote.onload = () => {
-                  needQuotes.forEach((h) => {
-                    const cd = String(h.code || '')
-                    let varName = ''
-                    if (/^\d{6}$/.test(cd)) {
-                      const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz')
-                      varName = `v_s_${pfx}${cd}`
-                    } else if (/^\d{5}$/.test(cd)) {
-                      varName = `v_s_hk${cd}`
-                    } else if (/^[A-Z]{1,6}$/.test(cd)) {
-                      varName = `v_s_us${cd}`
-                    } else return
-                    const dataStr = (window as any)[varName]
-                    if (dataStr) {
-                      const parts = dataStr.split('~')
-                      if (parts.length > 5) h.change = parseFloat(parts[5])
-                    }
-                  })
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote)
-                  resQuote()
-                }
-                scriptQuote.onerror = () => {
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote)
-                  resQuote()
-                }
-                document.body.appendChild(scriptQuote)
-              })
-            }
+              } else {
+                // fetch 失败，跳过股票行情获取
+                logger.warn('[fundFast] 获取股票行情失败，跳过')
+              }
           } catch {
             // 静默忽略行情获取失败
           }
@@ -863,7 +797,7 @@ export async function fetchFundBasicInfo(code: string): Promise<{
   const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
   if (cached) return cached
 
-  // [M6] 优先 fetch + new Function，失败则降级 JSONP
+  // [M6] 使用 fetch 获取基金基本信息，失败则直接抛出错误
   try {
     const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
@@ -893,54 +827,9 @@ export async function fetchFundBasicInfo(code: string): Promise<{
     }
     return result
   } catch (fetchErr) {
-    logger.warn('[fundFast] fetchFundBasicInfo 失败，降级 JSONP', { code, error: fetchErr })
+    logger.error('[fundFast] 获取基金基本信息失败', { code, error: fetchErr })
+    return null
   }
-
-  // 降级为 JSONP
-  return new Promise((resolve) => {
-    const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      resolve(null)
-    }, 8000)
-
-      ; (window as any)[callbackName] = (data: any) => {
-        cleanup()
-        if (!data || !data.Datas) {
-          resolve(null)
-          return
-        }
-
-        const d = data.Datas
-        const result = {
-          name: d.SHORTNAME || d.FSHORTNAME || '',
-          netValue: parseFloat(d.DWJZ) || 0,
-          changeRate: parseFloat(d.RZDF) || 0,
-          updateTime: d.FSRQ || ''
-        }
-
-        if (result.name) {
-          cache.set(cacheKey, result, CACHE_TTL.FUND_DETAIL)
-        }
-        resolve(result)
-      }
-
-    function cleanup() {
-      clearTimeout(timeout)
-      delete (window as any)[callbackName]
-      const script = document.getElementById(callbackName)
-      if (script) document.body.removeChild(script)
-    }
-
-    const script = document.createElement('script')
-    script.id = callbackName
-    script.src = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
-    script.onerror = () => {
-      cleanup()
-      resolve(null)
-    }
-    document.body.appendChild(script)
-  })
 }
 
 /**
@@ -1564,7 +1453,7 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
 
   const results: GlobalIndex[] = []
 
-  // [M6] 优先 fetch + new Function，失败则降级 JSONP
+  // [M6] 使用 fetch 获取全球指数，失败则返回默认数据
   try {
     const codes = indices.map(i => i.code).join(',')
     const callbackName = `globalIdx_${Date.now()}`
@@ -1599,52 +1488,9 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
     cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
     return results
   } catch (fetchErr) {
-    logger.warn('[fundFast] fetchGlobalIndices 失败，降级 JSONP', { error: fetchErr })
+    logger.error('[fundFast] 获取全球指数失败', { error: fetchErr })
+    return getDefaultGlobalIndices()
   }
-
-  // 降级为 JSONP
-  return new Promise((resolve) => {
-    const codes = indices.map(i => i.code).join(',')
-    const callbackName = `globalIdx_${Date.now()}`
-    const timeout = setTimeout(() => { cleanup(); resolve(getDefaultGlobalIndices()) }, 8000)
-
-    ;(window as any)[callbackName] = (data: any) => {
-      cleanup()
-      try {
-        if (data?.data?.diff) {
-          data.data.diff.forEach((item: any, idx: number) => {
-            if (indices[idx] && item.f2 > 0) {
-              results.push({
-                name: indices[idx].name,
-                code: indices[idx].code,
-                price: item.f2 / 100,
-                change: item.f4 / 100,
-                changePercent: item.f3 / 100,
-                region: indices[idx].region
-              })
-            }
-          })
-        }
-      } catch { /* ignore */ }
-      if (results.length > 0) {
-        cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
-      }
-      resolve(results.length > 0 ? results : getDefaultGlobalIndices())
-    }
-
-    function cleanup() {
-      clearTimeout(timeout)
-      const s = document.getElementById(callbackName)
-      if (s) document.body.removeChild(s)
-      try { delete (window as any)[callbackName] } catch { /* */ }
-    }
-
-    const script = document.createElement('script')
-    script.id = callbackName
-    script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-    script.onerror = () => { cleanup(); resolve(getDefaultGlobalIndices()) }
-    document.body.appendChild(script)
-  })
 }
 
 function getDefaultGlobalIndices(): GlobalIndex[] {
