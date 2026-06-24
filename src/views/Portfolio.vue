@@ -50,9 +50,9 @@ async function onRefresh() {
   showToast('刷新成功')
 }
 
-// 跳转到持仓详情
+// 跳转到持仓编辑
 function goToHoldingDetail(item: any) {
-  router.push(`/detail/${item.code}`)
+  router.push(`/holding/edit/${item.code}`)
 }
 
 // 跳转到添加持仓页面
