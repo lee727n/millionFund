@@ -272,7 +272,7 @@ export async function fetchFundList(): Promise<FundInfo[]> {
   return new Promise(async (resolve, reject) => {
       // 优先尝试 fetch（直接请求外部 API）
     try {
-      const url = `https://fund.eastmoney.com/fund/js/fundcode_search.js?rt=${Date.now()}`
+      const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
       const text = await http.text(url)
       // 用 new Function 执行 JS，提取 window.r
       new Function(text)()
@@ -1488,13 +1488,32 @@ export interface GlobalIndex {
  * [WHY] 帮助投资者了解全球市场走势
  * [DEPS] 使用东方财富 push2 接口
  */
+// ========== 全球指数 ==========
+
+/**
+ * 全球指数数据结构
+ */
+export interface GlobalIndex {
+  name: string
+  code: string
+  price: number
+  change: number
+  changePercent: number
+  region: 'cn' | 'hk' | 'us' | 'eu' | 'asia'
+}
+
+/**
+ * 获取全球主要指数行情
+ * [WHY] 帮助投资者了解全球市场走势
+ * [DEPS] 使用东方财富 push2 接口
+ */
 export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
   const cacheKey = 'global_indices'
   const cached = cache.get<GlobalIndex[]>(cacheKey)
   if (cached) return cached
 
   // [WHAT] 东方财富全球指数代码
-  // 格式: 市场代码.指数代码
+  // 格式：市场代码.指数代码
   const indices = [
     { code: '1.000001', name: '上证指数', region: 'cn' as const },
     { code: '0.399001', name: '深证成指', region: 'cn' as const },
@@ -1508,60 +1527,86 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
 
   const results: GlobalIndex[] = []
 
+  // [M6] 优先 fetch + new Function，失败则降级 JSONP
   try {
     const codes = indices.map(i => i.code).join(',')
     const callbackName = `globalIdx_${Date.now()}`
 
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+    const url = `/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
+    const text = await http.text(url)
 
-        // [WHAT] 设置 JSONP 回调
-        ; (window as any)[callbackName] = (data: any) => {
-          cleanup()
-          try {
-            if (data?.data?.diff) {
-              data.data.diff.forEach((item: any, idx: number) => {
-                if (indices[idx] && item.f2 > 0) {
-                  results.push({
-                    name: indices[idx].name,
-                    code: indices[idx].code,
-                    price: item.f2 / 100,  // 价格需要除以100
-                    change: item.f4 / 100, // 涨跌额
-                    changePercent: item.f3 / 100, // 涨跌幅
-                    region: indices[idx].region
-                  })
-                }
-              })
-            }
-          } catch { /* ignore */ }
-          resolve()
+    // 用 new Function 执行 JS，通过 callback 捕获数据
+    let capturedData: any = null
+    ;(window as any)[callbackName] = (data: any) => { capturedData = data }
+    new Function(text)()
+    delete (window as any)[callbackName]
+
+    if (capturedData?.data?.diff) {
+      capturedData.data.diff.forEach((item: any, idx: number) => {
+        if (indices[idx] && item.f2 > 0) {
+          results.push({
+            name: indices[idx].name,
+            code: indices[idx].code,
+            price: item.f2 / 100,
+            change: item.f4 / 100,
+            changePercent: item.f3 / 100,
+            region: indices[idx].region
+          })
         }
-
-      const script = document.createElement('script')
-      script.id = callbackName
-      // [DEPS] 东方财富行情接口
-      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-
-      script.onerror = () => { cleanup(); resolve() }
-
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(callbackName)
-        if (s) document.body.removeChild(s)
-        try { delete (window as any)[callbackName] } catch { /* */ }
-      }
-
-      document.body.appendChild(script)
-    })
+      })
+    }
 
     if (results.length === 0) return getDefaultGlobalIndices()
 
     cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
     return results
-  } catch (e) {
-    logger.warn('[fundFast] 获取全球指数失败', e)
-    return getDefaultGlobalIndices()
+  } catch (fetchErr) {
+    logger.warn('[fundFast] fetchGlobalIndices 失败，降级 JSONP', { error: fetchErr })
   }
+
+  // 降级为 JSONP
+  return new Promise((resolve) => {
+    const codes = indices.map(i => i.code).join(',')
+    const callbackName = `globalIdx_${Date.now()}`
+    const timeout = setTimeout(() => { cleanup(); resolve(getDefaultGlobalIndices()) }, 8000)
+
+    ;(window as any)[callbackName] = (data: any) => {
+      cleanup()
+      try {
+        if (data?.data?.diff) {
+          data.data.diff.forEach((item: any, idx: number) => {
+            if (indices[idx] && item.f2 > 0) {
+              results.push({
+                name: indices[idx].name,
+                code: indices[idx].code,
+                price: item.f2 / 100,
+                change: item.f4 / 100,
+                changePercent: item.f3 / 100,
+                region: indices[idx].region
+              })
+            }
+          })
+        }
+      } catch { /* ignore */ }
+      if (results.length > 0) {
+        cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
+      }
+      resolve(results.length > 0 ? results : getDefaultGlobalIndices())
+    }
+
+    function cleanup() {
+      clearTimeout(timeout)
+      const s = document.getElementById(callbackName)
+      if (s) document.body.removeChild(s)
+      try { delete (window as any)[callbackName] } catch { /* */ }
+    }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
+    script.onerror = () => { cleanup(); resolve(getDefaultGlobalIndices()) }
+    document.body.appendChild(script)
+  })
 }
 
 function getDefaultGlobalIndices(): GlobalIndex[] {
