@@ -1,11 +1,13 @@
 // [WHY] 持仓数据状态管理，计算收益和汇总统计
 // [WHAT] 管理用户录入的持仓信息，结合实时估值计算浮动盈亏
 // [WHAT] 支持 A类/C类基金费用计算
+// [WHAT] 支持多资产类别（基金、A股、港股、美股、加密等）
 // [DEPS] 依赖 fund store 获取实时估值，依赖 storage 持久化数据
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { HoldingRecord, HoldingSummary } from '@/types/fund'
+import type { AssetClass, PortfolioSummary } from '@/types/holding'
 import { getHoldings, saveHoldings } from '@/utils/storage'
 import {
   upsertHolding,
@@ -53,6 +55,9 @@ export const useHoldingStore = defineStore('holding', () => {
 
   /** 是否正在刷新 */
   const isRefreshing = ref(false)
+
+  /** 资产汇总 */
+  const portfolioSummary = ref<PortfolioSummary | null>(null)
 
   // ========== Getters ==========
 
@@ -137,6 +142,7 @@ export const useHoldingStore = defineStore('holding', () => {
 
     holdings.value = cleanedRecords.map((r) => ({
       ...r,
+      assetClass: r.assetClass || 'fund', // 默认基金，保持向后兼容
       loading: true
     }))
 
@@ -411,20 +417,81 @@ export const useHoldingStore = defineStore('holding', () => {
     })
   }
 
-  return {
-    // State
-    holdings,
-    isRefreshing,
-    // Getters
-    summary,
-    holdingCodes,
-    // Actions
-    initHoldings,
-    refreshEstimates,
-    addOrUpdateHolding,
-    removeHolding,
-    hasHolding,
-    getHoldingByCode,
-    updateHoldingDays
+  /**
+   * 计算资产汇总
+   * [WHAT] 计算所有资产的汇总统计，包括按资产类别分组
+   */
+  function fetchPortfolioSummary(): PortfolioSummary {
+    const now = new Date().toISOString()
+    const byAssetClass: Record<AssetClass, { value: number; profit: number; weight: number; count: number }> = {} as any
+
+    // 初始化各资产类别
+    const assetClasses: AssetClass[] = ['fund', 'astock', 'hkstock', 'usstock', 'crypto', 'convertible', 'reits', 'gold', 'commodity']
+    assetClasses.forEach((ac) => {
+      byAssetClass[ac] = { value: 0, profit: 0, weight: 0, count: 0 }
+    })
+
+    let totalValueCNY = 0
+    let totalCostCNY = 0
+    let todayChangeCNY = 0
+
+    holdings.value.forEach((h) => {
+      const assetClass = (h.assetClass || 'fund') as AssetClass
+      const marketValueCNY = h.marketValue || 0
+      const profitCNY = h.profit || 0
+      const costCNY = marketValueCNY - profitCNY
+
+      // 累加到对应资产类别
+      byAssetClass[assetClass].value += marketValueCNY
+      byAssetClass[assetClass].profit += profitCNY
+      byAssetClass[assetClass].count += 1
+
+      // 累加总计
+      totalValueCNY += marketValueCNY
+      totalCostCNY += costCNY
+      todayChangeCNY += h.todayProfit || 0
+    })
+
+    // 计算各类别权重
+    assetClasses.forEach((ac) => {
+      byAssetClass[ac].weight = totalValueCNY > 0 ? byAssetClass[ac].value / totalValueCNY : 0
+    })
+
+    const totalProfitCNY = totalValueCNY - totalCostCNY
+    const totalProfitRate = totalCostCNY > 0 ? (totalProfitCNY / totalCostCNY) * 100 : 0
+    const todayChangeRate = totalValueCNY > 0 ? (todayChangeCNY / totalValueCNY) * 100 : 0
+
+    const summary: PortfolioSummary = {
+      totalValueCNY,
+      totalCostCNY,
+      totalProfitCNY,
+      totalProfitRate,
+      todayChangeCNY,
+      todayChangeRate,
+      byAssetClass,
+      updatedAt: now
+    }
+
+    portfolioSummary.value = summary
+    return summary
   }
+
+    return {
+      // State
+      holdings,
+      isRefreshing,
+      portfolioSummary,
+      // Getters
+      summary,
+      holdingCodes,
+      // Actions
+      initHoldings,
+      refreshEstimates,
+      fetchPortfolioSummary,
+      addOrUpdateHolding,
+      removeHolding,
+      hasHolding,
+      getHoldingByCode,
+      updateHoldingDays
+    }
 })

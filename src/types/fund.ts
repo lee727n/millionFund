@@ -70,6 +70,8 @@ export interface HoldingRecord {
   marketValue?: number
   /** 持仓收益（用户调整时保存） */
   profit?: number
+  /** 资产类别（默认 'fund' 保持向后兼容） */
+  assetClass?: 'fund' | 'astock' | 'hkstock' | 'usstock' | 'crypto' | 'convertible' | 'reits' | 'gold' | 'commodity'
 }
 
 /**
