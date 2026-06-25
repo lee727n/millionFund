@@ -2,10 +2,11 @@
 // [WHAT] 提供刷新数据、自动刷新管理、刷新状态管理功能
 // [DEPS] vue、@/api/tiantianApi、@/utils/performance、@/api/unifiedCache
 
-import { ref, onUnmounted, watch, type Ref } from 'vue'
+import { ref, onUnmounted, type Ref } from 'vue'
 import { isTradingTime, getTradingSession } from '@/api/tiantianApi'
 import { measureTime, markStart, markEnd } from '@/utils/performance'
 import { unifiedCache, UNIFIED_CACHE_TTL } from '@/api/unifiedCache'
+import { logger } from '@/utils/logger'
 
 /**
  * 智能刷新配置选项
@@ -108,7 +109,7 @@ export function useSmartRefresh<T>(
   async function refresh(): Promise<void> {
     if (loading.value) {
       if (import.meta.env.DEV) {
-        console.log('[SmartRefresh] Already refreshing, skipping')
+        logger.warn('[SmartRefresh] Already refreshing, skipping')
       }
       return
     }
@@ -126,7 +127,7 @@ export function useSmartRefresh<T>(
         data.value = cached
         lastUpdateTime.value = new Date()
         if (import.meta.env.DEV) {
-          console.log('[SmartRefresh] Using cached data')
+          logger.warn('[SmartRefresh] Using cached data')
         }
       }
 
@@ -140,7 +141,7 @@ export function useSmartRefresh<T>(
     } catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))
       if (import.meta.env.DEV) {
-        console.error('[SmartRefresh] Refresh failed', err)
+        logger.error('[SmartRefresh] Refresh failed', err)
       }
 
       // 如果获取数据失败，尝试使用缓存数据
@@ -149,7 +150,7 @@ export function useSmartRefresh<T>(
       if (cached) {
         data.value = cached
         if (import.meta.env.DEV) {
-          console.log('[SmartRefresh] Using cached data after fetch failed')
+          logger.warn('[SmartRefresh] Using cached data after fetch failed')
         }
       }
     } finally {
@@ -171,7 +172,7 @@ export function useSmartRefresh<T>(
     // 检查是否在交易时间
     if (!isTradingTime()) {
       if (import.meta.env.DEV) {
-        console.log('[SmartRefresh] Not in trading time, auto refresh not started')
+        logger.warn('[SmartRefresh] Not in trading time, auto refresh not started')
       }
       return
     }
@@ -185,7 +186,7 @@ export function useSmartRefresh<T>(
         refresh()
       } else {
         if (import.meta.env.DEV) {
-          console.log('[SmartRefresh] Trading time ended, stopping auto refresh')
+          logger.warn('[SmartRefresh] Trading time ended, stopping auto refresh')
         }
         stopAutoRefresh()
       }
@@ -194,7 +195,7 @@ export function useSmartRefresh<T>(
     isAutoRefreshing.value = true
 
     if (import.meta.env.DEV) {
-      console.log(`[SmartRefresh] Auto refresh started, interval: ${actualInterval}ms`)
+      logger.warn(`[SmartRefresh] Auto refresh started, interval: ${actualInterval}ms`)
     }
   }
 
@@ -208,7 +209,7 @@ export function useSmartRefresh<T>(
       isAutoRefreshing.value = false
 
       if (import.meta.env.DEV) {
-        console.log('[SmartRefresh] Auto refresh stopped')
+        logger.warn('[SmartRefresh] Auto refresh stopped')
       }
     }
   }
@@ -237,13 +238,13 @@ export function useSmartRefresh<T>(
       if (inTrading && !isAutoRefreshing.value) {
         // 进入交易时间，开始自动刷新
         if (import.meta.env.DEV) {
-          console.log('[SmartRefresh] Trading time started, resuming auto refresh')
+          logger.warn('[SmartRefresh] Trading time started, resuming auto refresh')
         }
         startAutoRefresh()
       } else if (!inTrading && isAutoRefreshing.value) {
         // 离开交易时间，停止自动刷新
         if (import.meta.env.DEV) {
-          console.log('[SmartRefresh] Trading time ended, pausing auto refresh')
+          logger.warn('[SmartRefresh] Trading time ended, pausing auto refresh')
         }
         stopAutoRefresh()
       }

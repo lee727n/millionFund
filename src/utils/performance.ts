@@ -2,6 +2,8 @@
 // [WHAT] 提供 measureTime、markStart、markEnd、getMetrics 等性能监控方法
 // [DEPS] performance.now()、console.log、可选的上报接口
 
+import { logger } from './logger'
+
 /**
  * 性能指标存储
  */
@@ -20,14 +22,14 @@ export async function measureTime<T>(label: string, fn: () => Promise<T>): Promi
     const duration = performance.now() - start
     metrics.set(label, duration)
     if (import.meta.env.DEV) {
-      console.log(`[Performance] ${label}: ${duration.toFixed(2)}ms`)
+      logger.warn(`[Performance] ${label}: ${duration.toFixed(2)}ms`)
     }
     return result
   } catch (error) {
     const duration = performance.now() - start
     metrics.set(`${label}_error`, duration)
     if (import.meta.env.DEV) {
-      console.error(`[Performance] ${label} failed after ${duration.toFixed(2)}ms`, error)
+      logger.error(`[Performance] ${label} failed after ${duration.toFixed(2)}ms`, error)
     }
     throw error
   }
@@ -41,7 +43,7 @@ export function markStart(label: string): void {
   const start = performance.now()
   metrics.set(`${label}_start`, start)
   if (import.meta.env.DEV) {
-    console.log(`[Performance] ${label} started`)
+    logger.warn(`[Performance] ${label} started`)
   }
 }
 
@@ -59,11 +61,11 @@ export function markEnd(label: string): void {
     metrics.set(label, duration)
     metrics.delete(startKey) // 清理开始标记
     if (import.meta.env.DEV) {
-      console.log(`[Performance] ${label}: ${duration.toFixed(2)}ms`)
+      logger.warn(`[Performance] ${label}: ${duration.toFixed(2)}ms`)
     }
   } else {
     if (import.meta.env.DEV) {
-      console.warn(`[Performance] No start mark found for "${label}"`)
+      logger.warn(`[Performance] No start mark found for "${label}"`)
     }
   }
 }
@@ -101,7 +103,7 @@ export async function reportMetrics(
 ): Promise<void> {
   if (!endpoint) {
     if (import.meta.env.DEV) {
-      console.log('[Performance] No endpoint provided, skipping report')
+      logger.warn('[Performance] No endpoint provided, skipping report')
     }
     return
   }
@@ -121,7 +123,7 @@ export async function reportMetrics(
     })
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.error('[Performance] Failed to report metrics', error)
+      logger.error('[Performance] Failed to report metrics', error)
     }
   }
 }

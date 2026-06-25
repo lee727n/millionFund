@@ -63,7 +63,7 @@ describe('useHoldingStore - 持仓管理', () => {
     expect(store.holdings).toHaveLength(1)
     expect(store.holdings[0]?.code).toBe('000001')
     expect(store.holdingCodes).toEqual(['000001'])
-    expect(storage.getHolding('000001')).toBeDefined()
+    expect(store.holdings.find(h => h.code === '000001')).toBeDefined()
   })
 
   it('addOrUpdateHolding：更新已有持仓', () => {

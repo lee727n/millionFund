@@ -43,6 +43,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>需要访问相机以拍摄基金持仓截图</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要访问照片库以选择基金持仓截图</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

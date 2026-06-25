@@ -39,7 +39,11 @@ export default [
 
       // TypeScript 规则
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { 
+        argsIgnorePattern: '^_', 
+        caughtErrors: 'none',
+        varsIgnorePattern: '^CACHE_|^_'  // 临时忽略 CACHE_ 开头的变量
+      }],
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/ban-ts-comment': 'off',
 

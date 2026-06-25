@@ -5,7 +5,7 @@
 
 import { ref, computed } from 'vue'
 import { showToast, showLoadingToast, closeToast, showDialog } from 'vant'
-import { isTesseractSupported, recognizeHoldings, type RecognizedHolding } from '@/utils/ocr'
+import { recognizeHoldings, type RecognizedHolding } from '@/utils/ocr'
 import { searchFund, fetchFundEstimate, fetchFundList } from '@/api/fundFast'
 import { fetchLatestNetValue } from '@/api/fundFast'
 import { useHoldingStore } from '@/stores/holding'
@@ -85,24 +85,16 @@ async function handleFileChange(event: Event) {
 async function startRecognition(file: File) {
   step.value = 'recognizing'
   ocrProgress.value = 0
-  ocrStatus.value = '检测识别引擎...'
-
-  // [WHY] 某些 Android WebView 不支持 Tesseract.js 的 WebWorker/WASM
-  const supported = await isTesseractSupported()
-  if (!supported) {
-    showToast('当前设备不支持自动识别，请手动输入')
-    step.value = 'upload'
-    return
-  }
+  ocrStatus.value = '正在识别...'
   
   try {
     const holdings = await recognizeHoldings(file, (progress, status) => {
       ocrProgress.value = Math.round(progress * 100)
-      ocrStatus.value = status
+      ocrStatus.value = status || '正在识别...'
     })
     
     recognizedHoldings.value = holdings
-
+    
     if (holdings.length === 0) {
       showToast('未识别到持仓信息，请确保截图清晰')
       step.value = 'upload'
@@ -113,10 +105,17 @@ async function startRecognition(file: File) {
     await enhanceHoldings(holdings)
     step.value = 'preview'
     
-  } catch (error) {
+  } catch (error: any) {
     logger.error('OCR识别失败', error)
-    showToast('识别失败，请重试')
-    step.value = 'upload'
+    // [FIX] 显示更友好的错误信息
+    const errMsg = error?.message || '识别失败，请重试'
+    showDialog({
+      title: '识别失败',
+      message: errMsg + '\n\n建议：\n1. 确保截图清晰\n2. 确保包含基金代码和金额\n3. 尝试重新拍照',
+      confirmButtonText: '重新选择',
+    }).then(() => {
+      step.value = 'upload'
+    })
   }
 }
 

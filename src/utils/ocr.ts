@@ -8,26 +8,14 @@ import { logger } from './logger'
 /**
  * 检测当前环境是否支持 Tesseract.js 运行
  * [WHY] 某些 Android WebView 无法创建 WebWorker / 加载 WASM
+ * [FIX] 改为直接尝试 OCR，不再预先检测（检测本身不可靠）
  * @returns true 表示可用，false 表示不支持
  */
-let _supportChecked = false
-let _tesseractSupported = false
-
 export async function isTesseractSupported(): Promise<boolean> {
-  if (_supportChecked) return _tesseractSupported
-  _supportChecked = true
-
-  try {
-    // [WHAT] 尝试创建 Worker + 加载语言数据，需要在用户交互后调用
-    const worker = await (Tesseract as any).createWorker('eng')
-    await worker.terminate()
-    _tesseractSupported = true
-    logger.info('[OCR] Tesseract.js 初始化成功')
-  } catch (err: any) {
-    _tesseractSupported = false
-    logger.warn('[OCR] Tesseract.js 不兼容当前环境', err?.message || err)
-  }
-  return _tesseractSupported
+  // [FIX] 始终返回 true，让 recognizeText 自己去处理错误
+  // 原因：预先检测在很多设备上不可靠，会误报"不支持"
+  // 实际 OCR 时如果真的失败，会在 recognizeText 中捕获并提示
+  return true
 }
 
 /**
@@ -80,18 +68,31 @@ export async function recognizeText(
   }
 
   try {
-    // 仅使用 eng 模型：chi_sim 在移动端（如 Android aarch64）容易 OOM，
-    // 且 chi_sim+eng 组合模型更重（~5MB vs ~2MB），在低端设备上频繁崩溃。
-    // 基金界面上的基金代码（6位数字）和金额（数字）用 eng 即可识别。
-    logger.info('OCR 识别开始，使用 eng 模型（Android 移动端优化，避免 OOM）')
-    try {
-      const result = await (Tesseract as any).recognize(imageSource, 'eng', { logger: makeLogger() })
-      ;(globalThis as any).__lastOcrData = result.data
-      return result.data.text
-    } catch (err: any) {
-      logger.error('OCR 识别失败，请确保截图清晰并重试', err)
-      throw new Error('OCR 识别失败：' + (err?.message || '未知错误'))
+    // [FIX] 添加超时保护，避免移动端卡死
+    const ocrPromise = (Tesseract as any).recognize(imageSource, 'eng', { logger: makeLogger() })
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('OCR 识别超时（30秒）')), 30000)
+    )
+    
+    const result = await Promise.race([ocrPromise, timeoutPromise]) as any
+    ;(globalThis as any).__lastOcrData = result.data
+    return result.data.text
+  } catch (err: any) {
+    logger.error('OCR 识别失败', err)
+    
+    // [FIX] 更友好的错误信息
+    let userMessage = 'OCR 识别失败'
+    const errMsg = (err?.message || '').toLowerCase()
+    
+    if (errMsg.includes('timeout') || errMsg.includes('超时')) {
+      userMessage = '识别超时，请确保图片清晰且不要过大'
+    } else if (errMsg.includes('worker') || errMsg.includes('worker')) {
+      userMessage = '设备不支持自动识别，请手动输入'
+    } else if (errMsg.includes('load') || errMsg.includes('加载')) {
+      userMessage = '识别引擎加载失败，请检查网络连接'
     }
+    
+    throw new Error(userMessage + '：' + (err?.message || '未知错误'))
   } finally {
     if (onProgress) removeProgressListener(onProgress)
   }

@@ -1,57 +1,13 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+node_modules/
+dist/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-*.code-workspace
-
-# 生成的临时数据文件
-holdings-calculation.json
-
-# Android build files
-android/app/build/
-android/.gradle/
-android/build/
-android/captures/
-android/*.iml
-*.apk
-*.aab
-*.keystore
-
-# Capacitor
-capacitor.config.json
-
-# Electron / 全平台构建产物
-release/
-
-# iOS 构建文件
-ios/App/build/
-ios/App/Pods/
-ios/*.xcworkspace
-
-# API配置（包含敏感接口地址）
-src/config/apiEndpoints.ts
-public/icon_old.png
-components.d.ts
+*.log
+playwright-report/
+e2e-test-output.txt
+FULL_PLATFORM_SUMMARY.md
+.env
+.vscode/
+.idea/
 coverage/
-\n# E2E 测试报告（包含大文件和二进制数据）\nplaywright-report/
+holdings-calculation.json
 test-results/

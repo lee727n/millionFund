@@ -572,9 +572,9 @@ export const useHoldingStore = defineStore('holding', () => {
   function updateHoldingDays() {
     const now = new Date()
     holdings.value.forEach(h => {
-      if (h.createdAt) {
-        const created = new Date(h.createdAt)
-        h.holdingDays = Math.floor((now.getTime() - created.getTime()) / 86400000)
+      if (h.buyDate) {
+        const buyDate = new Date(h.buyDate)
+        h.holdingDays = Math.floor((now.getTime() - buyDate.getTime()) / 86400000)
       }
     })
   }
