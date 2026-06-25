@@ -38,7 +38,8 @@ export const http = {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(new DOMException('Request timeout', 'TimeoutError')), timeout)
+        // [FIX] 移除 DOMException 参数，兼容所有浏览器（Firefox < 57 不支持该参数）
+        const timeoutId = setTimeout(() => controller.abort(), timeout)
         
         const response = await fetch(url, {
           ...fetchOptions,
@@ -56,8 +57,11 @@ export const http = {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
         
-        // 超时或网络错误时重试
-        if (attempt < retries && (lastError.name === 'AbortError' || lastError.message.includes('fetch'))) {
+        // [FIX] 同时匹配 AbortError 和 TimeoutError，确保超时后正确触发重试
+        const isAbort = lastError.name === 'AbortError' || lastError.name === 'TimeoutError'
+        const isNetError = lastError.message.includes('fetch') || lastError.message.includes('network') || lastError.message.includes('Failed to fetch')
+        
+        if (attempt < retries && (isAbort || isNetError)) {
           logger.warn(`HTTP 请求失败，准备重试`, { url, attempt: attempt + 1, retries })
           await new Promise(resolve => setTimeout(resolve, retryDelay))
           continue

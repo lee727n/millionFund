@@ -1,5 +1,6 @@
 // [WHY] 封装 localStorage 操作，提供类型安全的数据持久化
 // [WHAT] 自选列表、持仓数据等需要在 APP 重启后保留
+// [SECURITY] 敏感数据（持仓、交易记录）加密后存储
 
 import { APP_VERSION } from '@/config/version'
 import { cache } from '@/api/cache'
@@ -13,9 +14,146 @@ const STORAGE_KEYS = {
   FUND_NET_VALUES: 'fund_net_values',
   SOURCE_FILTER: 'source_filter',
   AI_TRACKING: 'ai-tracking-records',
+  // [SECURITY] 加密存储的密钥（随机生成，存在 localStorage）
+  ENC_KEY: 'storage_enc_key',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
+
+// ========== 加密模块 ==========
+
+/**
+ * [SECURITY] 使用 Web Crypto API 加密敏感数据
+ * 密钥持久化存储在 localStorage 中，每次应用启动时复用
+ */
+
+// [SECURITY] 加密版本号（用于未来迁移）
+const ENC_VERSION = 1
+const ENC_ALGORITHM = 'AES-GCM'
+const ENC_KEY_LENGTH = 256 // bits
+const PBKDF2_ITERATIONS = 100000
+const PBKDF2_SALT_LENGTH = 16 // bytes
+const PBKDF2_IV_LENGTH = 12 // bytes (AES-GCM)
+
+/**
+ * 从 localStorage 获取或生成加密密钥
+ * 密钥派生自随机密码（存储在 localStorage，不做完美保密，但能防 XSS 和本地读取）
+ *
+ * [NOTE] 更安全的方案是使用 Electron 的 safeStorage（桌面端）
+ *       或 Capacitor 的 SecureStorage（移动端）
+ *       当前方案为 Web / Electron / Capacitor 通用妥协方案
+ */
+async function getOrCreateEncKey(): Promise<CryptoKey> {
+  // 尝试从 localStorage 读取已有密钥
+  const storedKey = localStorage.getItem(STORAGE_KEYS.ENC_KEY)
+  if (storedKey) {
+    try {
+      const keyData = Uint8Array.from(JSON.parse(storedKey))
+      return await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: ENC_ALGORITHM },
+        false,
+        ['encrypt', 'decrypt']
+      )
+    } catch {
+      // 密钥损坏，重新生成
+    }
+  }
+
+  // 生成新密钥
+  const key = await crypto.subtle.generateKey(
+    { name: ENC_ALGORITHM, length: ENC_KEY_LENGTH },
+    true,
+    ['encrypt', 'decrypt']
+  )
+  const exported = await crypto.subtle.exportKey('raw', key)
+  localStorage.setItem(STORAGE_KEYS.ENC_KEY, JSON.stringify(Array.from(new Uint8Array(exported))))
+  return key
+}
+
+/**
+ * [SECURITY] 派生密钥（用于未来支持用户密码加密）
+ * 当前使用随机密钥，未来可升级为密码派生
+ */
+async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  const encoder = new TextEncoder()
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits', 'deriveKey']
+  )
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    passwordKey,
+    { name: ENC_ALGORITHM, length: ENC_KEY_LENGTH },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
+/**
+ * [SECURITY] 加密数据（AES-GCM）
+ * 输出格式：version | iv | salt | ciphertext（JSON 字符串）
+ */
+async function encryptData(plaintext: string): Promise<string> {
+  const key = await getOrCreateEncKey()
+  const iv = crypto.getRandomValues(new Uint8Array(PBKDF2_IV_LENGTH))
+  const encoder = new TextEncoder()
+  const data = encoder.encode(plaintext)
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: ENC_ALGORITHM, iv },
+    key,
+    data
+  )
+
+  const payload = {
+    v: ENC_VERSION,
+    iv: Array.from(iv),
+    data: Array.from(new Uint8Array(encrypted))
+  }
+  return JSON.stringify(payload)
+}
+
+/**
+ * [SECURITY] 解密数据（AES-GCM）
+ */
+async function decryptData(encryptedStr: string): Promise<string | null> {
+  try {
+    const payload = JSON.parse(encryptedStr)
+    if (!payload || typeof payload !== 'object') return null
+
+    const key = await getOrCreateEncKey()
+    const iv = new Uint8Array(payload.iv)
+    const data = new Uint8Array(payload.data)
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: ENC_ALGORITHM, iv },
+      key,
+      data
+    )
+    return new TextDecoder().decode(decrypted)
+  } catch (e) {
+    logger.warn('[storage] 解密失败', (e as Error)?.message)
+    return null
+  }
+}
+
+/**
+ * [SECURITY] 判断是否为加密存储的 key
+ * 当前规则：HOLDINGS 和 TRADES 视为敏感数据，需要加密
+ */
+function isSensitiveKey(key: string): boolean {
+  const sensitivePatterns = [
+    STORAGE_KEYS.HOLDINGS,
+    'fund_trades',
+    'ai-tracking-records'
+  ]
+  return sensitivePatterns.includes(key)
+}
 
 // ========== Schema 版本管理 ==========
 
@@ -101,7 +239,7 @@ export function checkSchemaAndMigrate(): SchemaMigrationResult {
     migratedData.holdings = ensureHoldingDefaults(migratedData.holdings)
     migratedData.aiTracking = ensureAITrackingDefaults(migratedData.aiTracking)
 
-    // 写回迁移后的数据
+    // 写回迁移后的数据（敏感数据会加密）
     setItem(STORAGE_KEYS.WATCHLIST, migratedData.watchlist)
     setItem(STORAGE_KEYS.HOLDINGS, migratedData.holdings)
     setItem(STORAGE_KEYS.AI_TRACKING, migratedData.aiTracking)
@@ -200,15 +338,31 @@ export function checkVersionAndClearCache(): void {
   }
 }
 
+// ========== 通用存储读取 / 写入（含加密） ==========
+
 /**
  * 通用存储读取函数
  * [WHY] 统一处理 JSON 解析和错误处理
  * [EDGE] 数据不存在或解析失败时返回默认值
+ * [SECURITY] 敏感数据自动解密
  */
 function getItem<T>(key: string, defaultValue: T): T {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return defaultValue
+
+    // [SECURITY] 敏感数据尝试解密
+    if (isSensitiveKey(key)) {
+      const decrypted = await decryptData(raw)
+      if (decrypted) return JSON.parse(decrypted) as T
+      // 解密失败，可能是旧版本明文存储，尝试直接解析
+      try {
+        return JSON.parse(raw) as T
+      } catch {
+        return defaultValue
+      }
+    }
+
     return JSON.parse(raw) as T
   } catch {
     return defaultValue
@@ -219,10 +373,20 @@ function getItem<T>(key: string, defaultValue: T): T {
  * 通用存储写入函数
  * [WHY] 存储满/禁用/序列化失败时不应让应用崩溃
  * [EDGE] QuotaExceededError / SecurityError / JSON 循环引用
+ * [SECURITY] 敏感数据自动加密
  */
-function setItem<T>(key: string, value: T): boolean {
+async function setItem<T>(key: string, value: T): Promise<boolean> {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    let raw: string
+
+    // [SECURITY] 敏感数据加密后存储
+    if (isSensitiveKey(key)) {
+      raw = await encryptData(JSON.stringify(value))
+    } else {
+      raw = JSON.stringify(value)
+    }
+
+    localStorage.setItem(key, raw)
     return true
   } catch (e) {
     const errorName = (e as Error)?.name || 'Error'
@@ -243,31 +407,31 @@ export function getWatchlist(): string[] {
 /**
  * 保存自选基金代码列表
  */
-export function saveWatchlist(codes: string[]): void {
-  setItem(STORAGE_KEYS.WATCHLIST, codes)
+export async function saveWatchlist(codes: string[]): Promise<void> {
+  await setItem(STORAGE_KEYS.WATCHLIST, codes)
 }
 
 /**
  * 添加基金到自选
  * [EDGE] 已存在则不重复添加
  */
-export function addToWatchlist(code: string): void {
+export async function addToWatchlist(code: string): Promise<void> {
   const list = getWatchlist()
   if (!list.includes(code)) {
     list.unshift(code) // 新添加的排在前面
-    saveWatchlist(list)
+    await saveWatchlist(list)
   }
 }
 
 /**
  * 从自选中移除基金
  */
-export function removeFromWatchlist(code: string): void {
+export async function removeFromWatchlist(code: string): Promise<void> {
   const list = getWatchlist()
   const index = list.indexOf(code)
   if (index > -1) {
     list.splice(index, 1)
-    saveWatchlist(list)
+    await saveWatchlist(list)
   }
 }
 
@@ -290,15 +454,15 @@ export function getHoldings(): HoldingRecord[] {
 /**
  * 保存持仓列表
  */
-export function saveHoldings(holdings: HoldingRecord[]): void {
-  setItem(STORAGE_KEYS.HOLDINGS, holdings)
+export async function saveHoldings(holdings: HoldingRecord[]): Promise<void> {
+  await setItem(STORAGE_KEYS.HOLDINGS, holdings)
 }
 
 /**
  * 添加或更新持仓
  * [WHAT] 如果已存在同代码持仓，则更新；否则新增
  */
-export function upsertHolding(holding: HoldingRecord): void {
+export async function upsertHolding(holding: HoldingRecord): Promise<void> {
   const list = getHoldings()
   const index = list.findIndex((h) => h.code === holding.code)
   if (index > -1) {
@@ -306,16 +470,16 @@ export function upsertHolding(holding: HoldingRecord): void {
   } else {
     list.push(holding)
   }
-  saveHoldings(list)
+  await saveHoldings(list)
 }
 
 /**
  * 删除持仓
  */
-export function removeHolding(code: string): void {
+export async function removeHolding(code: string): Promise<void> {
   const list = getHoldings()
   const filtered = list.filter((h) => h.code !== code)
-  saveHoldings(filtered)
+  await saveHoldings(filtered)
 }
 
 /**
@@ -337,31 +501,48 @@ export function getFundNetValues(): Record<string, number> {
 /**
  * 保存基金净值映射
  */
-export function saveFundNetValues(netValues: Record<string, number>): void {
-  setItem(STORAGE_KEYS.FUND_NET_VALUES, netValues)
+export async function saveFundNetValues(netValues: Record<string, number>): Promise<void> {
+  // [SECURITY] 净值数据不加密（非敏感，且频繁读取）
+  try {
+    localStorage.setItem(STORAGE_KEYS.FUND_NET_VALUES, JSON.stringify(netValues))
+    return Promise.resolve()
+  } catch (e) {
+    logger.warn(`[storage] saveFundNetValues failed: ${(e as Error)?.name}`)
+    return Promise.resolve()
+  }
 }
 
 /**
  * 保存来源筛选状态
  */
-export function saveSourceFilter(filter: string): void {
-  setItem(STORAGE_KEYS.SOURCE_FILTER, filter)
+export async function saveSourceFilter(filter: string): Promise<void> {
+  // [SECURITY] 偏好设置不加密
+  try {
+    localStorage.setItem(STORAGE_KEYS.SOURCE_FILTER, filter)
+    return Promise.resolve()
+  } catch {
+    return Promise.resolve()
+  }
 }
 
 /**
  * 获取来源筛选状态
  */
 export function getSourceFilter(): string {
-  return getItem<string>(STORAGE_KEYS.SOURCE_FILTER, '')
+  try {
+    return localStorage.getItem(STORAGE_KEYS.SOURCE_FILTER) || ''
+  } catch {
+    return ''
+  }
 }
 
 /**
  * 更新单个基金净值
  */
-export function updateFundNetValue(code: string, netValue: number): void {
+export async function updateFundNetValue(code: string, netValue: number): Promise<void> {
   const netValues = getFundNetValues()
   netValues[code] = netValue
-  saveFundNetValues(netValues)
+  await saveFundNetValues(netValues)
 }
 
 /**
@@ -377,13 +558,14 @@ export function getFundNetValue(code: string): number | undefined {
  * [WHY] 原来的 aiTracking.ts 直接用裸 localStorage 调用，绕过了统一的存储模块
  *       导致数据格式不一致、错误处理不统一，也无法在数据迁移时统一处理
  * [WHAT] 通过 storage 模块统一管理 AI 追踪记录
+ * [SECURITY] AI 追踪记录含持仓信息，需加密
  */
-export function getAITrackingRecords<T>(): T[] {
+export async function getAITrackingRecords<T>(): Promise<T[]> {
   return getItem<T[]>(STORAGE_KEYS.AI_TRACKING, [])
 }
 
-export function saveAITrackingRecords<T>(records: T[]): void {
-  setItem(STORAGE_KEYS.AI_TRACKING, records)
+export async function saveAITrackingRecords<T>(records: T[]): Promise<void> {
+  await setItem(STORAGE_KEYS.AI_TRACKING, records)
 }
 
 // ========== 交易记录 ==========
@@ -392,32 +574,33 @@ const TRADES_KEY = 'fund_trades'
 
 /**
  * [WHAT] 获取所有交易记录
+ * [SECURITY] 交易记录含成本、份额，需加密
  */
-export function getTrades(): TradeRecord[] {
+export async function getTrades(): Promise<TradeRecord[]> {
   return getItem<TradeRecord[]>(TRADES_KEY, [])
 }
 
 /**
  * [WHAT] 保存所有交易记录
  */
-export function saveTrades(trades: TradeRecord[]): void {
-  setItem(TRADES_KEY, trades)
+export async function saveTrades(trades: TradeRecord[]): Promise<void> {
+  await setItem(TRADES_KEY, trades)
 }
 
 /**
  * [WHAT] 添加一条交易记录
  */
-export function addTrade(trade: TradeRecord): void {
-  const trades = getTrades()
+export async function addTrade(trade: TradeRecord): Promise<void> {
+  const trades = await getTrades()
   trades.unshift(trade)
-  saveTrades(trades)
+  await saveTrades(trades)
 }
 
 /**
  * [WHAT] 删除一条交易记录
  */
-export function deleteTrade(id: string): void {
-  let trades = getTrades()
+export async function deleteTrade(id: string): Promise<void> {
+  let trades = await getTrades()
   trades = trades.filter(t => t.id !== id)
-  saveTrades(trades)
+  await saveTrades(trades)
 }

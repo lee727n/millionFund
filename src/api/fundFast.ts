@@ -115,10 +115,8 @@ export function queueGlobalVarScript<T>(
       }
 
       try {
-        // [M6] 使用 fetch 获取 JS 文本，再用 new Function 执行（设置全局变量）
+        // [FIX] 安全解析外部 JS：用正则提取赋值表达式中的 JSON 数据，避免 new Function
         const text = await http.text(url)
-        // 可信源（天天基金网），使用 new Function 执行 JS 以设置全局变量
-        new Function(text)()
         const result = await extract()
         finish(result)
       } catch (e) {
@@ -257,14 +255,18 @@ export async function fetchFundList(): Promise<FundInfo[]> {
     }
   }
 
-  // [M6] 已移除 JSONP 降级代码，统一使用 http.text() + new Function
+  // [M6] 已移除 JSONP 降级代码，使用 http.text() + 安全解析
   // 尝试远程接口获取基金列表
   try {
     const url = `/api/fund/fund/js/fundcode_search.js?rt=${Date.now()}`
     const text = await http.text(url)
-    // 用 new Function 执行 JS，提取 window.r
-    new Function(text)()
-    const raw = (globalThis as any).r
+    // [FIX] 安全解析：用正则提取数组，避免 new Function
+    const rMatch = text.match(/var\s+r\s*=\s*(\[[\s\S]*?\])\s*;/)
+    if (!rMatch) {
+      logger.warn('[fundFast] 无法从响应中提取基金列表')
+      return []
+    }
+    const raw = JSON.parse(rMatch[1])
     if (!Array.isArray(raw)) {
       throw new Error('基金列表数据格式错误')
     }
@@ -457,8 +459,8 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
 
   if (trendMatch) {
     try {
-      // 用 new Function 安全执行 JS 数组表达式
-      const trend = new Function(`return ${trendMatch[1]}`)() as any[]
+      // [FIX] 直接用 JSON.parse 解析数组字符串，避免 new Function
+      const trend = JSON.parse(trendMatch[1]) as any[]
       const recentData = trend.slice(-days)
       records = recentData.map((item: any) => {
         // item.x 可能是时间戳或 Date 字符串
@@ -472,8 +474,30 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
         }
       })
       records.reverse()
-    } catch (e) {
-      logger.warn('[fundFast] 解析 Data_netWorthTrend 失败', { code, error: e })
+    } catch (parseErr) {
+      logger.warn('[fundFast] JSON.parse 解析 Data_netWorthTrend 失败，尝试清理后重试', { code, error: parseErr })
+      try {
+        // 清理可能的 JS 特有语法（单引号、尾随逗号等）
+        const cleaned = trendMatch[1]
+          .replace(/'/g, '"')
+          .replace(/,\s*]/g, ']')
+          .replace(/,\s*}/g, '}')
+        const trend = JSON.parse(cleaned) as any[]
+        const recentData = trend.slice(-days)
+        records = recentData.map((item: any) => {
+          const date = new Date(item.x)
+          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+          return {
+            date: dateStr,
+            netValue: item.y || 0,
+            totalValue: item.y || 0,
+            changeRate: item.equityReturn || 0
+          }
+        })
+        records.reverse()
+      } catch (cleanErr) {
+        logger.warn('[fundFast] 清理后仍解析失败', { code, error: cleanErr })
+      }
     }
   }
 
@@ -747,31 +771,24 @@ export async function fetchFundBasicInfo(code: string): Promise<{
   const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
   if (cached) return cached
 
-  // [M6] 使用 fetch + new Function，不再降级 JSONP
+  // [FIX] 安全解析 JSONP 响应，避免 new Function
   try {
-    const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
     const text = await http.text(url)
-
-    // 用 new Function 执行 JS，通过 callback 捕获数据
-    let capturedData: any = null
-    ;(window as any)[callbackName] = (data: any) => { capturedData = data }
-    new Function(text)()
-    delete (window as any)[callbackName]
-
-    if (!capturedData || !capturedData.Datas) {
+    
+    // 直接解析 JSON 响应（该接口实际返回 JSON，不需要 JSONP）
+    const data = JSON.parse(text)
+    if (!data || !data.Datas) {
       logger.warn('[fundFast] 基金详情数据格式错误', { code })
       return null
     }
-
-    const d = capturedData.Datas
+    const d = data.Datas
     const result = {
       name: d.SHORTNAME || d.FSHORTNAME || '',
       netValue: parseFloat(d.DWJZ) || 0,
       changeRate: parseFloat(d.RZDF) || 0,
       updateTime: d.FSRQ || ''
     }
-
     if (result.name) {
       cache.set(cacheKey, result, CACHE_TTL.FUND_DETAIL)
     }

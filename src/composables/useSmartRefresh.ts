@@ -11,14 +11,19 @@ import { unifiedCache, UNIFIED_CACHE_TTL } from '@/api/unifiedCache'
  * 智能刷新配置选项
  */
 export interface UseSmartRefreshOptions {
-  /** 刷新间隔（毫秒），默认 3000 */
+  /** 刷新间隔（毫秒），默认 30000 */
   interval?: number
   /** 是否立即开始自动刷新，默认 false */
   immediate?: boolean
-  /** 缓存 TTL（毫秒），默认使用 UNIFIED_CACHE_TTL.REALTIME */
+  /** 缓存 TTL（毫秒），默认使用 UNIFIED_CACHE_TTL.TRADING_ESTIMATE */
   cacheTTL?: number
   /** 缓存键前缀，用于区分不同的数据源 */
   cacheKeyPrefix?: string
+  /**
+   * [FIX] 手动指定缓存 Key，最稳定，推荐在 options 中传入
+   * 若不传，则自动根据 fetchFn 源码生成稳定哈希
+   */
+  cacheKey?: string
 }
 
 /**
@@ -46,6 +51,20 @@ export interface UseSmartRefreshReturn<T> {
 }
 
 /**
+ * 简单哈希函数，对相同输入始终产生相同输出
+ * 用于根据函数源码生成稳定缓存键
+ */
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // 转换为 32 位整数
+  }
+  return Math.abs(hash).toString(36)
+}
+
+/**
  * 智能刷新 composable
  * @param fetchFn - 获取数据的异步函数
  * @param options - 配置选项
@@ -55,10 +74,11 @@ export function useSmartRefresh<T>(
   options: UseSmartRefreshOptions = {}
 ): UseSmartRefreshReturn<T> {
   const {
-    interval = 3000,
+    interval = 30000,
     immediate = false,
     cacheTTL = UNIFIED_CACHE_TTL.TRADING_ESTIMATE,
     cacheKeyPrefix = 'smart_refresh',
+    cacheKey: userCacheKey,
   } = options
 
   // 响应式状态
@@ -73,10 +93,13 @@ export function useSmartRefresh<T>(
   let tradingCheckTimer: number | null = null
 
   /**
-   * 生成缓存键
+   * [FIX] 生成稳定的缓存键
+   * 优先级：用户手动传入 cacheKey > cacheKeyPrefix > 函数名 > 函数源码哈希
    */
   function getCacheKey(): string {
-    return `${cacheKeyPrefix}_${JSON.stringify(fetchFn.toString().slice(0, 100))}`
+    if (userCacheKey) return userCacheKey
+    const stableId = cacheKeyPrefix || (fetchFn as any).name || 'anonymous'
+    return `${stableId}_${simpleHash(fetchFn.toString())}`
   }
 
   /**

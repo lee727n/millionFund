@@ -10,15 +10,123 @@ on:
 
 permissions:
   contents: write
+  checks: write
+  pull-requests: write
 
 jobs:
-  # ────────────────────────────── Web ──────────────────────────────
-  build-web:
+  # ────────────────────────────── 测试（新增）──────────────────────────────
+  test:
+    name: ✅ 单元测试 & 覆盖率检查
     runs-on: ubuntu-latest
-    name: 🌐 Web (静态站点)
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/check-out@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: 📊 运行单元测试（含覆盖率）
+        run: npm run test:coverage
+
+      - name: 📊 上传覆盖率到 Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/coverage-summary.json
+          fail_ci_if_error: false
+
+      - name: 🚦 覆盖率门禁检查
+        run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "::error::未生成覆盖率报告，请检查测试配置"
+            exit 1
+          fi
+
+          COVERAGE=$(node -e "const d=require('./coverage/coverage-summary.json'); const p=d.total.lines.pct; console.log(p)")
+          echo "📊 当前行覆盖率: ${COVERAGE}%"
+
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "::error::覆盖率过低！当前 ${COVERAGE}%，门禁要求 ≥ 60%"
+            echo "::notice::请添加更多单元测试提升覆盖率"
+            exit 1
+          fi
+
+          echo "✅ 覆盖率检查通过: ${COVERAGE}% ≥ 60%"
+
+      - name: 📊 评论 PR（覆盖率变化）
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            if (!fs.existsSync('./coverage/coverage-summary.json')) return
+
+            const summary = require('./coverage/coverage-summary.json')
+            const pct = summary.total.lines.pct
+
+            const body = `## 📊 测试覆盖率报告
+
+            | 维度 | 覆盖率 |
+            |------|---------|
+            | 行覆盖率 | **${pct}%** |
+            | 分支覆盖率 | ${summary.total.branches.pct}% |
+            | 函数覆盖率 | ${summary.total.functions.pct}% |
+
+            ${(pct < 60) ? '⚠️ **覆盖率低于 60% 门禁**，请添加更多测试！' : '✅ 覆盖率符合门禁要求（≥ 60%）'}
+
+            github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body
+            })
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ────────────────────────────── E2E 测试（新增）─────────────────────
+  test-e2e:
+    name: 🌐 E2E 测试（Playwright）
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/check-out@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: 🌐 安装 Playwright 浏览器
+        run: npx playwright install --with-deps
+
+      - name: 🌐 运行 E2E 测试
+        run: npm run test:e2e
+
+      - name: 🌐 上传 Playwright 报告（失败时）
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+
+  # ────────────────────────────── Web ───────────────────────────────
+  build-web:
+    name: 🌐 Web (静态站点)
+    needs: [test, test-e2e]
+    steps:
+      - name: Checkout
+        uses: actions/check-out@v5'
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -52,23 +160,17 @@ jobs:
           name: AI百万实盘-Web
           path: AI百万实盘-Web.zip
 
-  # ──────────────────────────── Android ────────────────────────────
+  # ─────────────────────────── Android ─────────────────────────────
   build-android:
     runs-on: ubuntu-latest
     name: 🤖 Android (APK)
     needs: build-web
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/check-out@v5'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Setup JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-node@v5'
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -95,12 +197,12 @@ jobs:
           echo "APK 大小: $(ls -lh AI百万实盘-Android-debug.apk | awk '{print $5}')"
 
       - name: Upload Android 产物
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v6'
         with:
           name: AI百万实盘-Android-debug
           path: AI百万实盘-Android-debug.apk
 
-  # ─────────────────────────── Windows ─────────────────────────────
+  # ─────────────────────────── Windows ───────────────────────────
   build-windows:
     runs-on: windows-latest
     name: 🪟 Windows (安装包)
@@ -108,10 +210,10 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/check-out@v5'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v5'
         with:
           node-version: '22'
           cache: 'npm'
@@ -126,12 +228,12 @@ jobs:
         run: npx electron-builder --win --x64
 
       - name: Upload Windows 产物
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v6'
         with:
           name: AI百万实盘-Windows
           path: release/desktop/*.exe
 
-  # ──────────────────────────── macOS ──────────────────────────────
+  # ─────────────────────────── macOS ─────────────────────────────
   build-macos:
     runs-on: macos-latest
     name: 🍎 macOS (DMG)
@@ -139,10 +241,10 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/check-out@v5'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v5'
         with:
           node-version: '22'
           cache: 'npm'
@@ -157,7 +259,7 @@ jobs:
         run: npx electron-builder --mac --x64 --arm64
 
       - name: Upload macOS 产物
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v6'
         with:
           name: AI百万实盘-macOS
           path: release/desktop/*.dmg
@@ -170,10 +272,10 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/check-out@v5'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v5'
         with:
           node-version: '22'
           cache: 'npm'
@@ -188,7 +290,7 @@ jobs:
         run: npx electron-builder --linux --x64
 
       - name: Upload Linux 产物
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v6'
         with:
           name: AI百万实盘-Linux
           path: |
@@ -203,15 +305,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部产物
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v6'
         with:
-          path: release-assets
+          path: release-assets/
 
       - name: 列出下载的产物
         run: ls -lhR release-assets/
 
       - name: 创建 Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3'
         with:
           name: AI百万实盘 ${{ github.ref_name }}
           generate_release_notes: true
@@ -227,9 +329,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部产物
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v6'
         with:
-          path: release-assets
+          path: release-assets/
 
       - name: 列出下载的产物
         run: ls -lhR release-assets/
@@ -239,16 +341,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release list --json tagName -q '.[].tagName' | grep '^dev-' | while read tag; do
-            gh release delete "$tag" --yes
+            gh release delete "$tag" --yes || true
           done
 
       - name: 创建开发版 Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3'
         with:
           tag_name: dev-${{ github.sha }}
           name: AI百万实盘 开发版 (${{ github.sha }})
           body: |
-            🔧 开发版本 - 基于最新代码构建
+            🔧 开发版本 - 基于最新代码构建！
 
             构建时间: ${{ github.event.head_commit.timestamp }}
             提交信息: ${{ github.event.head_commit.message }}
