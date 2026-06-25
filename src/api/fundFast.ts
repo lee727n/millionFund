@@ -115,8 +115,17 @@ export function queueGlobalVarScript<T>(
       }
 
       try {
-        // [FIX] 安全解析外部 JS：用正则提取赋值表达式中的 JSON 数据，避免 new Function
         const text = await http.text(url)
+        // [FIX] 执行外部 JS 以设置全局变量（必要之恶，API 返回 JS 而非 JSON）
+        // TODO(安全): 迁移到纯 JSON API 后移除 new Function
+        // 简易安全检查：拒绝包含危险模式的脚本
+        const dangerous = /(eval|alert|document\.|window\.location|<script|function\s*\(/i
+        if (dangerous.test(text)) {
+          logger.error('[fundFast] 拒绝执行可疑 JS 脚本', { url })
+          finish(emptyResult)
+          return
+        }
+        new Function(text)()
         const result = await extract()
         finish(result)
       } catch (e) {
