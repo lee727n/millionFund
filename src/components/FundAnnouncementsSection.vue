@@ -43,76 +43,98 @@ defineEmits<{
 </template>
 
 <style scoped>
-/* ========== 基金公告 ========== */
+.info-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header span:first-child {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .announcement-list {
-  padding: 8px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .announcement-item {
   display: flex;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
   cursor: pointer;
-}
-
-.announcement-item:last-child {
-  border-bottom: none;
+  transition: background 0.2s;
 }
 
 .announcement-item:active {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 .announcement-type {
-  font-size: 10px;
-  padding: 3px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
   border-radius: 4px;
-  margin-right: 10px;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .announcement-type.分红公告 {
-  background: rgba(245, 108, 108, 0.1);
-  color: #f56c6c;
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
 }
 
 .announcement-type.定期报告 {
-  background: rgba(64, 158, 255, 0.1);
-  color: #409eff;
+  background: rgba(66, 165, 245, 0.1);
+  color: #42a5f5;
 }
 
 .announcement-type.人事变动 {
-  background: rgba(230, 162, 60, 0.1);
-  color: #e6a23c;
+  background: rgba(255, 167, 38, 0.1);
+  color: #ffa726;
 }
 
-.announcement-type.其他公告 {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+.announcement-type.公告 {
+  background: rgba(120, 144, 156, 0.1);
+  color: #78909c;
 }
 
 .announcement-content {
   flex: 1;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .announcement-title {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-bottom: 4px;
 }
 
 .announcement-date {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .announcement-arrow {
   color: var(--text-tertiary);
-  margin-left: 8px;
+  flex-shrink: 0;
 }
 </style>

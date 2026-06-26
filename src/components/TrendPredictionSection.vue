@@ -73,13 +73,8 @@ defineProps<{
 </template>
 
 <style scoped>
-/* ========== 趋势预测 ========== */
 .trend-section {
-  background: var(--bg-secondary);
-  margin: 0 12px 12px;
-  border-radius: 12px;
   padding: 16px;
-  min-height: 200px;
 }
 
 .trend-header {
