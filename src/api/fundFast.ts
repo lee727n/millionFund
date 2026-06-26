@@ -12,6 +12,7 @@ import { persistCache } from '../utils/persistCache'
 import type { FundEstimate, FundInfo, NetValueRecord } from '@/types/fund'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
+import { parseJsVariable } from './fund/request'
 
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
@@ -116,16 +117,13 @@ export function queueGlobalVarScript<T>(
 
       try {
         const text = await http.text(url)
-        // [FIX] 执行外部 JS 以设置全局变量（必要之恶，API 返回 JS 而非 JSON）
-        // TODO(安全): 迁移到纯 JSON API 后移除 new Function
-        // 简易安全检查：拒绝包含危险模式的脚本
-        const dangerous = /(eval|alert|document\.|window\.location|<script|function\s*\(/i
-        if (dangerous.test(text)) {
-          logger.error('[fundFast] 拒绝执行可疑 JS 脚本', { url })
-          finish(emptyResult)
-          return
+        // [FIX] 安全解析：用正则提取变量，避免 new Function
+        for (const varName of cleanupVars) {
+          const value = parseJsVariable<any>(text, varName)
+          if (value !== null) {
+            ;(window as any)[varName] = value
+          }
         }
-        new Function(text)()
         const result = await extract()
         finish(result)
       } catch (e) {
