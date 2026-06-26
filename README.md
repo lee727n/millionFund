@@ -6,7 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-全平台-green.svg)
-![Version](https://img.shields.io/badge/version-1.9.7-orange.svg)
+![Version](https://img.shields.io/badge/version-1.9.8-orange.svg)
 
 > [GitHub 仓库](https://github.com/ghshhf/millionFund) | [在线体验](#快速开始) | [更新记录](#更新记录) | [问题反馈](https://github.com/ghshhf/millionFund/issues)
 
@@ -19,7 +19,7 @@
 | 实时估值 | 秒级刷新基金实时估值数据（盘中估值 / 收盘净值），支持多数据源 |
 | 自选管理 | 添加自选基金，按来源（支付宝 / 腾讯 / 京东）分类筛选 |
 | 持仓追踪 | 记录持仓份额和成本，自动计算浮动盈亏和收益率 |
-| **涨跌提醒** | 设置涨跌幅阈值，到达条件时自动推送通知（v1.9.7 新增） |
+| **涨跌提醒** | 设置涨跌幅阈值，到达条件时自动推送通知（v1.9.8 新增） |
 | AI 调仓追踪 | 记录调仓记录，复盘调仓效果，支持成功率统计 |
 | 趋势分析 | 包含均线系统、支撑阻力位预测、相关性分析 |
 | 市场概览 | 主要 A 股指数、全球指数实时行情 |
@@ -40,22 +40,21 @@
 
 ## 更新记录
 
-### v1.9.7 (2026-06-23) - 涨跌提醒 + API 重构
+### v1.9.8 (2026-06-27) - 代码质量提升 & 测试覆盖
 
-**新功能**
-- 涨跌提醒系统：支持设置涨跌幅阈值和定时检查，触发时应用内弹窗通知；支持规则启停、编辑、删除等完整 CRUD 操作
-- 提醒规则持久化：基于 Pinia store + localStorage，应用重启后规则不丢失
+**代码重构**
+- 拆分 `Detail.vue`：提取趋势预测、分红记录、基金公告 3 个独立组件，降低主文件复杂度
+- 存储层异步化：`storage.ts` 全面改为 async/await，修复加密数据读取的 await 语法错误
+- 清理未使用变量：15+ 文件中移除 34+ 处 unused imports/vars，ESLint 零警告
 
-**API 层重构**
-- 修复 Electron 生产环境所有 `/api/` 请求返回 404 的问题，改为直接请求外部数据源 URL
-- 大幅减少 JSONP 使用：核心估值接口迁移为 fetch + text() + 正则解析
-- 统一错误处理架构：新增 `errorHandler.ts`，用户提示更友好
-- 启用详情页功能：分红记录和基金公告接入数据源
+**测试增强**
+- 新增组件单元测试：`TrendPredictionSection`、`DividendRecordsSection`、`FundAnnouncementsSection`，共 29 个测试用例
+- 引入 `@vue/test-utils` 支持 Vue 组件测试，`vitest.config.ts` 增加 Vue 插件
+- 完善 E2E 测试：新增 Portfolio 页面 POM 和测试用例
 
-**代码质量**
-- ESLint 零警告，TypeScript strict 模式全量通过
-- Git 历史清理：使用 filter-repo 清除敏感数据
-- 为 alerts store 补充单元测试（5 个用例）
+**安全修复**
+- 删除敏感数据文件 `holdings-calculation.json`
+- 清理 Git 历史中的敏感凭证痕迹
 
 ### v1.9.0 (2026-06-14) - 架构大重构
 

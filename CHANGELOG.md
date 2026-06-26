@@ -19,22 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - ESLint 零警告，TypeScript strict 模式全量通过
 
-## [1.9.7] - 2026-06-23
+## [1.9.8] - 2026-06-27
 
 ### Added
-- 涨跌提醒系统：支持设置涨跌幅阈值和定时检查
-- 提醒规则持久化：基于 Pinia store + localStorage
-- 为 alerts store 补充单元测试（5 个用例）
-
-### Fixed
-- 修复 Electron 生产环境所有 `/api/` 请求返回 404 的问题
-- 大幅减少 JSONP 使用：核心估值接口迁移为 fetch + text() + 正则解析
-- 统一错误处理架构：新增 `errorHandler.ts`，用户提示更友好
-- 启用详情页功能：分红记录和基金公告接入数据源
+- 新增组件单元测试：`TrendPredictionSection`、`DividendRecordsSection`、`FundAnnouncementsSection`，共 29 个测试用例
+- 引入 `@vue/test-utils` 支持 Vue 组件测试，`vitest.config.ts` 增加 Vue 插件
+- 新增 Portfolio 页面 E2E 测试 POM 和测试用例
 
 ### Changed
-- ESLint 零警告，TypeScript strict 模式全量通过
-- Git 历史清理：使用 filter-repo 清除敏感数据
+- 拆分 `Detail.vue`：提取趋势预测、分红记录、基金公告 3 个独立组件
+- 存储层异步化：`storage.ts` 全面改为 async/await
+- 版本号统一升级至 1.9.8
+
+### Fixed
+- 清理 15+ 文件中的未使用变量和导入，ESLint 零警告
+- 删除敏感数据文件 `holdings-calculation.json`
 
 ## [1.9.0] - 2026-06-14
 
