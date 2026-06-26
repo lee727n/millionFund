@@ -12,7 +12,7 @@ function createWindow() {
     minWidth: 360,
     minHeight: 640,
     title: 'AI百万实盘',
-    icon: path.join(__dirname, '../public/favicon.ico'),
+    icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
