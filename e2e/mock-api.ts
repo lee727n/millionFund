@@ -240,3 +240,17 @@ export async function mockTradingTime(page: Page, isTrading: boolean): Promise<v
 export async function waitForPageLoad(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle')
 }
+
+/**
+ * 批量设置 localStorage 数据
+ * [WHY] E2E 测试需要准备初始数据，避免依赖后端接口
+ * @param page - Playwright Page 对象
+ * @param data - key-value 对象
+ */
+export async function mockStorage(page: Page, data: Record<string, string>): Promise<void> {
+  await page.addInitScript((initialData) => {
+    Object.entries(initialData).forEach(([key, value]) => {
+      localStorage.setItem(key, value)
+    })
+  }, data)
+}

@@ -65,6 +65,7 @@
     "@vant/auto-import-resolver": "^1.2.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vitest/coverage-v8": "^2.1.8",
+    "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.8.1",
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3",

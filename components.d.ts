@@ -8,6 +8,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    DividendRecordsSection: typeof import('./src/components/DividendRecordsSection.vue')['default']
+    FundAnnouncementsSection: typeof import('./src/components/FundAnnouncementsSection.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
     IntradayChartPopup: typeof import('./src/components/IntradayChartPopup.vue')['default']
@@ -17,6 +19,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     ScreenshotImport: typeof import('./src/components/ScreenshotImport.vue')['default']
     TopHoldingsPopup: typeof import('./src/components/TopHoldingsPopup.vue')['default']
+    TrendPredictionSection: typeof import('./src/components/TrendPredictionSection.vue')['default']
     VanActionSheet: typeof import('vant/es')['ActionSheet']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']

@@ -1,53 +1,194 @@
+// [WHY] 资产总览页 E2E 测试 — 验证 Portfolio.vue 功能正常工作
+// [WHAT] 测试总资产、盈亏、走势图、资产分配、持仓列表显示
+// [DEPS] @playwright/test、./mock-api、./pages/portfolio.page、./pages/fund-list.page
+
 import { test, expect } from '@playwright/test'
-import { FundListPage } from './pages/fund-list.page'
+import { setupMockAPI, waitForPageLoad, mockStorage } from './mock-api'
+import { PortfolioPage } from './pages/portfolio.page'
 
+/**
+ * 资产总览页 E2E 测试
+ */
 test.describe('资产总览页', () => {
-  let portfolioPage: FundListPage
+  let portfolioPage: PortfolioPage
 
+  /**
+   * 每个测试前的设置
+   */
   test.beforeEach(async ({ page }) => {
-    portfolioPage = new FundListPage(page)
-    await page.goto('/#/portfolio')
-    await page.waitForLoadState('networkidle')
+    // 设置 Mock API
+    await setupMockAPI(page)
+
+    // 初始化页面对象
+    portfolioPage = new PortfolioPage(page)
+
+    // Mock localStorage 中的持仓和汇总数据
+    await mockStorage(page, {
+      'fund_watchlist': JSON.stringify(['000001', '110022']),
+      'fund_holdings': JSON.stringify([
+        {
+          id: '1',
+          code: '000001',
+          name: '华夏成长混合',
+          assetClass: 'fund',
+          costPrice: 1.0,
+          currentPrice: 1.2345,
+          shares: 10000,
+          costValue: 10000,
+          currentValue: 12345,
+          profit: 2345,
+          profitRate: 23.45,
+          todayProfit: 123.45,
+          currency: 'CNY',
+          fxRate: 1,
+          valueCNY: 12345,
+          profitCNY: 2345,
+          createdAt: '2024-01-01',
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: '2',
+          code: '110022',
+          name: '易方达消费行业',
+          assetClass: 'fund',
+          costPrice: 2.0,
+          currentPrice: 3.4567,
+          shares: 5000,
+          costValue: 10000,
+          currentValue: 17283.5,
+          profit: 7283.5,
+          profitRate: 72.84,
+          todayProfit: -50.25,
+          currency: 'CNY',
+          fxRate: 1,
+          valueCNY: 17283.5,
+          profitCNY: 7283.5,
+          createdAt: '2024-01-01',
+          updatedAt: new Date().toISOString(),
+        },
+      ]),
+    })
+
+    // 导航到资产总览页
+    await portfolioPage.goto()
+    await waitForPageLoad(page)
   })
 
-  test('应该显示资产总览页面', async ({ page }) => {
-    await expect(page.locator('.portfolio-page')).toBeVisible()
-    await expect(page.locator('.summary-card')).toBeVisible()
+  /**
+   * 测试：页面加载并显示资产总览
+   */
+  test('应显示资产总览页面', async ({ page }) => {
+    await portfolioPage.expectPageLoaded()
   })
 
-  test('应该显示总资产', async ({ page }) => {
-    const totalValue = page.locator('.summary-item').filter({ hasText: '总资产' })
-    await expect(totalValue).toBeVisible()
+  /**
+   * 测试：显示总资产
+   */
+  test('应显示总资产', async ({ page }) => {
+    await portfolioPage.expectTotalAssetVisible()
+    const totalAsset = await portfolioPage.getTotalAsset()
+    expect(totalAsset).not.toBe('')
+    // 12345 + 17283.5 = 29628.5
+    expect(totalAsset).toContain('29,628.50')
   })
 
-  test('应该显示资产分配图', async ({ page }) => {
-    // 等待资产分配图加载
-    await page.waitForTimeout(2000)
-    
-    // 检查是否有资产分配图或走势图
-    const hasChart = await page.locator('.allocation-chart, .trend-chart').count()
-    expect(hasChart).toBeGreaterThan(0)
+  /**
+   * 测试：显示今日盈亏
+   */
+  test('应显示今日盈亏', async ({ page }) => {
+    await portfolioPage.expectTodayChangeVisible()
+    const todayChange = await portfolioPage.todayChangeValue.textContent()
+    expect(todayChange).not.toBe('')
+    // 123.45 + (-50.25) = 73.2
+    expect(todayChange).toContain('+73.20')
   })
 
-  test('应该支持切换资产分配视图', async ({ page }) => {
-    // 如果有切换按钮，测试切换功能
-    const toggleBtn = page.locator('.allocation-toggle')
-    if (await toggleBtn.isVisible()) {
-      await toggleBtn.click()
-      await page.waitForTimeout(500)
-    }
+  /**
+   * 测试：显示累计盈亏
+   */
+  test('应显示累计盈亏', async ({ page }) => {
+    await portfolioPage.expectTotalProfitVisible()
+    const totalProfit = await portfolioPage.totalProfitValue.textContent()
+    expect(totalProfit).not.toBe('')
+    // 2345 + 7283.5 = 9628.5
+    expect(totalProfit).toContain('9,628.50')
   })
 
-  test('应该显示持仓列表', async ({ page }) => {
-    // 等待持仓列表加载
-    await page.waitForTimeout(2000)
-    
-    // 检查是否有持仓列表
-    const holdingsList = page.locator('.holdings-list, .holding-item')
-    const count = await holdingsList.count()
-    
-    if (count > 0) {
-      await expect(holdingsList.first()).toBeVisible()
+  /**
+   * 测试：显示资产走势图
+   */
+  test('应显示资产走势图', async ({ page }) => {
+    await portfolioPage.expectTrendChartVisible()
+    await expect(portfolioPage.chartContainer).toBeVisible()
+  })
+
+  /**
+   * 测试：切换走势图时间范围
+   */
+  test('应支持切换走势图时间范围', async ({ page }) => {
+    await portfolioPage.expectTrendChartVisible()
+
+    // 点击 7 天标签
+    await portfolioPage.switchTrendDays(7)
+    await page.waitForTimeout(500)
+
+    // 点击 90 天标签
+    await portfolioPage.switchTrendDays(90)
+    await page.waitForTimeout(500)
+  })
+
+  /**
+   * 测试：显示资产分配图
+   */
+  test('应显示资产分配图', async ({ page }) => {
+    await portfolioPage.expectAllocationVisible()
+    await expect(portfolioPage.pieChart).toBeVisible()
+  })
+
+  /**
+   * 测试：切换资产分配视图
+   */
+  test('应支持切换资产分配视图', async ({ page }) => {
+    await portfolioPage.expectAllocationVisible()
+
+    // 默认显示饼图
+    await expect(portfolioPage.pieChart).toBeVisible()
+
+    // 切换到柱状图
+    await portfolioPage.toggleAllocationView()
+    await page.waitForTimeout(500)
+    await expect(portfolioPage.barChart).toBeVisible()
+
+    // 切换回饼图
+    await portfolioPage.toggleAllocationView()
+    await page.waitForTimeout(500)
+    await expect(portfolioPage.pieChart).toBeVisible()
+  })
+
+  /**
+   * 测试：显示持仓列表
+   */
+  test('应显示持仓列表', async ({ page }) => {
+    await portfolioPage.expectHoldingsVisible()
+    const count = await portfolioPage.getHoldingCount()
+    expect(count).toBeGreaterThan(0)
+  })
+
+  /**
+   * 测试：持仓按盈亏排序
+   */
+  test('持仓应按盈亏降序排列', async ({ page }) => {
+    await portfolioPage.expectHoldingsVisible()
+    const items = await portfolioPage.holdingItems.all()
+
+    if (items.length >= 2) {
+      // 获取第一个和第二个持仓的收益率
+      const firstRate = await items[0].locator('.holding-rate').textContent()
+      const secondRate = await items[1].locator('.holding-rate').textContent()
+
+      // 第一个应该比第二个收益率高（降序）
+      expect(firstRate).not.toBe('')
+      expect(secondRate).not.toBe('')
     }
   })
 })
