@@ -201,7 +201,7 @@ export interface SchemaMigrationResult {
 /**
  * [WHAT] 检查当前存储的 schema 版本，必要时执行迁移
  */
-export function checkSchemaAndMigrate(): SchemaMigrationResult {
+export async function checkSchemaAndMigrate(): Promise<SchemaMigrationResult> {
   const result: SchemaMigrationResult = {
     appliedMigrations: [],
     finalVersion: 0,
@@ -217,11 +217,11 @@ export function checkSchemaAndMigrate(): SchemaMigrationResult {
 
     // 读取所有用户数据到内存
     const allData: Record<string, any> = {
-      watchlist: getItem<any[]>(STORAGE_KEYS.WATCHLIST, []),
-      holdings: getItem<any[]>(STORAGE_KEYS.HOLDINGS, []),
-      aiTracking: getItem<any[]>(STORAGE_KEYS.AI_TRACKING, []),
-      netValues: getItem<Record<string, number>>(STORAGE_KEYS.FUND_NET_VALUES, {}),
-      sourceFilter: getItem<string>(STORAGE_KEYS.SOURCE_FILTER, '')
+      watchlist: await getItem<any[]>(STORAGE_KEYS.WATCHLIST, []),
+      holdings: await getItem<any[]>(STORAGE_KEYS.HOLDINGS, []),
+      aiTracking: await getItem<Record<string, any>[]>(STORAGE_KEYS.AI_TRACKING, []),
+      netValues: await getItem<Record<string, number>>(STORAGE_KEYS.FUND_NET_VALUES, {}),
+      sourceFilter: await getItem<string>(STORAGE_KEYS.SOURCE_FILTER, '')
     }
 
     // 按顺序执行迁移（从 meta.version+1 一直到 STORAGE_SCHEMA_VERSION）
@@ -240,11 +240,13 @@ export function checkSchemaAndMigrate(): SchemaMigrationResult {
     migratedData.aiTracking = ensureAITrackingDefaults(migratedData.aiTracking)
 
     // 写回迁移后的数据（敏感数据会加密）
-    setItem(STORAGE_KEYS.WATCHLIST, migratedData.watchlist)
-    setItem(STORAGE_KEYS.HOLDINGS, migratedData.holdings)
-    setItem(STORAGE_KEYS.AI_TRACKING, migratedData.aiTracking)
-    setItem(STORAGE_KEYS.FUND_NET_VALUES, migratedData.netValues)
-    setItem(STORAGE_KEYS.SOURCE_FILTER, migratedData.sourceFilter)
+    await Promise.all([
+      setItem(STORAGE_KEYS.WATCHLIST, migratedData.watchlist),
+      setItem(STORAGE_KEYS.HOLDINGS, migratedData.holdings),
+      setItem(STORAGE_KEYS.AI_TRACKING, migratedData.aiTracking),
+      setItem(STORAGE_KEYS.FUND_NET_VALUES, migratedData.netValues),
+      setItem(STORAGE_KEYS.SOURCE_FILTER, migratedData.sourceFilter),
+    ])
 
     // 更新 schema 元信息
     const newMeta: SchemaMeta = {
@@ -346,7 +348,7 @@ export function checkVersionAndClearCache(): void {
  * [EDGE] 数据不存在或解析失败时返回默认值
  * [SECURITY] 敏感数据自动解密
  */
-function getItem<T>(key: string, defaultValue: T): T {
+async function getItem<T>(key: string, defaultValue: T): Promise<T> {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return defaultValue
@@ -357,7 +359,12 @@ function getItem<T>(key: string, defaultValue: T): T {
       if (decrypted) return JSON.parse(decrypted) as T
       // 解密失败，可能是旧版本明文存储，尝试直接解析
       try {
-        return JSON.parse(raw) as T
+        const parsed = JSON.parse(raw)
+        // 如果解析结果是加密 payload 格式（v/iv/data），说明数据是加密的但解密失败，返回默认值
+        if (parsed && typeof parsed === 'object' && 'v' in parsed && 'iv' in parsed && 'data' in parsed) {
+          return defaultValue
+        }
+        return parsed as T
       } catch {
         return defaultValue
       }
@@ -400,7 +407,7 @@ async function setItem<T>(key: string, value: T): Promise<boolean> {
 /**
  * 获取自选基金代码列表
  */
-export function getWatchlist(): string[] {
+export async function getWatchlist(): Promise<string[]> {
   return getItem<string[]>(STORAGE_KEYS.WATCHLIST, [])
 }
 
@@ -416,7 +423,7 @@ export async function saveWatchlist(codes: string[]): Promise<void> {
  * [EDGE] 已存在则不重复添加
  */
 export async function addToWatchlist(code: string): Promise<void> {
-  const list = getWatchlist()
+  const list = await getWatchlist()
   if (!list.includes(code)) {
     list.unshift(code) // 新添加的排在前面
     await saveWatchlist(list)
@@ -427,7 +434,7 @@ export async function addToWatchlist(code: string): Promise<void> {
  * 从自选中移除基金
  */
 export async function removeFromWatchlist(code: string): Promise<void> {
-  const list = getWatchlist()
+  const list = await getWatchlist()
   const index = list.indexOf(code)
   if (index > -1) {
     list.splice(index, 1)
@@ -438,8 +445,8 @@ export async function removeFromWatchlist(code: string): Promise<void> {
 /**
  * 检查基金是否在自选中
  */
-export function isInWatchlist(code: string): boolean {
-  return getWatchlist().includes(code)
+export async function isInWatchlist(code: string): Promise<boolean> {
+  return (await getWatchlist()).includes(code)
 }
 
 // ========== 持仓数据 ==========
@@ -447,7 +454,7 @@ export function isInWatchlist(code: string): boolean {
 /**
  * 获取持仓列表
  */
-export function getHoldings(): HoldingRecord[] {
+export async function getHoldings(): Promise<HoldingRecord[]> {
   return getItem<HoldingRecord[]>(STORAGE_KEYS.HOLDINGS, [])
 }
 
@@ -463,7 +470,7 @@ export async function saveHoldings(holdings: HoldingRecord[]): Promise<void> {
  * [WHAT] 如果已存在同代码持仓，则更新；否则新增
  */
 export async function upsertHolding(holding: HoldingRecord): Promise<void> {
-  const list = getHoldings()
+  const list = await getHoldings()
   const index = list.findIndex((h) => h.code === holding.code)
   if (index > -1) {
     list[index] = holding
@@ -477,7 +484,7 @@ export async function upsertHolding(holding: HoldingRecord): Promise<void> {
  * 删除持仓
  */
 export async function removeHolding(code: string): Promise<void> {
-  const list = getHoldings()
+  const list = await getHoldings()
   const filtered = list.filter((h) => h.code !== code)
   await saveHoldings(filtered)
 }
@@ -485,8 +492,8 @@ export async function removeHolding(code: string): Promise<void> {
 /**
  * 获取单个持仓
  */
-export function getHolding(code: string): HoldingRecord | undefined {
-  return getHoldings().find((h) => h.code === code)
+export async function getHolding(code: string): Promise<HoldingRecord | undefined> {
+  return getHoldings().then(holdings => holdings.find((h: any) => h.code === code))
 }
 
 // ========== 基金净值存储 ==========
@@ -494,7 +501,7 @@ export function getHolding(code: string): HoldingRecord | undefined {
 /**
  * 获取基金净值映射
  */
-export function getFundNetValues(): Record<string, number> {
+export async function getFundNetValues(): Promise<Record<string, number>> {
   return getItem<Record<string, number>>(STORAGE_KEYS.FUND_NET_VALUES, {})
 }
 
@@ -540,7 +547,7 @@ export function getSourceFilter(): string {
  * 更新单个基金净值
  */
 export async function updateFundNetValue(code: string, netValue: number): Promise<void> {
-  const netValues = getFundNetValues()
+  const netValues = await getFundNetValues()
   netValues[code] = netValue
   await saveFundNetValues(netValues)
 }
@@ -548,8 +555,8 @@ export async function updateFundNetValue(code: string, netValue: number): Promis
 /**
  * 获取单个基金净值
  */
-export function getFundNetValue(code: string): number | undefined {
-  return getFundNetValues()[code]
+export async function getFundNetValue(code: string): Promise<number | undefined> {
+  return (await getFundNetValues())[code]
 }
 
 // ========== AI 调仓追踪 ==========

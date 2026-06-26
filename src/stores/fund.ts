@@ -37,8 +37,8 @@ export const useFundStore = defineStore('fund', () => {
    * 初始化自选列表
    * [WHY] APP 启动时从本地存储恢复数据
    */
-  function initWatchlist() {
-    const codes = getWatchlist()
+  async function initWatchlist() {
+    const codes = await getWatchlist()
     watchlist.value = codes.map((code) => ({
       code,
       name: '',
@@ -180,10 +180,10 @@ export const useFundStore = defineStore('fund', () => {
    * [EDGE] 已存在则不重复添加
    */
   async function addFund(code: string, name: string) {
-    if (isInWatchlist(code)) return false
+    if (await isInWatchlist(code)) return false
 
     // [WHAT] 先添加到列表（显示加载状态），再获取估值
-    addToStorage(code)
+    await addToStorage(code)
     watchlist.value.unshift({
       code,
       name,
@@ -198,8 +198,8 @@ export const useFundStore = defineStore('fund', () => {
   /**
    * 从自选中移除基金
    */
-  function removeFund(code: string) {
-    removeFromStorage(code)
+  async function removeFund(code: string) {
+    await removeFromStorage(code)
     const index = watchlist.value.findIndex((item) => item.code === code)
     if (index > -1) {
       watchlist.value.splice(index, 1)
@@ -209,7 +209,7 @@ export const useFundStore = defineStore('fund', () => {
   /**
    * 检查基金是否在自选中
    */
-  function isFundInWatchlist(code: string): boolean {
+  async function isFundInWatchlist(code: string): Promise<boolean> {
     return watchlistCodes.value.includes(code)
   }
 

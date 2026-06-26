@@ -104,8 +104,8 @@ export const useHoldingStore = defineStore('holding', () => {
    * 初始化持仓列表
    * [WHY] APP 启动时从本地存储恢复数据
    */
-  function initHoldings() {
-    const records = getHoldings()
+  async function initHoldings() {
+    const records = await getHoldings()
     
     const cleanedRecords = records.map((r: any) => {
       // [WHY] 解构剥离旧字段，只保留有效字段到 rest
@@ -156,9 +156,9 @@ export const useHoldingStore = defineStore('holding', () => {
     
     if (cleanedRecords.length > 0) {
       if (needsCleanup) {
-        saveHoldings(cleanedRecords)
+        await saveHoldings(cleanedRecords)
       }
-      refreshEstimates()
+      await refreshEstimates()
     }
   }
   
@@ -498,7 +498,7 @@ export const useHoldingStore = defineStore('holding', () => {
   /**
    * 添加持仓
    */
-  function addOrUpdateHolding(record: HoldingRecord) {
+  async function addOrUpdateHolding(record: HoldingRecord) {
     const index = holdings.value.findIndex(h => h.code === record.code)
     
     if (index >= 0) {
@@ -538,10 +538,10 @@ export const useHoldingStore = defineStore('holding', () => {
       updatedAt: new Date().toISOString()
     }))
     
-    saveHoldings(cleanedHoldings)
+    await saveHoldings(cleanedHoldings)
     
     // 刷新该持仓的实时数据
-    refreshEstimates()
+    await refreshEstimates()
   }
   
   /**

@@ -67,12 +67,15 @@ app.mount('#app')
 
 // [WHAT] 检查版本并清除旧缓存
 // [WHY] 版本号变更后需要清理旧的 localStorage 数据，避免读到格式不一致的旧数据
-const versionResult = checkVersionAndClearCache()
-logger.info('版本缓存检查', versionResult)
+checkVersionAndClearCache()
+logger.info('版本缓存检查')
 
 // [WHY] 数据 schema 迁移：老用户升级后需要补全新字段，否则会读取到 undefined
-const schemaResult = checkSchemaAndMigrate()
-logger.info('Schema 迁移', { applied: schemaResult.appliedMigrations.length, finalVersion: schemaResult.finalVersion })
+checkSchemaAndMigrate().then((result) => {
+  logger.info('Schema 迁移', { applied: result.appliedMigrations.length, finalVersion: result.finalVersion })
+}).catch((err) => {
+  logger.warn('Schema 迁移失败', err)
+})
 
 // [WHAT] 初始化主题
 const themeStore = useThemeStore()

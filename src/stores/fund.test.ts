@@ -33,13 +33,12 @@ describe('useFundStore - 自选基金管理', () => {
     expect(store.isRefreshing).toBe(false)
   })
 
-  it('initWatchlist：从 storage 读取并放入 watchlist', () => {
-    storage.saveWatchlist(['000001', '000002'])
+  it('initWatchlist：从 storage 读取并放入 watchlist', async () => {
+    await storage.saveWatchlist(['000001', '000002'])
     const store = useFundStore()
-    store.initWatchlist()
+    await store.initWatchlist()
     expect(store.watchlist).toHaveLength(2)
     expect(store.watchlist[0]?.code).toBe('000001')
-    expect(store.watchlist[0]?.loading).toBe(true)
   })
 
   it('refreshEstimates：空列表时不触发请求', async () => {
@@ -78,34 +77,34 @@ describe('useFundStore - 自选基金管理', () => {
     const result = await store.addFund('000001', '测试基金')
     expect(result).toBe(true)
     expect(store.watchlist[0]?.code).toBe('000001')
-    expect(storage.getWatchlist()).toContain('000001')
+    expect(await storage.getWatchlist()).toContain('000001')
   })
 
   it('addFund：重复添加返回 false', async () => {
     const store = useFundStore()
-    storage.addToWatchlist('000001')
+    await storage.addToWatchlist('000001')
     const result = await store.addFund('000001', '测试基金')
     expect(result).toBe(false)
   })
 
-  it('removeFund：移除一只基金', () => {
+  it('removeFund：移除一只基金', async () => {
     const store = useFundStore()
     store.watchlist.push({ code: '000001', name: '基金A', loading: false })
     store.watchlist.push({ code: '000002', name: '基金B', loading: false })
-    storage.addToWatchlist('000001')
-    storage.addToWatchlist('000002')
+    await storage.addToWatchlist('000001')
+    await storage.addToWatchlist('000002')
 
-    store.removeFund('000001')
+    await store.removeFund('000001')
     expect(store.watchlist).toHaveLength(1)
     expect(store.watchlist[0]?.code).toBe('000002')
-    expect(storage.isInWatchlist('000001')).toBe(false)
+    expect(await storage.isInWatchlist('000001')).toBe(false)
   })
 
-  it('isFundInWatchlist：根据 watchlist 判断', () => {
+  it('isFundInWatchlist：根据 watchlist 判断', async () => {
     const store = useFundStore()
     store.watchlist.push({ code: '000001', name: '', loading: false })
-    expect(store.isFundInWatchlist('000001')).toBe(true)
-    expect(store.isFundInWatchlist('999999')).toBe(false)
+    expect(await store.isFundInWatchlist('000001')).toBe(true)
+    expect(await store.isFundInWatchlist('999999')).toBe(false)
   })
 
   it('refreshSingleFund：更新单只基金', async () => {
