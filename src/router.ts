@@ -94,6 +94,18 @@ const router = createRouter({
       meta: { title: '编辑持仓' }
     },
     {
+      path: '/watchlist',
+      name: 'watchlist',
+      component: () => import('@/views/Watchlist.vue'),
+      meta: { title: '自选列表' }
+    },
+    {
+      path: '/mine',
+      name: 'mine',
+      component: () => import('@/views/Mine.vue'),
+      meta: { title: '我的' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/'
     }

@@ -91,6 +91,6 @@ export const ASSET_CLASS_CONFIG: Record<AssetClass, { label: string; color: stri
   gold:        { label: '黄金',   color: '#eab308', icon: '🥇' },
   commodity:   { label: '大宗商品', color: '#84cc16', icon: '🛢️' },
   future:      { label: '期货',   color: '#f97316', icon: '⚡' },
-  fore:       { label: '外汇',   color: '#14b8a6', icon: '💱' },
+  forex:       { label: '外汇',   color: '#14b8a6', icon: '💱' },
   crypto:      { label: '加密货币', color: '#8b5cf6', icon: '🪙' }
 }

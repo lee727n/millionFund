@@ -265,7 +265,7 @@ export const useHoldingStore = defineStore('holding', () => {
       if (data) {
         updateHoldingWithFundData(holdings[index]!.code, data)
       } else {
-        const item = holdings.value.find(h => h.code === holdings[index]!.code)
+        const item = holdings.find(h => h.code === holdings[index]!.code)
         if (item) item.loading = false
       }
     })

@@ -30,7 +30,7 @@ export const FOREX_PAIRS = {
   JPYCNY: 'JPYCNY',   // 日元/人民币（100日元）
   AUDCNY: 'AUDCNY',   // 澳元/人民币
   CADCNY: 'CADCNY',   // 加元/人民币
-  SGDY: 'SGDCNY',     // 新加坡元/人民币
+  SGDCNY: 'SGDCNY',     // 新加坡元/人民币
   HKDUSD: 'HKDUSD',   // 港币/美元
 }
 
