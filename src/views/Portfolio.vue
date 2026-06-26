@@ -3,7 +3,7 @@
 // [WHAT] 显示总资产、今日盈亏、累计盈亏、资产分配图、持仓列表
 // [WHAT] 添加历史走势图，展示资产总值变化趋势
 
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useHoldingStore } from '@/stores/holding'
 import { useHistoryStore } from '@/stores/history'
 import { useRouter } from 'vue-router'

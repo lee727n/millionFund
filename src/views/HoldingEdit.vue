@@ -7,7 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useHoldingStore } from '@/stores/holding'
 import { ASSET_CLASS_CONFIG, type AssetClass } from '@/types/holding'
-import { searchFund, fetchFundEstimate } from '@/api/fundFast'
+import { fetchFundEstimate } from '@/api/fundFast'
 import type { HoldingRecord } from '@/types/fund'
 
 const route = useRoute()

@@ -31,8 +31,6 @@ const STORAGE_KEYS = {
 const ENC_VERSION = 1
 const ENC_ALGORITHM = 'AES-GCM'
 const ENC_KEY_LENGTH = 256 // bits
-const PBKDF2_ITERATIONS = 100000
-const PBKDF2_SALT_LENGTH = 16 // bytes
 const PBKDF2_IV_LENGTH = 12 // bytes (AES-GCM)
 
 /**
@@ -70,28 +68,6 @@ async function getOrCreateEncKey(): Promise<CryptoKey> {
   const exported = await crypto.subtle.exportKey('raw', key)
   localStorage.setItem(STORAGE_KEYS.ENC_KEY, JSON.stringify(Array.from(new Uint8Array(exported))))
   return key
-}
-
-/**
- * [SECURITY] 派生密钥（用于未来支持用户密码加密）
- * 当前使用随机密钥，未来可升级为密码派生
- */
-async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  const encoder = new TextEncoder()
-  const passwordKey = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits', 'deriveKey']
-  )
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
-    passwordKey,
-    { name: ENC_ALGORITHM, length: ENC_KEY_LENGTH },
-    false,
-    ['encrypt', 'decrypt']
-  )
 }
 
 /**

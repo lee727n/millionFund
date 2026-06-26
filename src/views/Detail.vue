@@ -2601,52 +2601,6 @@ function formatPercent(num: number): string {
   color: var(--color-primary);
 }
 
-.trend-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.trend-direction {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.trend-icon {
-  font-size: 24px;
-}
-
-.trend-text {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.trend-direction.up .trend-text {
-  color: var(--color-up);
-}
-
-.trend-direction.down .trend-text {
-  color: var(--color-down);
-}
-
-.trend-direction.sideways .trend-text {
-  color: var(--text-secondary);
-}
-
-.trend-confidence .label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-right: 4px;
-}
-
-.trend-confidence .value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-primary);
-}
-
 .trend-levels {
   display: flex;
   gap: 16px;
