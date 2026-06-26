@@ -43,12 +43,12 @@ export class PortfolioPage {
     this.pageContainer = page.locator('.portfolio-page')
     this.pageTitle = page.locator('.page-title')
     this.summaryCard = page.locator('.summary-card')
-    this.totalAssetLabel = page.locator('.summary-card .summary-item:first-child .label')
-    this.totalAssetValue = page.locator('.summary-card .summary-item:first-child .value')
-    this.todayChangeLabel = page.locator('.summary-card .summary-item-small:first-child .label')
-    this.todayChangeValue = page.locator('.summary-card .summary-item-small:first-child .value-small')
-    this.totalProfitLabel = page.locator('.summary-card .summary-item-small:last-child .label')
-    this.totalProfitValue = page.locator('.summary-card .summary-item-small:last-child .value-small')
+    this.totalAssetLabel = page.locator('.summary-card .summary-item .label').first()
+    this.totalAssetValue = page.locator('.summary-card .summary-item .value').first()
+    this.todayChangeLabel = page.locator('.summary-card .summary-item-small .label').first()
+    this.todayChangeValue = page.locator('.summary-card .summary-item-small .value-small').first()
+    this.totalProfitLabel = page.locator('.summary-card .summary-item-small .label').last()
+    this.totalProfitValue = page.locator('.summary-card .summary-item-small .value-small').last()
     this.trendSection = page.locator('.section-card:has(.section-title:has-text("资产走势"))')
     this.trendTabs = page.locator('.trend-tab')
     this.chartContainer = page.locator('.chart-container')
@@ -66,7 +66,7 @@ export class PortfolioPage {
    * 导航到资产总览页
    */
   async goto(): Promise<void> {
-    await this.page.goto('/#/portfolio')
+    await this.page.goto('/portfolio')
     await this.page.waitForLoadState('networkidle')
     // 等待 Vue 应用初始化完成
     await this.page.waitForTimeout(500)

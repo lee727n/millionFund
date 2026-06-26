@@ -218,6 +218,9 @@ onMounted(async () => {
   // 加载历史数据
   historyStore.loadHistory()
 
+  // 初始化持仓数据
+  await holdingStore.initHoldings()
+
   // 加载当前数据
   await loadData()
 })

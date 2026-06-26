@@ -436,20 +436,123 @@ export const useHoldingStore = defineStore('holding', () => {
   /**
    * 使用基金数据更新持仓
    */
-  function updateHoldingWithFundData(code: string, data: FundAccurateData) {
+  async function updateHoldingWithFundData(code: string, data: FundAccurateData) {
     const index = holdings.value.findIndex(h => h.code === code)
     if (index === -1) return
-    
-    const holding = holdings.value[index]
-    
-    // [计算逻辑与之前相同...]
-    // 为节省篇幅，这里省略具体计算逻辑
-    // 实际实现会复制之前的计算代码
-    
-    holding.loading = false
-    holding.dataSource = data.dataSource
-    holding.valueDate = data.navDate || data.estimateTime?.split(' ')[0]
-    
+
+    const holding = holdings.value[index]!
+    const currentValue = data.currentValue
+
+    // [EDGE] 如果净值无效，跳过计算，保留原有数据
+    if (currentValue <= 0) {
+      holdings.value[index] = {
+        ...holding,
+        name: data.name || holding.name,
+        loading: false,
+        dataSource: data.dataSource,
+        valueDate: data.navDate || data.estimateTime?.split(' ')[0],
+      }
+      upsertHolding(holdings.value[index])
+      return
+    }
+
+    // [EDGE] 计算份额和成本净值 - 边界情况处理
+    let shares = holding.shares
+    let buyNav = holding.buyNetValue
+
+    // [FIX] 边界情况处理：确保份额和成本净值有效
+    if (!shares || shares <= 0) {
+      // [CASE 1] 优先使用市值/当前净值估算份额
+      if (currentValue > 0 && holding.marketValue && holding.marketValue > 0) {
+        shares = holding.marketValue / currentValue
+      }
+      // [CASE 2] 使用市值/成本净值估算份额
+      else if (buyNav > 0 && holding.marketValue && holding.marketValue > 0) {
+        shares = holding.marketValue / buyNav
+      }
+      // [CASE 3] 无法计算份额，标记为无效持仓
+      else {
+        shares = 0
+      }
+    }
+
+    // [FIX] 成本净值边界处理
+    if (!buyNav || buyNav <= 0) {
+      // [CASE 1] 使用当前净值作为成本（观察仓场景）
+      if (currentValue > 0) {
+        buyNav = currentValue
+      } else {
+        buyNav = 0
+      }
+    }
+
+    // [FIX] 份额无效时，跳过收益计算
+    if (shares <= 0 || currentValue <= 0 || buyNav <= 0) {
+      holdings.value[index] = {
+        ...holding,
+        name: data.name || holding.name,
+        currentValue,
+        shares,
+        buyNetValue: buyNav,
+        marketValue: shares > 0 ? shares * currentValue : holding.marketValue,
+        profit: 0,
+        profitRate: 0,
+        todayProfit: 0,
+        loading: false,
+        dataSource: data.dataSource,
+        valueDate: data.navDate || data.estimateTime?.split(' ')[0],
+        isUpdated: currentValue > 0,
+      }
+      upsertHolding(holdings.value[index])
+      return
+    }
+
+    // 严格按照份额和净值计算市值和收益
+    const marketValue = shares * currentValue
+
+    // 持有收益 = (当前净值 - 成本净值) × 持有份额
+    const profit = (currentValue - buyNav) * shares
+
+    // 当日收益 = 持仓市值 × 当日涨跌幅
+    const todayProfit = marketValue * (data.dayChange / 100)
+
+    // [FIX] 收益率计算保护：避免除零
+    const profitRate = marketValue > 0 ? (profit / marketValue) * 100 : 0
+
+    // [WHAT] 判断是否已更新：根据净值日期判断
+    const today = new Date().toISOString().split('T')[0]
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+    const hasTodayNav = data.nav > 0 && data.navDate === today
+    const isQDII = holding.isQDII === true
+    const hasYesterdayNavForQDII = isQDII && data.nav > 0 && data.navDate === yesterday
+    const isUpdated = hasTodayNav || hasYesterdayNavForQDII || (data.dataSource === 'nav' && data.navDate === today)
+
+    // [WHAT] 计算添加后累计涨跌幅
+    let addedGain: number | undefined
+    if (holding.buyNetValue && holding.buyNetValue > 0 && currentValue > 0) {
+      addedGain = ((currentValue - holding.buyNetValue) / currentValue) * 100
+    }
+
+    holdings.value[index] = {
+      ...holding,
+      name: data.name || holding.name,
+      currentValue,
+      marketValue,
+      profit,
+      profitRate,
+      todayChange: data.dayChange.toFixed(2),
+      todayProfit,
+      loading: false,
+      shares,
+      buyNetValue: buyNav,
+      dataSource: data.dataSource,
+      valueDate: data.navDate || data.estimateTime?.split(' ')[0],
+      isUpdated,
+      addedGain,
+    }
+
+    // 保存更新后的持仓到本地存储
     upsertHolding(holdings.value[index])
   }
   
