@@ -15,7 +15,7 @@ const CACHE_TTL = 5 // 缓存 5 秒（期货行情变化较快）
  * 解析新浪财经期货行情响应文本
  * [WHAT] 响应格式：var hq_str_GC2506="黄金期货,2350.50,10.50,0.45,2350.00,2355.00,2345.00,100,5000";
  */
-export function parseSinaFutureResponse(text: string, symbols: string[]): FutureQuote[] {
+export function parseSinaFutureResponse(text: string, _symbols: string[]): FutureQuote[] {
   const results: FutureQuote[] = []
 
   // 按行分割，每行对应一个合约的响应
@@ -135,7 +135,6 @@ export async function fetchFutureRanking(type: 'rise' | 'fall'): Promise<FutureQ
   try {
     // 东方财富期货涨跌榜 API
     const sortField = type === 'rise' ? 'f3' : 'f3'
-    const sortOrder = type === 'rise' ? 'desc' : 'asc'
     const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&fid=${sortField}&fs=m:113+m:114+m:115+m:116&fields=f12,f14,f2,f3,f4,f5,f15,f16,f17,f18,f20`
 
     const data = await http.get<{ data: { diff: any[] } }>(url, { timeout: 8000 })

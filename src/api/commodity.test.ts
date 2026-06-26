@@ -2,7 +2,7 @@
 // [WHAT] 测试大宗商品行情 API 的纯函数和边界情况
 
 import { describe, it, expect } from 'vitest'
-import { fetchCommodityQuote, fetchGoldPrice, parseSinaCommodityResponse } from '../api/commodity'
+import { fetchCommodityQuote, parseSinaCommodityResponse } from '../api/commodity'
 import type { CommodityQuote, GoldPrice } from '../types/commodity'
 
 // ========== parseSinaCommodityResponse 测试 ==========

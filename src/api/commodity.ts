@@ -15,7 +15,7 @@ const CACHE_TTL = 5 // 缓存 5 秒（大宗商品价格变化较快）
  * 解析新浪财经行情响应文本（大宗商品）
  * [WHAT] 响应格式：var hq_str_Au9999="上海黄金,560.50,2.50,0.45,100,560.00,561.00";
  */
-export function parseSinaCommodityResponse(text: string, symbols: string[]): CommodityQuote[] {
+export function parseSinaCommodityResponse(text: string, _symbols: string[]): CommodityQuote[] {
   const results: CommodityQuote[] = []
 
   // 按行分割，每行对应一个商品的响应

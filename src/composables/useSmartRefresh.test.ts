@@ -2,10 +2,8 @@
 // [WHAT] 测试刷新数据、自动刷新管理、刷新状态管理
 // [DEPS] vitest、vue、./useSmartRefresh
 
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
-import { useSmartRefresh, isTradingTime, getTradingTimeDescription } from './useSmartRefresh'
+import { describe, test, expect, vi } from 'vitest'
+import { useSmartRefresh, getTradingTimeDescription } from './useSmartRefresh'
 import { isTradingTime as tiantianIsTradingTime } from '@/api/tiantianApi'
 
 /**

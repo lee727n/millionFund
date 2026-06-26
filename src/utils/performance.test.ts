@@ -2,7 +2,7 @@
 // [WHAT] 测试 measureTime、markStart、markEnd、getMetrics 等函数
 // [DEPS] vitest、./performance
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, beforeEach } from 'vitest'
 import {
   measureTime,
   markStart,
@@ -10,7 +10,6 @@ import {
   getMetrics,
   clearMetrics,
   reportMetrics,
-  measure,
 } from './performance'
 
 /**

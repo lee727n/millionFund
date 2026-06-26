@@ -62,7 +62,7 @@ function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
  * 10: 今日最低价
  * 11: 昨日收盘价
  */
-function parseSinaHKResponse(text: string, symbols: string[]): HKStockQuote[] {
+function parseSinaHKResponse(text: string, _symbols: string[]): HKStockQuote[] {
   const results: HKStockQuote[] = []
   const now = Date.now()
 

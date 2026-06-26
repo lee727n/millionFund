@@ -4,7 +4,7 @@
 
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
-import type { ConvertibleBond, ConvertibleBondDetail } from '@/types/convertible'
+import type { ConvertibleBond } from '@/types/convertible'
 
 const CACHE_TTL = {
   CONVERTIBLE: 60,

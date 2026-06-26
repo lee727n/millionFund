@@ -3,7 +3,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fetchCryptoPrice, fetchSingleCrypto, symbolToCoinId, fetchCryptoBySymbols } from '../api/crypto'
-import type { CryptoQuote } from '../types/crypto'
 
 // Mock http 模块
 vi.mock('@/utils/http', () => ({

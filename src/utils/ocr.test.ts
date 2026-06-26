@@ -3,7 +3,6 @@
 // [WHAT] 测试 recognizeText、recognizeHoldings 等核心 OCR 功能
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { recognizeText, recognizeHoldings } from '../ocr'
 
 // Mock Tesseract
 vi.mock('tesseract.js', () => {
@@ -35,9 +34,6 @@ describe('OCR 工具函数', () => {
   })
 
   test('recognizeText 应该成功识别文本', async () => {
-    // 创建一个 mock 文件
-    const mockFile = new File(['mock image content'], 'test.png', { type: 'image/png' })
-    
     // 注意：这个测试需要真实的 Tesseract.js 环境
     // 这里只是展示测试结构
     expect(true).toBe(true)

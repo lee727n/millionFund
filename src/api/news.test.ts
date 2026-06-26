@@ -7,15 +7,6 @@ import {
   fetchJin10Flash,
   fetchJin10News,
   fetchJin10Calendar,
-  fetchCailianNews,
-  fetchCailianHotTopics,
-  fetchCailianPlate,
-  fetchXueqiuDiscussions,
-  fetchXueqiuSentiment,
-  fetchXueqiuViews,
-  fetchChoiceNorthFlow,
-  fetchChoiceSectorFlows,
-  fetchChoiceMainForce,
   fetchNews,
 } from '../api/news'
 import type { NewsSource } from '../types/news'

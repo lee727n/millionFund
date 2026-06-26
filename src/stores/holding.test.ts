@@ -2,7 +2,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useHoldingStore } from '@/stores/holding'
-import * as storage from '@/utils/storage'
 
 vi.mock('@/api/fundFast', () => ({
   fetchFundAccurateData: vi.fn((code: string) =>

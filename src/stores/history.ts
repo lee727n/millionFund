@@ -4,7 +4,6 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AssetClass } from '@/types/holding'
 
 /** 每日资产快照 */
 export interface PortfolioSnapshot {

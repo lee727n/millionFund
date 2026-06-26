@@ -11,3 +11,5 @@ FULL_PLATFORM_SUMMARY.md
 coverage/
 holdings-calculation.json
 test-results/
+count-eslint.cjs
+eslint-results.json

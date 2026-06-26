@@ -7,17 +7,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { HoldingRecord, HoldingSummary } from '@/types/fund'
-import type { AssetClass, PortfolioSummary } from '@/types/holding'
+import type { PortfolioSummary } from '@/types/holding'
 import { getHoldings, saveHoldings } from '@/utils/storage'
 import {
   upsertHolding,
   removeHolding as removeFromStorage,
-  updateFundNetValue
 } from '@/utils/storage'
 import { fetchFundAccurateData, type FundAccurateData } from '@/api/fundFast'
-import { fetchNetValueHistoryFast } from '@/api/fundFast'
-import { predictTrend, type TrendPrediction } from '@/utils/statistics'
-import { logger } from '@/utils/logger'
 import { fetchAStockQuote } from '@/api/astock'
 import { fetchHKStockQuote } from '@/api/hkstock'
 import { fetchUSStockQuote } from '@/api/usstock'
@@ -445,7 +441,6 @@ export const useHoldingStore = defineStore('holding', () => {
     if (index === -1) return
     
     const holding = holdings.value[index]
-    const currentValue = data.currentValue
     
     // [计算逻辑与之前相同...]
     // 为节省篇幅，这里省略具体计算逻辑

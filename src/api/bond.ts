@@ -84,8 +84,6 @@ export async function fetchBondQuote(code: string): Promise<BondQuote | null> {
  */
 export async function fetchBondQuotes(codes: string[]): Promise<BondQuote[]> {
   try {
-    const results: BondQuote[] = []
-    
     // 并发请求
     const promises = codes.map(code => fetchBondQuote(code))
     const quotes = await Promise.all(promises)

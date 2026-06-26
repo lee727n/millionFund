@@ -86,7 +86,6 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
     
     // 并发请求
     for (const [base, pairList] of Object.entries(baseGroups)) {
-      const quote = pairList[0].replace(/^[A-Z]+/, '')
       const url = `https://open.er-api.com/v6/latest/${base}`
       
       try {
