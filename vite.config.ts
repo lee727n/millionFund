@@ -27,6 +27,19 @@ export default defineConfig({
     Components({
       resolvers: [VantResolver()],
     }),
+    {
+      // [WHY] GitHub Pages 使用 history 模式路由，直接访问子路径会 404
+      // [WHAT] 构建后复制 index.html 为 404.html，让 Pages 能正确回退到 SPA 入口
+      name: 'spa-fallback',
+      closeBundle() {
+        const srcFile = path.resolve(__dirname, 'dist/index.html')
+        const destFile = path.resolve(__dirname, 'dist/404.html')
+        if (fs.existsSync(srcFile)) {
+          fs.copyFileSync(srcFile, destFile)
+          console.log('\n  ✅ SPA fallback generated: dist/404.html')
+        }
+      },
+    },
   ],
   resolve: {
     alias: {
