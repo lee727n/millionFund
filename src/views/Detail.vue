@@ -2220,30 +2220,6 @@ function formatPercent(num: number): string {
   font-size: 14px;
 }
 
-.announcement-content {
-  flex: 1;
-  overflow: hidden;
-}
-
-.announcement-title {
-  font-size: 13px;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.announcement-date {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 4px;
-}
-
-.announcement-arrow {
-  color: var(--text-tertiary);
-  margin-left: 8px;
-}
-
 /* ========== 底部操作栏 ========== */
 .bottom-bar {
   position: fixed;

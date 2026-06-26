@@ -38,77 +38,55 @@ defineProps<{
 </template>
 
 <style scoped>
-.info-section {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.info-section:last-child {
-  border-bottom: none;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.section-header span:first-child {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.section-tip {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
+/* ========== 分红记录 ========== */
 .dividend-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  padding: 8px 16px 12px;
 }
 
 .dividend-item {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .dividend-item:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .dividend-date {
   font-size: 13px;
   color: var(--text-secondary);
-  width: 100px;
-  flex-shrink: 0;
+  width: 90px;
 }
 
 .dividend-amount {
   flex: 1;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-primary);
   font-weight: 500;
 }
 
 .dividend-type {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: 11px;
+  color: #f56c6c;
+  background: rgba(245, 108, 108, 0.1);
   padding: 2px 8px;
-  background: var(--bg-secondary);
-  border-radius: 4px;
+  border-radius: 10px;
 }
 
 .more-hint {
   text-align: center;
   font-size: 12px;
   color: var(--text-tertiary);
-  padding: 8px;
+  padding: 8px 0;
+}
+
+.empty-hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 20px;
 }
 </style>
