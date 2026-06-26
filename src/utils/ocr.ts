@@ -75,8 +75,9 @@ export async function recognizeText(
     )
     
     const result = await Promise.race([ocrPromise, timeoutPromise]) as any
-    ;(globalThis as any).__lastOcrData = result.data
-    return result.data.text
+    // [SECURITY] 不再写入 globalThis，避免隐私数据泄露到全局
+    const ocrText = result.data.text
+    return ocrText
   } catch (err: any) {
     logger.error('OCR 识别失败', err)
     

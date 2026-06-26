@@ -25,6 +25,15 @@ const STORAGE_KEYS = {
 /**
  * [SECURITY] 使用 Web Crypto API 加密敏感数据
  * 密钥持久化存储在 localStorage 中，每次应用启动时复用
+ *
+ * ⚠️ 安全说明：
+ *   当前方案将密钥明文存在 localStorage，攻击者通过 XSS 可同时获取
+ *   密文和密钥，加密仅能防止本地磁盘被直接读取。
+ *   各平台更安全的替代方案：
+ *     - Android: Capacitor @capacitor/secure-preferences 或 Android Keystore
+ *     - iOS:     Capacitor @capacitor/secure-preferences 或 iOS Keychain
+ *     - Electron:  @electron/electron-store + safeStorage (AES-256 + 系统密钥链)
+ *     - Web:      无完美方案，依赖 HTTPS + HttpOnly Cookie + CSP 降低 XSS 风险
  */
 
 // [SECURITY] 加密版本号（用于未来迁移）
@@ -37,12 +46,13 @@ const PBKDF2_IV_LENGTH = 12 // bytes (AES-GCM)
  * 从 localStorage 获取或生成加密密钥
  * 密钥派生自随机密码（存储在 localStorage，不做完美保密，但能防 XSS 和本地读取）
  *
- * [NOTE] 更安全的方案是使用 Electron 的 safeStorage（桌面端）
- *       或 Capacitor 的 SecureStorage（移动端）
- *       当前方案为 Web / Electron / Capacitor 通用妥协方案
+ * ⚠️ 安全限制：此方案仅适用于 Web 端临时保护。
+ *    密钥与密文共存于 localStorage，XSS 攻击可同时获取二者。
+ *    各平台请使用对应安全存储：
+ *      Android/iOS: 使用 @capacitor/secure-preferences 或原生 Keystore/Keychain
+ *      Electron:     使用 electron-store + safeStorage
  */
 async function getOrCreateEncKey(): Promise<CryptoKey> {
-  // 尝试从 localStorage 读取已有密钥
   const storedKey = localStorage.getItem(STORAGE_KEYS.ENC_KEY)
   if (storedKey) {
     try {

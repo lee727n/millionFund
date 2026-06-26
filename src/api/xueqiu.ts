@@ -71,7 +71,7 @@ export async function fetchHotDiscussions(type: 'stock' | 'fund' = 'fund', count
       timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Cookie': 'xq_a_token=',
+        'Cookie': import.meta.env.VITE_XQ_COOKIE || '',
         'Referer': 'https://xueqiu.com/',
       },
     })

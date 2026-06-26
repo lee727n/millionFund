@@ -355,10 +355,32 @@ async function loadTrendPrediction() {
   }
 }
 
-// [WHAT] 页面加载时自动加载趋势预测
-onMounted(() => {
-  loadTrendPrediction()
-})
+// [WHAT] 页面加载时自动加载趋势预测（合并到上方 onMounted，避免覆盖）
+watch(fundCode, async (newCode) => {
+  if (newCode) {
+    isTrendLoading.value = true
+    try {
+      const historyResult = await fetchNetValueHistoryFast(newCode, 90)
+      const history = historyResult.records || []
+      if (history.length > 0) {
+        const data = history.map(item => ({
+          date: item.date,
+          value: item.netValue,
+          change: item.changeRate
+        }))
+        trendPrediction.value = predictTrend(data)
+        returnAnalysis.value = calculateReturnAnalysis(data)
+        if (returnAnalysis.value) {
+          fundScore.value = calculateFundScore(returnAnalysis.value)
+        }
+      }
+    } catch (err) {
+      logger.error('获取趋势预测失败', err)
+    } finally {
+      isTrendLoading.value = false
+    }
+  }
+}, { immediate: true })
 
 function goBack() {
   router.back()
