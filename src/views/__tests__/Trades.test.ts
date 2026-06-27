@@ -96,8 +96,8 @@ describe('Trades.vue', () => {
     mockTrades.value = [
       {
         id: '1',
-        fundCode: '000001',
-        fundName: '测试基金',
+        code: '000001',
+        name: '测试基金',
         type: 'buy',
         amount: 1000,
         date: '2026-01-01',
@@ -116,8 +116,8 @@ describe('Trades.vue', () => {
     mockTrades.value = [
       {
         id: '1',
-        fundCode: '000001',
-        fundName: '测试基金',
+        code: '000001',
+        name: '测试基金',
         type: 'buy',
         amount: 1000,
         date: '2026-01-01',
@@ -126,7 +126,7 @@ describe('Trades.vue', () => {
 
     const wrapper = mount(Trades)
     await flushPromises()
-
+    
     const deleteBtn = wrapper.find('.trade-actions .van-button')
     expect(deleteBtn.exists()).toBe(true)
   })
@@ -174,8 +174,8 @@ describe('Trades.vue', () => {
     mockTrades.value = [
       {
         id: '1',
-        fundCode: '000001',
-        fundName: '测试基金',
+        code: '000001',
+        name: '测试基金',
         type: 'buy',
         amount: 1234.56,
         date: '2026-01-01',
@@ -194,8 +194,8 @@ describe('Trades.vue', () => {
     mockTrades.value = [
       {
         id: '1',
-        fundCode: '000001',
-        fundName: '测试基金',
+        code: '000001',
+        name: '测试基金',
         type: 'buy',
         amount: 1000,
         date: '2026-01-01',
@@ -214,8 +214,8 @@ describe('Trades.vue', () => {
     mockTrades.value = [
       {
         id: '1',
-        fundCode: '000001',
-        fundName: '测试基金',
+        code: '000001',
+        name: '测试基金',
         type: 'buy',
         amount: 1000,
         date: '2026-01-01',
