@@ -24,7 +24,12 @@
     "watchlist": "自选基金",
     "market_closed": "休市",
     "sort_asc": "升序",
-    "sort_desc": "降序"
+    "sort_desc": "降序",
+    "total_assets": "总资产",
+    "total_profit": "累计盈亏",
+    "holdings": "持仓",
+    "no_holdings": "暂无持仓",
+    "sorted_by_profit": "持仓列表（按盈亏排序）"
   },
   "portfolio": {
     "title": "持仓",
@@ -34,7 +39,11 @@
     "profit_rate": "利润率",
     "holdings": "持仓",
     "no_holdings": "暂无持仓",
-    "sorted_by_profit": "持仓列表（按盈亏排序）"
+    "sorted_by_profit": "持仓列表（按盈亏排序）",
+    "asset_allocation": "资产配置",
+    "fund_type": "基金类型",
+    "share_growth": "份额增长",
+    "net_value_growth": "净值增长"
   },
   "holding": {
     "title": "我的持仓",
@@ -58,13 +67,30 @@
     "already_in_holdings": "该基金已在持仓中",
     "select_to_import": "请选择要导入的持仓",
     "save": "保存",
-    "cancel": "取消"
+    "cancel": "取消",
+    "fund_code": "基金代码",
+    "fund_name": "基金名称",
+    "hold_share": "持有份额",
+    "hold_cost": "持仓成本",
+    "current_value": "当前市值",
+    "profit_loss": "盈亏",
+    "profit_rate": "利润率",
+    "today_change": "今日涨跌",
+    "holdings_list": "持仓列表",
+    "edit_holding": "编辑持仓",
+    "delete_holding": "删除持仓"
   },
   "watchlist": {
     "title": "自选列表",
-    "under_development": "自选基金列表页面 — 开发中"
+    "under_development": "自选基金列表页面 — 开发中",
+    "add": "添加自选",
+    "edit": "编辑自选",
+    "delete": "删除自选",
+    "no_data": "暂无自选",
+    "search_placeholder": "搜索基金代码或名称"
   },
   "detail": {
+    "title": "基金详情",
     "add_to_watchlist": "加自选",
     "remove_from_watchlist": "删自选",
     "add_to_holdings": "加入持仓",
@@ -77,7 +103,22 @@
     "delete_holding": "删除持仓",
     "delete_confirm": "确定要删除该持仓记录吗？",
     "already_in_watchlist": "已在自选中",
-    "added_to_watchlist": "已加入自选"
+    "added_to_watchlist": "已加入自选",
+    "net_value": "净值",
+    "estimated_value": "估值",
+    "today": "今日",
+    "week": "近一周",
+    "month": "近一月",
+    "year": "近一年",
+    "three_years": "近三年",
+    "max": "成立以来",
+    "trend": "走势",
+    "news": "相关资讯",
+    "holdings": "持仓明细",
+    "buy": "买入",
+    "sell": "卖出",
+    "trade_record": "交易记录",
+    "no_trade_record": "暂无交易记录"
   },
   "common": {
     "confirm": "确认",
@@ -91,12 +132,42 @@
     "import": "导入",
     "export": "导出",
     "backup": "备份",
-    "restore": "恢复"
+    "restore": "恢复",
+    "refresh": "刷新",
+    "search": "搜索",
+    "filter": "筛选",
+    "sort": "排序",
+    "close": "关闭",
+    "open": "打开",
+    "yes": "是",
+    "no": "否",
+    "ok": "确定",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "finish": "完成",
+    "reset": "重置",
+    "clear": "清除",
+    "submit": "提交",
+    "please_select": "请选择",
+    "please_input": "请输入",
+    "no_data": "暂无数据",
+    "loading_failed": "加载失败",
+    "network_error": "网络错误",
+    "unknown_error": "未知错误"
   },
   "market": {
+    "title": "市场概览",
     "shanghai": "上证指数",
     "chinext": "创业板指",
-    "nasdaq": "纳斯达克"
+    "nasdaq": "纳斯达克",
+    "hangseng": "恒生指数",
+    "nikkei": "日经指数",
+    "kospi": "韩国综指",
+    "a_share": "A股",
+    "us_stock": "美股",
+    "hk_stock": "港股",
+    "global": "全球"
   },
   "alerts": {
     "title": "涨跌提醒",
@@ -105,18 +176,53 @@
     "delete": "删除提醒",
     "threshold": "提醒阈值",
     "enabled": "已启用",
-    "disabled": "已禁用"
+    "disabled": "已禁用",
+    "fund_code": "基金代码",
+    "fund_name": "基金名称",
+    "alert_type": "提醒类型",
+    "price_up": "价格上涨",
+    "price_down": "价格下跌",
+    "percent_up": "涨幅超过",
+    "percent_down": "跌幅超过",
+    "notify_type": "通知方式",
+    "push": "推送通知",
+    "sms": "短信通知",
+    "email": "邮件通知",
+    "no_alerts": "暂无提醒",
+    "save_success": "提醒保存成功",
+    "delete_confirm": "确定要删除该提醒吗？"
   },
   "ai_tracking": {
     "title": "AI调仓",
     "add": "添加调仓记录",
     "edit": "编辑调仓记录",
     "delete": "删除调仓记录",
-    "success_rate": "成功率"
+    "success_rate": "成功率",
+    "sell": "卖",
+    "buy": "买",
+    "date": "日期",
+    "sell_fund": "卖出基金",
+    "buy_fund": "买入基金",
+    "sell_change": "卖出涨跌幅",
+    "buy_change": "买入涨跌幅",
+    "status": "状态",
+    "waiting": "待验证",
+    "success": "成功",
+    "failed": "失败",
+    "calc_process": "计算过程",
+    "no_records": "暂无调仓记录",
+    "simple_mode": "简洁模式",
+    "full_mode": "完整模式",
+    "refresh": "刷新价格",
+    "delete_confirm": "确定要删除该调仓记录吗？"
   },
   "news": {
     "title": "财经资讯",
-    "no_data": "暂无资讯"
+    "no_data": "暂无资讯",
+    "load_more": "加载更多",
+    "source": "来源",
+    "time": "时间",
+    "summary": "摘要"
   },
   "trades": {
     "title": "交易记录",
@@ -124,10 +230,47 @@
     "edit": "编辑交易",
     "delete": "删除交易",
     "buy": "买入",
-    "sell": "卖出"
+    "sell": "卖出",
+    "date": "交易日期",
+    "fund_code": "基金代码",
+    "fund_name": "基金名称",
+    "amount": "交易金额",
+    "price": "交易价格",
+    "shares": "交易份额",
+    "fee": "手续费",
+    "no_trades": "暂无交易记录",
+    "delete_confirm": "确定要删除该交易记录吗？",
+    "save_success": "交易记录保存成功"
   },
   "finance_news": {
     "title": "财经新闻",
-    "no_data": "暂无新闻"
+    "no_data": "暂无新闻",
+    "hot": "热点",
+    "latest": "最新",
+    "recommend": "推荐"
+  },
+  "settings": {
+    "title": "设置",
+    "language": "语言",
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "notifications": "通知",
+    "data_source": "数据源",
+    "tencent": "腾讯",
+    "eastmoney": "东方财富",
+    "sina": "新浪",
+    "auto_refresh": "自动刷新",
+    "refresh_interval": "刷新间隔",
+    "version": "版本"
+  },
+  "errors": {
+    "network": "网络错误，请检查网络连接",
+    "timeout": "请求超时，请稍后重试",
+    "server": "服务器错误，请稍后重试",
+    "not_found": "未找到相关数据",
+    "invalid_input": "输入无效，请检查输入",
+    "permission_denied": "权限不足"
   }
 }

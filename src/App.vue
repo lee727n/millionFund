@@ -5,8 +5,12 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { useI18n } from 'vue-i18n'
+import LangSwitcher from '@/components/LangSwitcher.vue'
 import { useNetworkStore } from '@/stores/network'
 import { useAlertChecker } from '@/composables/useAlertChecker'
+
+const { t } = useI18n()
 
 // [WHAT] 网络状态 store - 初始化并在组件生命周期内管理
 const networkStore = useNetworkStore()
@@ -113,6 +117,9 @@ function onTabChange(name: string | number) {
 
 <template>
   <div class="app-container">
+    <!-- 语言切换器 -->
+    <LangSwitcher />
+    
     <!-- 网络状态提示条 -->
     <!-- [WHY] APK 用户在弱网/断网环境打开时，之前只能看到空白数据 -->
     <!--        用户会以为应用坏了，现在有明确提示 -->
@@ -136,11 +143,11 @@ function onTabChange(name: string | number) {
       v-model="activeTab"
       @change="onTabChange"
     >
-      <van-tabbar-item name="home" icon="home-o">首页</van-tabbar-item>
-      <van-tabbar-item name="watchlist" icon="star-o">自选</van-tabbar-item>
-      <van-tabbar-item name="portfolio" icon="bar-chart-o">资产</van-tabbar-item>
-      <van-tabbar-item name="news" icon="description-o">资讯</van-tabbar-item>
-      <van-tabbar-item name="mine" icon="user-o">我的</van-tabbar-item>
+      <van-tabbar-item name="home" icon="home-o">{{ t('nav.home') }}</van-tabbar-item>
+      <van-tabbar-item name="watchlist" icon="star-o">{{ t('nav.watchlist') }}</van-tabbar-item>
+      <van-tabbar-item name="portfolio" icon="bar-chart-o">{{ t('nav.portfolio') }}</van-tabbar-item>
+      <van-tabbar-item name="news" icon="description-o">{{ t('nav.news') }}</van-tabbar-item>
+      <van-tabbar-item name="mine" icon="user-o">{{ t('nav.mine') }}</van-tabbar-item>
     </van-tabbar>
   </div>
 </template>
