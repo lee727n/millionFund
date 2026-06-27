@@ -4,6 +4,7 @@
 // [WHAT] 支持 A类/C类基金费用计算
 
 import { ref, onMounted, computed, watch, onErrorCaptured } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
@@ -23,6 +24,7 @@ import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
 
 const router = useRouter()
+const { t } = useI18n()
 const holdingStore = useHoldingStore()
 const aiTrackingStore = useAITrackingStore()
 const networkStore = useNetworkStore()
@@ -110,26 +112,26 @@ function filterBySource(source: string) {
   if (source === 'all') {
     currentSourceFilter.value = ''
     saveSourceFilter('')
-    showToast('已显示所有基金')
+    showToast(t('holding.all_funds'))
   } else if (source === 'qdii') {
     if (currentSourceFilter.value === 'qdii') {
       currentSourceFilter.value = ''
       saveSourceFilter('')
-      showToast('已取消QDII筛选')
+      showToast(t('holding.qdii_canceled'))
     } else {
       currentSourceFilter.value = 'qdii'
       saveSourceFilter('qdii')
-      showToast('已筛选QDII基金')
+      showToast(t('holding.qdii_filtered'))
     }
   } else {
     if (currentSourceFilter.value === source) {
       currentSourceFilter.value = ''
       saveSourceFilter('')
-      showToast(`已取消${getSourceLabel(source)}筛选`)
+      showToast(t('holding.source_canceled', { source: getSourceLabel(source) }))
     } else {
       currentSourceFilter.value = source
       saveSourceFilter(source)
-      showToast(`已筛选 ${getSourceLabel(source)} 来源的基金`)
+      showToast(t('holding.source_filtered', { source: getSourceLabel(source) }))
     }
   }
 }
@@ -194,24 +196,22 @@ function handleSort(direction: 'up' | 'down' | 'none') {
   sortDirection.value = direction
 }
 
-// [WHAT] 下拉刷新
 async function onRefresh() {
   await holdingStore.refreshEstimates()
   holdingStore.updateHoldingDays()
-  showToast('刷新成功')
+  showToast(t('holding.refresh_success'))
 }
 
 // [WHAT] 跳转到基金详情
 
-// [WHAT] 删除持仓
 async function handleDelete(code: string) {
   try {
     await showConfirmDialog({
-      title: '确认删除',
-      message: '确定要删除该持仓记录吗？'
+      title: t('holding.delete'),
+      message: t('holding.delete_confirm')
     })
     holdingStore.removeHolding(code)
-    showToast('已删除')
+    showToast(t('common.delete') + '成功')
   } catch {
     // 用户取消
   }
@@ -256,7 +256,7 @@ async function selectFund(fund: FundInfo) {
   searchResults.value = []
   
   // [WHY] 获取最新净值（使用公布净值，非估值）
-  showLoadingToast({ message: '获取净值...', forbidClick: true })
+  showLoadingToast({ message: t('holding.fetching_nav'), forbidClick: true })
   try {
     const estimate = await fetchFundEstimate(fund.code)
     // [WHY] 优先使用 dwjz（最新公布净值），而非 gsz（实时估值）
@@ -272,14 +272,14 @@ async function selectFund(fund: FundInfo) {
       if (klineData && klineData.length > 0) {
         // [WHAT] 使用最新的历史净值
         currentNetValue.value = klineData[klineData.length - 1]!.value
-        showToast('已获取历史净值')
+        showToast(t('holding.got_history_nav'))
         return
       }
     } catch {
       // 历史数据也失败
     }
     currentNetValue.value = 1
-    showToast('请手动输入净值')
+    showToast(t('holding.enter_nav_manually'))
   }
 }
 
@@ -297,11 +297,11 @@ const calculatedShares = computed(() => {
 // [WHAT] 提交表单
 async function submitForm() {
   if (!formData.value.code) {
-    showToast('请选择基金')
+    showToast(t('holding.please_select_fund'))
     return
   }
   if (!formData.value.amount || parseFloat(formData.value.amount) <= 0) {
-    showToast('请输入有效的持仓金额')
+    showToast(t('holding.please_enter_amount'))
     return
   }
   // 持有收益为可选，若为空则视为 0
@@ -317,7 +317,7 @@ async function submitForm() {
   }
   
   await holdingStore.addOrUpdateHolding(record)
-  showToast(isEditing.value ? '修改成功' : '添加成功')
+  showToast(isEditing.value ? t('holding.save_edit') : t('holding.confirm_add'))
   showAddDialog.value = false
   resetForm()
 }
@@ -345,11 +345,11 @@ async function submitCostAdjust() {
   const profit = parseFloat(costFormData.value.profit)
   
   if (!marketValue || marketValue <= 0) {
-    showToast('请输入有效的持仓市值')
+    showToast(t('holding.please_enter_amount'))
     return
   }
   if (isNaN(profit)) {
-    showToast('请输入有效的持仓收益')
+    showToast(t('holding.please_enter_amount'))
     return
   }
   
@@ -383,9 +383,9 @@ async function submitCostAdjust() {
     }
     
     holdingStore.addOrUpdateHolding(record)
-    showToast('成本调整成功')
+    showToast(t('holding.cost_adjust_success'))
   } catch (error) {
-    showToast('成本调整失败')
+    showToast(t('holding.cost_adjust_failed'))
   } finally {
     closeToast()
     showCostDialog.value = false
@@ -425,13 +425,13 @@ function onActionSheetSelect(index: number) {
     goToDetail(code)
   } else if (action.key === 'cost') {
     openCostDialog(code)
-  } else if (action.key === 'watchlist') {
+  } else   if (action.key === 'watchlist') {
     const alreadyInWatchlist = fundStore.watchlist.some(f => f.code === code)
     if (alreadyInWatchlist) {
-      showToast('已在自选中')
+      showToast(t('detail.already_in_watchlist'))
     } else {
       fundStore.addFund(code, fundName || '')
-      showToast('已加入自选')
+      showToast(t('detail.added_to_watchlist'))
     }
   } else if (action.key === 'delete') {
     handleDelete(code)
@@ -468,7 +468,7 @@ function onImported(_count: number) {
 // [WHAT] 备份持仓数据
 async function backupHoldings() {
   if (holdingStore.holdings.length === 0 && aiTrackingStore.records.length === 0) {
-    showToast('暂无数据可备份')
+    showToast(t('holding.no_data_backup'))
     return
   }
   
@@ -530,7 +530,7 @@ async function backupHoldings() {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
   
-  showToast('备份成功！')
+  showToast(t('holding.backup_success'))
 }
 
 // [WHAT] 恢复持仓数据
@@ -558,7 +558,7 @@ function restoreHoldings() {
           
           // 验证备份数据格式
           if (!jsonData.holdings || !Array.isArray(jsonData.holdings)) {
-            showToast('备份文件格式错误')
+            showToast(t('holding.backup_format_error'))
             return
           }
           
@@ -606,17 +606,17 @@ function restoreHoldings() {
             aiTrackingStore.importRecords(jsonData.aiTracking)
           }
           
-          showToast('恢复成功')
+          showToast(t('holding.restore_success'))
         } catch (error) {
-          showToast('解析备份文件失败')
+          showToast(t('holding.parse_backup_failed'))
         }
       }
       reader.onerror = () => {
-        showToast('读取文件失败')
+        showToast(t('holding.read_file_failed'))
       }
       reader.readAsText(file)
     } catch (error) {
-      showToast('恢复失败')
+      showToast(t('holding.restore_failed'))
     }
   }
   
@@ -627,12 +627,12 @@ function restoreHoldings() {
 // ========== 批量录入相关函数 ==========
 
 // [WHAT] 来源选项
-const sourceOptions = [
-  { value: 'ali', text: '支付宝' },
-  { value: 'TX', text: '腾讯' },
-  { value: 'JD', text: '京东' },
-  { value: 'observe', text: '观察' }
-]
+const sourceOptions = computed(() => [
+  { value: 'ali', text: t('holding.source_ali') },
+  { value: 'TX', text: t('holding.source_tx') },
+  { value: 'JD', text: t('holding.source_jd') },
+  { value: 'observe', text: t('holding.source_observe') }
+])
 
 // [WHAT] 打开批量录入弹窗
 function openBatchDialog() {
@@ -663,12 +663,12 @@ async function batchImport() {
   })
   
   if (validItems.length === 0) {
-    showToast('请至少输入一条有效的基金信息')
+    showToast(t('holding.please_enter_valid_fund'))
     return
   }
   
   isBatchImporting.value = true
-  showLoadingToast({ message: '导入中...', forbidClick: true })
+  showLoadingToast({ message: t('holding.importing'), forbidClick: true })
   
   try {
     const validIndices = batchItems.value.map((item, index) => {
@@ -684,15 +684,15 @@ async function batchImport() {
       batchItems.value[index]!.error = ''
       
       try {
-        if (holdingStore.hasHolding(item.code)) {
-          batchItems.value[index]!.error = '该基金已存在，无需重复添加'
+          if (holdingStore.hasHolding(item.code)) {
+          batchItems.value[index]!.error = t('holding.already_exists')
           results.push(null)
           continue
         }
         
         const searchResults = await searchFund(item.code, 1)
         if (searchResults.length === 0) {
-          batchItems.value[index]!.error = '基金不存在'
+          batchItems.value[index]!.error = t('holding.fund_not_found')
           results.push(null)
           continue
         }
@@ -737,8 +737,8 @@ async function batchImport() {
         
         await holdingStore.addOrUpdateHolding(record)
         results.push(fund.code)
-      } catch (error) {
-        batchItems.value[index]!.error = '导入失败'
+        } catch (error) {
+        batchItems.value[index]!.error = t('holding.import_failed')
         logger.error('批量导入失败', error)
         results.push(null)
       } finally {
@@ -751,12 +751,12 @@ async function batchImport() {
     // 统计成功导入的数量
     const successCount = results.filter(Boolean).length
     if (successCount > 0) {
-      showToast(`成功导入 ${successCount} 只基金`)
+      showToast(t('holding.import_success', { count: successCount }))
       // 刷新持仓列表
       await holdingStore.refreshEstimates()
       showBatchDialog.value = false
     } else {
-      showToast('导入失败，请检查基金代码')
+      showToast(t('holding.import_failed_check_code'))
     }
   } finally {
     closeToast()
@@ -768,14 +768,14 @@ async function batchImport() {
 
 // 刷新持仓数据
 async function refreshHoldings() {
-  showLoadingToast('正在刷新数据...')
+  showLoadingToast({ message: t('holding.fetching_nav'), forbidClick: true })
   
   try {
     await holdingStore.refreshEstimates()
-    showToast('刷新成功')
+    showToast(t('holding.refresh_success'))
   } catch (error) {
     logger.error('刷新失败', error)
-    showToast('刷新失败，请重试')
+    showToast(t('holding.refresh_failed'))
   } finally {
     closeToast()
   }
@@ -785,9 +785,9 @@ async function refreshHoldings() {
 async function onCopyLogs(): Promise<void> {
   const ok = await copyLogsToClipboard()
   if (ok) {
-    showToast(`日志已复制 (${logger.getAll().length}条)`)
+    showToast(t('common.copy_success', { count: logger.getAll().length }))
   } else {
-    showToast('复制失败，请手动复制')
+    showToast(t('common.copy_failed'))
   }
 }
 </script>
@@ -796,16 +796,16 @@ async function onCopyLogs(): Promise<void> {
   <div class="holding-page">
     <!-- 顶部导航栏 -->
     <div class="custom-nav-bar">
-      <div class="nav-title">我的持仓</div>
+      <div class="nav-title">{{ t('holding.title') }}</div>
       <div class="nav-actions">
         <!-- 网页端按钮 -->
         <div class="web-actions web-only">
           <van-icon name="replay" size="20" @click="refreshHoldings" class="refresh-icon" />
-          <van-icon name="description-o" size="20" @click="onCopyLogs" title="复制日志" />
-          <van-button size="small" @click="showImportDialog = true" class="nav-btn">导入</van-button>
-          <van-button size="small" @click="openBatchDialog" class="nav-btn">批量</van-button>
-          <van-button size="small" @click="backupHoldings" class="nav-btn">备份</van-button>
-          <van-button size="small" @click="restoreHoldings" class="nav-btn">恢复</van-button>
+          <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
+          <van-button size="small" @click="showImportDialog = true" class="nav-btn">{{ t('holding.import_screenshot') }}</van-button>
+          <van-button size="small" @click="openBatchDialog" class="nav-btn">{{ t('holding.batch') }}</van-button>
+          <van-button size="small" @click="backupHoldings" class="nav-btn">{{ t('holding.backup') }}</van-button>
+          <van-button size="small" @click="restoreHoldings" class="nav-btn">{{ t('holding.restore') }}</van-button>
         </div>
         
         <!-- 移动端按钮 -->
@@ -815,19 +815,19 @@ async function onCopyLogs(): Promise<void> {
             class="sort-mobile-icon"
             :class="{ active: sortDirection === 'up' }"
             @click="handleSort('up')"
-            alt="升序" 
+            :alt="t('holding.sort_asc')" 
           />
           <img 
             :src="downW" 
             class="sort-mobile-icon"
             :class="{ active: sortDirection === 'down' }"
             @click="handleSort('down')"
-            alt="降序" 
+            :alt="t('holding.sort_desc')" 
           />
-          <van-icon name="description-o" size="20" @click="onCopyLogs" title="复制日志" />
-          <van-button size="small" @click="showImportDialog = true">导入</van-button>
-          <van-button size="small" @click="openBatchDialog">批量</van-button>
-          <van-button size="small" @click="restoreHoldings">恢复</van-button>
+          <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
+          <van-button size="small" @click="showImportDialog = true">{{ t('holding.import_screenshot') }}</van-button>
+          <van-button size="small" @click="openBatchDialog">{{ t('holding.batch') }}</van-button>
+          <van-button size="small" @click="restoreHoldings">{{ t('holding.restore') }}</van-button>
         </div>
       </div>
     </div>
@@ -836,23 +836,23 @@ async function onCopyLogs(): Promise<void> {
     <div v-if="holdingStore.holdings.length > 0" class="summary-card">
       <div class="summary-row summary-row-single">
         <div class="summary-item">
-          <div class="summary-label">账户资产</div>
+          <div class="summary-label">{{ t('holding.account_assets') }}</div>
           <div class="summary-value">{{ formatMoney(holdingStore.summary.totalValue, '', isMobile()) }}</div>
         </div>
         <div class="summary-item">
-          <div class="summary-label">当日收益</div>
+          <div class="summary-label">{{ t('holding.today_profit_label') }}</div>
           <div class="summary-value" :class="summaryTodayClass">
             {{ isMobile() ? '' : (holdingStore.summary.todayProfit >= 0 ? '+' : '') }}{{ formatMoney(holdingStore.summary.todayProfit, '', isMobile()) }}
           </div>
         </div>
         <div class="summary-item">
-          <div class="summary-label">持仓盈亏</div>
+          <div class="summary-label">{{ t('holding.holding_profit') }}</div>
           <div class="summary-value" :class="summaryProfitClass">
             {{ isMobile() ? '' : (holdingStore.summary.totalProfit >= 0 ? '+' : '') }}{{ formatMoney(holdingStore.summary.totalProfit, '', isMobile()) }}
           </div>
         </div>
         <div class="summary-item">
-          <div class="summary-label">收益率</div>
+          <div class="summary-label">{{ t("holding.profit_rate_label") }}</div>
           <div class="summary-value" :class="summaryProfitClass">
             {{ isMobile() ? '' : '' }}{{ formatPercent(holdingStore.summary.totalProfitRate, isMobile()) }}
           </div>
@@ -864,28 +864,28 @@ async function onCopyLogs(): Promise<void> {
     <div v-if="holdingStore.holdings.length > 0" class="list-header">
       <div class="list-header-block">
         <div class="header-left">
-          <span class="col-name">基金名称</span>
+          <span class="col-name">{{ t("holding.fund_name") }}</span>
           <div class="sort-buttons">
             <van-button 
               size="small" 
               @click="handleSort('none')"
               :type="sortDirection === 'none' ? 'primary' : 'default'"
             >
-              默认
+              {{ t('holding.sort_default') }}
             </van-button>
             <img 
               :src="riseW" 
               class="sort-web-icon"
               :class="{ active: sortDirection === 'up' }"
               @click="handleSort('up')"
-              alt="升序" 
+              :alt="t('holding.sort_asc')" 
             />
             <img 
               :src="downW" 
               class="sort-web-icon"
               :class="{ active: sortDirection === 'down' }"
               @click="handleSort('down')"
-              alt="降序" 
+              :alt="t('holding.sort_desc')" 
             />
             <van-button 
               size="small" 
@@ -893,7 +893,7 @@ async function onCopyLogs(): Promise<void> {
               @click="filterBySource('ali')"
               :type="currentSourceFilter === 'ali' ? 'primary' : 'default'"
             >
-              <img src="@/assets/ali.jpg" class="source-icon" alt="支付宝" />
+              <img src="@/assets/ali.jpg" class="source-icon" :alt="t('holding.source_ali')" />
             </van-button>
             <van-button 
               size="small" 
@@ -901,7 +901,7 @@ async function onCopyLogs(): Promise<void> {
               @click="filterBySource('TX')"
               :type="currentSourceFilter === 'TX' ? 'primary' : 'default'"
             >
-              <img src="@/assets/TX.jpg" class="source-icon" alt="腾讯" />
+              <img src="@/assets/TX.jpg" class="source-icon" :alt="t('holding.source_tx')" />
             </van-button>
             <van-button 
               size="small" 
@@ -909,13 +909,13 @@ async function onCopyLogs(): Promise<void> {
               @click="filterBySource('JD')"
               :type="currentSourceFilter === 'JD' ? 'primary' : 'default'"
             >
-              <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
+              <img src="@/assets/JD.jpg" class="source-icon" :alt="t('holding.source_jd')" />
             </van-button>
           </div>
         </div>
-        <span class="col-change">当日涨幅</span>
-        <span class="col-today">当日收益</span>
-        <span class="col-profit">持有收益</span>
+        <span class="col-change">{{ t("holding.today_change") }}</span>
+        <span class="col-today">{{ t("holding.today_profit_col") }}</span>
+        <span class="col-profit">{{ t("holding.holding_profit_col") }}</span>
       </div>
     </div>
 
@@ -939,13 +939,13 @@ async function onCopyLogs(): Promise<void> {
                 <div class="fund-name-line">
                   <span v-if="holding.isQDII" class="qdii-tag">QD</span>
                   <div class="fund-name">
-                    {{ holding.name || '加载中...' }}
+                    {{ holding.name || {{ t("holding.loading") }} }}
                   </div>
                 </div>
               </div>
               <div class="fund-meta">
                 <span class="update-status-tag" :class="holding.isUpdated ? 'updated' : 'not-updated'">
-                  {{ holding.isUpdated ? '已更新' : '未更新' }}
+                  {{ holding.isUpdated ? {{ t("holding.updated") }} : {{ t("holding.not_updated") }} }}
                 </span>
                 <span class="amount">¥{{ formatMoney(holding.marketValue ?? 0) }}</span>
               </div>
@@ -973,7 +973,7 @@ async function onCopyLogs(): Promise<void> {
       </template>
 
       <!-- 空状态 -->
-      <van-empty v-else description="暂无持仓记录" />
+      <van-empty v-else :description="t('holding.no_holdings')" />
       
       <!-- 底部占位，避免被导航栏遮挡 -->
       <div class="bottom-spacer"></div>
@@ -988,7 +988,7 @@ async function onCopyLogs(): Promise<void> {
     >
       <div class="add-dialog">
         <div class="dialog-header">
-          <span>{{ isEditing ? '编辑持仓' : '添加持仓' }}</span>
+          <span>{{ isEditing ? {{ t("holding.edit_holding") }} : {{ t("holding.add_holding") }} }}</span>
           <van-icon name="cross" @click="showAddDialog = false" />
         </div>
 
@@ -998,8 +998,8 @@ async function onCopyLogs(): Promise<void> {
             <van-field
               v-if="!selectedFund"
               v-model="searchKeyword"
-              label="选择基金"
-              placeholder="输入基金代码或名称搜索"
+              :label="t('holding.select_fund')"
+              :placeholder="t('holding.search_placeholder')"
               @input="onSearchInput"
             />
             
@@ -1019,11 +1019,11 @@ async function onCopyLogs(): Promise<void> {
             <van-field
               v-if="selectedFund"
               :model-value="`${selectedFund.name} (${selectedFund.code})`"
-              label="已选基金"
+              :label="t('holding.selected_fund')"
               readonly
             >
               <template #button>
-                <van-button size="small" @click="selectedFund = null; currentNetValue = 0">重选</van-button>
+                <van-button size="small" @click="selectedFund = null; currentNetValue = 0">{{ t("holding.reselect") }}</van-button>
               </template>
             </van-field>
           </template>
@@ -1040,7 +1040,7 @@ async function onCopyLogs(): Promise<void> {
           <van-field
             v-if="currentNetValue > 0"
             :model-value="currentNetValue.toFixed(4)"
-            label="当前净值"
+            :label="t('holding.current_nav')"
             readonly
           />
 
@@ -1048,22 +1048,22 @@ async function onCopyLogs(): Promise<void> {
           <van-field
             v-model="formData.amount"
             type="number"
-            label="持仓金额"
-            placeholder="请输入持仓金额（元）"
+            :label="t('holding.holding_amount')"
+            :placeholder="t('holding.holding_amount_placeholder')"
           />
 
           <!-- 计算结果展示 -->
           <div v-if="calculatedShares > 0" class="calc-result">
             <div class="calc-item">
-              <span class="calc-label">预估份额</span>
-              <span class="calc-value">{{ calculatedShares.toFixed(2) }} 份</span>
+              <span class="calc-label">{{ t('holding.estimated_shares') }}</span>
+              <span class="calc-value">{{ calculatedShares.toFixed(2) }} {{ t("holding.shares_unit") }}</span>
             </div>
           </div>
         </div>
 
         <div class="dialog-footer">
           <van-button block type="primary" @click="submitForm">
-            {{ isEditing ? '保存修改' : '确认添加' }}
+            {{ isEditing ? t('holding.save_edit') : t('holding.confirm_add') }}
           </van-button>
         </div>
       </div>
@@ -1080,7 +1080,7 @@ async function onCopyLogs(): Promise<void> {
     >
       <div class="cost-dialog">
         <div class="dialog-header">
-          <span>调整持仓成本</span>
+          <span>{{ t("holding.adjust_cost") }}</span>
           <van-icon name="cross" @click="showCostDialog = false" />
         </div>
 
@@ -1096,8 +1096,8 @@ async function onCopyLogs(): Promise<void> {
           <van-field
             v-model="costFormData.amount"
             type="number"
-            label="持仓市值"
-            placeholder="请输入调整后的持仓市值（元）"
+            :label="t('holding.market_value')"
+            :placeholder="t('holding.market_value_placeholder')"
           />
 
           <!-- 提示信息 -->
@@ -1138,14 +1138,14 @@ async function onCopyLogs(): Promise<void> {
     >
       <div class="batch-dialog">
         <div class="dialog-header">
-          <span>批量录入基金</span>
+          <span>{{ t("holding.batch_import") }}</span>
           <van-icon name="cross" @click="showBatchDialog = false" />
         </div>
 
         <div class="dialog-content">
           <div class="batch-tip">
             <van-icon name="info-o" />
-            <span>请输入基金代码、持仓金额和持有收益，系统会自动查询基金信息</span>
+            <span>{{ t("holding.batch_tip") }}</span>
           </div>
 
           <div class="batch-list">
@@ -1168,32 +1168,32 @@ async function onCopyLogs(): Promise<void> {
               <div class="batch-item-content">
                 <van-field
                   v-model="item.code"
-                  label="基金代码"
-                  placeholder="请输入基金代码"
+                  :label="t('holding.fund_code')"
+                  :placeholder="t('holding.fund_code_placeholder')"
                   :disabled="item.loading"
                 />
                 
                 <van-field
                   v-model="item.amount"
                   type="number"
-                  label="持仓金额"
-                  placeholder="请输入持仓金额（元）"
+                  :label="t('holding.holding_amount')"
+                  :placeholder="t('holding.holding_amount_placeholder')"
                   :disabled="item.loading"
                 />
                 
                 <van-field
                   v-model="item.profit"
                   type="number"
-                  label="持有收益"
-                  placeholder="请输入持有收益（元），可留空"
+                  :label="t('holding.profit')"
+                  :placeholder="t('holding.holding_profit_placeholder')"
                   :disabled="item.loading"
                 />
                 
                 <van-field
                   v-model="item.sectors"
                   type="text"
-                  label="行业板块"
-                  placeholder="请输入行业板块，可留空"
+                  :label="t('holding.industry_sector')"
+                  :placeholder="t('holding.industry_sector_placeholder')"
                   :disabled="item.loading"
                 />
                 
@@ -1213,7 +1213,7 @@ async function onCopyLogs(): Promise<void> {
                 </div>
                 <div class="form-item">
                   <div class="qdii-toggle">
-                    <span class="qdii-label">是否为QDII</span>
+                    <span class="qdii-label">{{ t("holding.is_qdii") }}</span>
                     <van-switch v-model="item.isQDII" size="24" :disabled="item.loading" />
                   </div>
                 </div>

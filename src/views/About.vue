@@ -3,7 +3,7 @@
     <!-- 导航栏 -->
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">关于</span>
+      <span class="header-title">{{ t('about.title') }}</span>
       <div style="width: 22px"></div>
     </div>
 
@@ -16,17 +16,17 @@
         <div class="app-desc">{{ APP_INFO.description }}</div>
       </div>
 
-      <!-- ========== 更新记录 ========== -->
+      <!-- ========== {{ t('about.changelog') }} ========== -->
       <div class="section">
-        <div class="section-title">📝 更新记录</div>
+        <div class="section-title">📝 {{ t('about.changelog') }}</div>
         <div class="changelog-list">
 
           <div class="changelog-item current">
             <div class="changelog-version">v{{ APP_INFO.version }}</div>
             <div class="changelog-date">{{ APP_INFO.releaseDate }}</div>
             <ul class="changelog-bullets">
-              <li>新增<strong>涨跌提醒</strong>：设置涨跌幅阈值，触发时自动推送通知</li>
-              <li>修复生产环境 API 404 问题</li>
+              <li>{{ t('about.changelog_new') }}<strong>{{ t('about.feature_alert') }}</strong>：设置涨跌幅阈值，触发时自动推送通知</li>
+              <li>{{ t('about.changelog_fix') }}生产环境 API 404 问题</li>
               <li>大幅减少 JSONP 使用，改用 fetch 直接解析</li>
               <li>统一错误处理，提示更友好</li>
             </ul>
@@ -45,8 +45,8 @@
           <div class="changelog-item">
             <div class="changelog-version">v1.8.0</div>
             <ul class="changelog-bullets">
-              <li>TypeScript strict 模式，修复 233 个类型错误</li>
-              <li>Capacitor WebView 跨域修复</li>
+              <li>TypeScript strict 模式，{{ t('about.changelog_fix') }} 233 个类型错误</li>
+              <li>Capacitor WebView 跨域{{ t('about.changelog_fix') }}</li>
             </ul>
           </div>
 
@@ -59,37 +59,37 @@
           </div>
 
         </div>
-        <a class="changelog-more" href="https://github.com/ghshhf/millionFund#更新记录" target="_blank" @click.stop>
-          查看完整更新记录 →
+        <a class="changelog-more" href="https://github.com/ghshhf/millionFund#{{ t('about.changelog') }}" target="_blank" @click.stop>
+          查看完整{{ t('about.changelog') }} →
         </a>
       </div>
 
       <!-- ========== 功能列表 ========== -->
       <div class="section">
-        <div class="section-title">✨ 功能特性</div>
+        <div class="section-title">✨ {{ t('about.features') }}</div>
         <div class="feature-grid">
-          <div class="feature-tag"><span class="feature-icon">📈</span><span>实时估值</span></div>
-          <div class="feature-tag"><span class="feature-icon">💼</span><span>持仓追踪</span></div>
-          <div class="feature-tag"><span class="feature-icon">🔔</span><span>涨跌提醒</span></div>
-          <div class="feature-tag"><span class="feature-icon">🤖</span><span>AI 追踪</span></div>
-          <div class="feature-tag"><span class="feature-icon">📊</span><span>趋势分析</span></div>
-          <div class="feature-tag"><span class="feature-icon">🌍</span><span>市场概览</span></div>
-          <div class="feature-tag"><span class="feature-icon">📰</span><span>资讯动态</span></div>
-          <div class="feature-tag"><span class="feature-icon">🔍</span><span>深度数据</span></div>
+          <div class="feature-tag"><span class="feature-icon">📈</span><span>{{ t('about.feature_realtime') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">💼</span><span>{{ t('about.feature_tracking') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">🔔</span><span>{{ t('about.feature_alert') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">🤖</span><span>{{ t('about.feature_ai') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">📊</span><span>{{ t('about.feature_trend') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">🌍</span><span>{{ t('about.feature_market') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">📰</span><span>{{ t('about.feature_news') }}</span></div>
+          <div class="feature-tag"><span class="feature-icon">🔍</span><span>{{ t('about.feature_data') }}</span></div>
         </div>
       </div>
 
       <!-- ========== 全平台下载 ========== -->
       <div class="section">
-        <div class="section-title">📥 下载安装</div>
-        <div class="section-desc">已检测到你正在使用 <strong>{{ platformLabel }}</strong></div>
+        <div class="section-title">📥 {{ t('about.download') }}</div>
+        <div class="section-desc">{{ t('about.detected_platform') }} <strong>{{ platformLabel }}</strong></div>
 
         <!-- Android -->
         <div class="download-card" v-if="showAndroid">
           <div class="download-icon">📱</div>
           <div class="download-info">
             <div class="download-name">Android APK</div>
-            <div class="download-desc">适用于 Android 手机/平板</div>
+            <div class="download-desc">{{ t('about.android_desc') }}</div>
           </div>
           <div class="download-buttons">
             <van-button type="primary" size="small" round @click="downloadAndInstallApk">📲 安装</van-button>
@@ -102,7 +102,7 @@
           <div class="download-icon">🪟</div>
           <div class="download-info">
             <div class="download-name">Windows</div>
-            <div class="download-desc">Windows 10/11 x64</div>
+            <div class="download-desc">{{ t('about.windows_desc') }}</div>
           </div>
           <van-button type="primary" size="small" round @click="downloadWin('nsis')">下载</van-button>
         </div>
@@ -112,7 +112,7 @@
           <div class="download-icon">🍎</div>
           <div class="download-info">
             <div class="download-name">macOS</div>
-            <div class="download-desc">Intel / Apple Silicon</div>
+            <div class="download-desc">{{ t('about.macos_desc') }}</div>
           </div>
           <van-button type="primary" size="small" round @click="downloadMac('dmg')">下载</van-button>
         </div>
@@ -122,7 +122,7 @@
           <div class="download-icon">🐧</div>
           <div class="download-info">
             <div class="download-name">Linux</div>
-            <div class="download-desc">x64 发行版</div>
+            <div class="download-desc">{{ t('about.linux_desc') }}</div>
           </div>
           <van-button type="primary" size="small" round @click="downloadLinux('appimage')">下载</van-button>
         </div>
@@ -132,7 +132,7 @@
           <div class="download-icon">🌐</div>
           <div class="download-info">
             <div class="download-name">Web 在线版</div>
-            <div class="download-desc">浏览器访问，无需安装</div>
+            <div class="download-desc">{{ t('about.web_desc') }}</div>
           </div>
           <van-button plain size="small" round @click="copyWebUrl">复制链接</van-button>
         </div>
@@ -141,44 +141,44 @@
         <div v-if="canInstallPwa" class="pwa-install-banner">
           <div class="pwa-install-info">
             <span>📲</span>
-            <span>安装到桌面，体验更流畅</span>
+            <span>{{ t('about.install_pwa') }}</span>
           </div>
-          <van-button type="primary" size="small" round @click="installPwa">一键安装</van-button>
+          <van-button type="primary" size="small" round @click="installPwa">{{ t('about.pwa_install') }}</van-button>
         </div>
       </div>
 
       <!-- ========== APK 二维码弹窗 ========== -->
       <van-overlay :show="showApkQr" @click="showApkQr = false">
         <div class="qr-modal" @click.stop>
-          <div class="qr-title">📱 扫码安装 Android 版</div>
+          <div class="qr-title">📱 {{ t('about.qr_title') }}</div>
           <img :src="apkQrUrl" alt="APK 下载二维码" class="qr-image" />
           <div class="qr-url">{{ apkDownloadUrl }}</div>
-          <van-button type="primary" size="small" round @click="downloadApk('debug')">直接下载</van-button>
-          <van-button plain size="small" round style="margin-top: 8px" @click="showApkQr = false">关闭</van-button>
+          <van-button type="primary" size="small" round @click="downloadApk('debug')">{{ t('about.direct_download') }}</van-button>
+          <van-button plain size="small" round style="margin-top: 8px" @click="showApkQr = false">{{ t('about.qr_close') }}</van-button>
         </div>
       </van-overlay>
 
-      <!-- ========== 构建信息 ========== -->
+      <!-- ========== {{ t('about.build_info') }} ========== -->
       <div class="section">
-        <div class="section-title">🔧 构建信息</div>
+        <div class="section-title">🔧 {{ t('about.build_info') }}</div>
         <div class="info-grid">
-          <div class="info-row"><span class="info-label">版本号</span><span class="info-value">{{ APP_INFO.version }}</span></div>
-          <div class="info-row"><span class="info-label">当前平台</span><span class="info-value">{{ platformLabel }}</span></div>
-          <div class="info-row"><span class="info-label">构建时间</span><span class="info-value">{{ buildTime }}</span></div>
-          <div class="info-row"><span class="info-label">数据源</span><span class="info-value">{{ dataSourceCount }} 个</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.version_label') }}</span><span class="info-value">{{ APP_INFO.version }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.platform_label') }}</span><span class="info-value">{{ platformLabel }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.build_time') }}</span><span class="info-value">{{ buildTime }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.data_source_count') }}</span><span class="info-value">{{ dataSourceCount }} 个</span></div>
         </div>
       </div>
 
-      <!-- ========== 开源信息 ========== -->
+      <!-- ========== {{ t('about.open_source') }} ========== -->
       <div class="section">
-        <div class="section-title">📄 开源信息</div>
+        <div class="section-title">📄 {{ t('about.open_source') }}</div>
         <div class="info-grid">
-          <div class="info-row"><span class="info-label">开源协议</span><span class="info-value">{{ APP_INFO.license }}</span></div>
-          <div class="info-row"><span class="info-label">项目地址</span><span class="info-value link" @click="openUrl(APP_INFO.github)">{{ GITHUB_REPO }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.license') }}</span><span class="info-value">{{ APP_INFO.license }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('about.project_url') }}</span><span class="info-value link" @click="openUrl(APP_INFO.github)">{{ GITHUB_REPO }}</span></div>
         </div>
         <div class="disclaimer">
-          <div class="disclaimer-title">⚠️ 免责声明</div>
-          <div class="disclaimer-text">本工具仅供学习交流使用，不构成任何投资建议。基金估值数据仅供参考，以基金公司公布的净值为准。<strong>投资有风险，理财需谨慎。</strong></div>
+          <div class="disclaimer-title">{{ t('about.disclaimer_title') }}</div>
+          <div class="disclaimer-text">本工具仅供学习交流使用，不构成任何投资建议。基金估值数据仅供参考，以基金公司公布的净值为准。<strong>{{ t('about.invest_risk') }}</strong></div>
         </div>
       </div>
 
@@ -190,11 +190,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { showToast, showSuccessToast, showConfirmDialog } from 'vant'
 import { APP_INFO, GITHUB_REPO, DOWNLOAD_URLS, getBuildTime } from '@/config/release'
 import { getPlatform, isWeb, isAndroid } from '@/utils/platform'
 
 const router = useRouter()
+const { t } = useI18n()
 const buildTime = ref(getBuildTime())
 
 // ========== PWA 安装 ==========
@@ -210,18 +212,18 @@ onMounted(() => {
   window.addEventListener('appinstalled', () => {
     canInstallPwa.value = false
     pwaInstallEvent.value = null
-    showSuccessToast('安装成功 🎉')
+    showSuccessToast('{{ t('about.install_success') }} 🎉')
   })
 })
 
 async function installPwa() {
   if (!pwaInstallEvent.value) {
-    showToast('请使用浏览器菜单"添加到主屏幕"')
+    showToast('{{ t('about.use_browser_menu') }}')
     return
   }
   pwaInstallEvent.value.prompt()
   const result = await pwaInstallEvent.value.userChoice
-  if (result.outcome === 'accepted') showSuccessToast('安装成功 🎉')
+  if (result.outcome === 'accepted') showSuccessToast('{{ t('about.install_success') }} 🎉')
   pwaInstallEvent.value = null
   canInstallPwa.value = false
 }
@@ -231,14 +233,14 @@ async function downloadAndInstallApk() {
   const dlUrl = DOWNLOAD_URLS.android.debug
   if (isAndroid()) {
     window.open(dlUrl, '_system')
-    showToast('APK 下载中，请查看通知栏')
+    showToast('{{ t('about.apk_downloading') }}')
     return
   }
   window.open(dlUrl, '_blank')
-  showToast('正在下载 APK...')
+  showToast('{{ t('about.downloading_apk') }}...')
   showConfirmDialog({
     title: '📱 手机安装',
-    message: '扫码即可安装到手机',
+    message: '{{ t('about.scan_install') }}',
     confirmButtonText: '扫码安装',
   }).then(() => showApkQr.value = true).catch(() => {})
 }
@@ -261,14 +263,14 @@ const showAndroid = computed(() => !isAndroid())
 const dataSourceCount = 10
 
 // ========== 下载处理 ==========
-function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast('正在下载 APK...') }
-function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast('正在下载 Windows 安装包...') }
-function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast('正在下载 macOS 安装包...') }
-function downloadLinux(type: 'appimage' | 'deb') { window.open(DOWNLOAD_URLS.linux[type], '_blank'); showToast('正在下载 Linux 安装包...') }
+function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast('{{ t('about.downloading_apk') }}...') }
+function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast('{{ t('about.downloading_windows') }}...') }
+function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast('{{ t('about.downloading_mac') }}...') }
+function downloadLinux(type: 'appimage' | 'deb') { window.open(DOWNLOAD_URLS.linux[type], '_blank'); showToast('{{ t('about.downloading_linux') }}...') }
 
 async function copyWebUrl() {
-  try { await navigator.clipboard.writeText(window.location.origin); showSuccessToast('链接已复制') }
-  catch { showToast('复制失败，请手动复制地址栏链接') }
+  try { await navigator.clipboard.writeText(window.location.origin); showSuccessToast('{{ t('about.copy_success') }}') }
+  catch { showToast('{{ t('about.copy_failed') }}') }
 }
 function openUrl(url: string) { window.open(url, '_blank') }
 </script>
@@ -303,7 +305,7 @@ function openUrl(url: string) { window.open(url, '_blank') }
 .section-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 .section-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.4; }
 
-/* ========== 更新记录 ========== */
+/* ========== {{ t('about.changelog') }} ========== */
 .changelog-list { display: flex; flex-direction: column; gap: 10px; }
 .changelog-item {
   background: var(--bg-card); border: 1px solid var(--border-color);

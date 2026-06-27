@@ -43,6 +43,12 @@ const mockTranslations: Record<string, string> = {
   'home.add_fund': '添加自选基金',
   'home.add_holding': '添加持仓记录',
   'home.tip': '小提示：在持仓页长按基金可快速操作',
+  'home.quant_observe': '量化观察',
+  'home.global_indices': '全球主要指数',
+  'home.watchlist': '自选基金',
+  'home.market_closed_short': '休市',
+  'common.simple': '简',
+  'common.full': '全',
 }
 
 vi.mock('vue-i18n', () => ({

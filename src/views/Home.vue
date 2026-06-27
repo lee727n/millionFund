@@ -635,12 +635,12 @@ function goToDetail(code: string) {
                   class="ui-mode-btn" 
                   :class="{ active: uiMode === 'simple' }"
                   @click="uiMode = 'simple'"
-                >简</span>
+                >{{ t("common.simple") }}</span>
                 <span 
                   class="ui-mode-btn" 
                   :class="{ active: uiMode === 'full' }"
                   @click="uiMode = 'full'"
-                >全</span>
+                >{{ t("common.full") }}</span>
               </div>
               <van-button 
                 size="small" 
@@ -723,12 +723,12 @@ function goToDetail(code: string) {
                 class="ui-mode-btn" 
                 :class="{ active: uiMode === 'simple' }"
                 @click="uiMode = 'simple'"
-              >简</span>
+              >{{ t("common.simple") }}</span>
               <span 
                 class="ui-mode-btn" 
                 :class="{ active: uiMode === 'full' }"
                 @click="uiMode = 'full'"
-              >全</span>
+              >{{ t("common.full") }}</span>
             </div>
             <van-button 
               size="small" 
@@ -772,7 +772,7 @@ function goToDetail(code: string) {
           />
           <div v-if="observeHoldings.length > 0" class="observe-divider">
             <div class="observe-divider-line"></div>
-            <span class="observe-divider-text">量化观察</span>
+            <span class="observe-divider-text">{{ t("home.quant_observe") }}</span>
             <span 
               class="observe-profit-badge" 
               :class="isWeekend ? 'closed' : (observeTodayProfitPercent >= 0 ? 'up' : 'down')"
@@ -799,7 +799,7 @@ function goToDetail(code: string) {
         <div class="overview-title">
           <div class="title-left">
             <span class="live-dot" :class="tradingStatus.class"></span>
-            <span>全球主要指数</span>
+            <span>{{ t("home.global_indices") }}</span>
           </div>
           <div class="trading-status" :class="tradingStatus.class">
             <span class="status-text">{{ tradingStatus.text }}</span>
@@ -866,7 +866,7 @@ function goToDetail(code: string) {
       
       <!-- 自选基金标题 -->
       <div class="section-header" v-if="fundStore.watchlist.length > 0">
-        <span class="section-title">自选基金</span>
+        <span class="section-title">{{ t("home.watchlist") }}</span>
         <span class="fund-count">{{ fundStore.watchlist.length }}只</span>
       </div>
       
@@ -891,7 +891,7 @@ function goToDetail(code: string) {
       <!-- 首次启动 / 空状态引导卡片 -->
       <div v-if="fundStore.watchlist.length === 0" class="onboarding-card">
         <div class="onboarding-icon">📈</div>
-        <div class="onboarding-title">欢迎使用基金管理</div>
+        <div class="onboarding-title">{{ t("home.welcome") }}</div>
         <div class="onboarding-desc">
           在这里管理你的自选和持仓基金<br />
           实时掌握涨跌情况和投资收益

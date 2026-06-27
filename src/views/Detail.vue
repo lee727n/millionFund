@@ -39,6 +39,7 @@ import FundAnnouncementsSection from '@/components/FundAnnouncementsSection.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const fundStore = useFundStore()
 const holdingStore = useHoldingStore()
 
@@ -74,7 +75,7 @@ const announcements = ref<{ id: string; title: string; date: string; type: strin
 
 // [WHAT] 最佳周期回报（用于顶部核心指标展示）
 const bestPeriodReturn = computed(() => {
-  if (periodReturns.value.length === 0) return { label: '最佳回报', value: 0 }
+  if (periodReturns.value.length === 0) return { label: t('detail.best_return'), value: 0 }
   const sorted = [...periodReturns.value].sort((a, b) => b.fundReturn - a.fundReturn)
   return { label: sorted[0]!.label, value: sorted[0]!.fundReturn }
 })
@@ -253,7 +254,7 @@ async function loadFundData() {
     }
       
   } catch {
-    showToast('加载失败')
+    showToast(t('common.load_failed'))
   } finally {
     isLoading.value = false
   }
@@ -390,7 +391,7 @@ function goBack() {
 function editHolding() {
   const holding = holdingInfo.value
   if (!holding) {
-    showToast('暂未持有该基金')
+    showToast(t('detail.not_holding'))
     return
   }
   
@@ -410,11 +411,11 @@ async function submitCostAdjust() {
   const profit = parseFloat(costFormData.value.profit)
   
   if (!marketValue || marketValue <= 0) {
-    showToast('请输入有效的持仓市值')
+    showToast(t('detail.invalid_amount'))
     return
   }
   if (isNaN(profit)) {
-    showToast('请输入有效的持仓收益')
+    showToast(t('detail.invalid_profit'))
     return
   }
   
@@ -429,7 +430,7 @@ async function submitCostAdjust() {
     const latestNetValue = await fetchLatestNetValue(holding.code)
     
     if (!latestNetValue || latestNetValue.netValue <= 0) {
-      showToast('获取最新净值失败，请稍后重试')
+      showToast(t('detail.fetch_nav_failed'))
       return
     }
     
@@ -460,10 +461,10 @@ async function submitCostAdjust() {
     }
     
     holdingStore.addOrUpdateHolding(record)
-    showToast('成本调整成功')
+    showToast(t("holding.cost_adjust_success"))
     router.back()
   } catch (error) {
-    showToast('成本调整失败')
+    showToast(t("holding.cost_adjust_failed"))
   } finally {
     closeToast()
     showCostDialog.value = false
@@ -474,17 +475,17 @@ async function submitCostAdjust() {
 async function handleDelete() {
   const holding = holdingInfo.value
   if (!holding) {
-    showToast('暂未持有该基金')
+    showToast(t('detail.not_holding'))
     return
   }
   
   try {
     await showConfirmDialog({
-      title: '确认删除',
-      message: '确定要删除该持仓记录吗？'
+      title: t('common.confirm_delete'),
+      message: t("detail.delete_confirm")
     })
     await holdingStore.removeHolding(fundCode.value)
-    showToast('已删除')
+    showToast(t('common.deleted'))
     router.back()
   } catch {
     // 用户取消
@@ -497,17 +498,17 @@ function showTransactions() {
 
 async function removeFromWatchlist() {
   if (!fundStore.isFundInWatchlist(fundCode.value)) {
-    showToast('不在自选中')
+    showToast(t('detail.not_in_watchlist'))
     return
   }
   
   try {
     await showConfirmDialog({
-      title: '删除自选',
+      title: t('detail.delete_watchlist'),
       message: `确定将 ${fundInfo.value?.name || '该基金'} 从自选中删除？`
     })
     await fundStore.removeFund(fundCode.value)
-    showToast('已删除')
+    showToast(t('common.deleted'))
   } catch {
     // 取消
   }
@@ -515,11 +516,11 @@ async function removeFromWatchlist() {
 
 async function addToWatchlist() {
   if (fundStore.isFundInWatchlist(fundCode.value)) {
-    showToast('已在自选中')
+    showToast(t("detail.already_in_watchlist"))
     return
   }
   await fundStore.addFund(fundCode.value, fundInfo.value?.name || '')
-  showToast('添加成功')
+  showToast(t('common.add_success'))
 }
 
 function showMore() {
@@ -530,7 +531,7 @@ function showMore() {
 function manageSectors() {
   const holding = holdingInfo.value
   if (!holding) {
-    showToast('暂未持有该基金')
+    showToast(t('detail.not_holding'))
     return
   }
   
@@ -551,7 +552,7 @@ async function submitSectorAdjust() {
   }
   
   await holdingStore.addOrUpdateHolding(record)
-  showToast('行业板块更新成功')
+  showToast(t('detail.sectors_updated'))
   showSectorDialog.value = false
 }
 
@@ -559,7 +560,7 @@ async function submitSectorAdjust() {
 function manageSource() {
   const holding = holdingInfo.value
   if (!holding) {
-    showToast('暂未持有该基金')
+    showToast(t('detail.not_holding'))
     return
   }
   
@@ -585,14 +586,14 @@ async function submitSourceAdjust() {
   }
   
   await holdingStore.addOrUpdateHolding(record)
-  showToast('来源更新成功')
+  showToast(t('detail.source_updated'))
   showSourceDialog.value = false
 }
 
 // [WHAT] 跳转同类基金
 function goToSimilarFund(code: string) {
   if (code === fundCode.value) {
-    showToast('已在当前基金')
+    showToast(t('detail.already_in_this_fund'))
     return
   }
   router.push(`/detail/${code}`)
@@ -609,7 +610,7 @@ function openAnnouncement(url: string) {
   if (url) {
     window.open(url, '_blank')
   } else {
-    showToast('暂无详情链接')
+    showToast(t('detail.no_detail_link'))
   }
 }
 
@@ -676,11 +677,11 @@ function formatPercent(num: number): string {
         </div>
         <div class="sub-metrics">
           <div class="metric-item">
-            <div class="metric-label">估算净值</div>
+            <div class="metric-label">{{ t('detail.estimate_nav') }}</div>
             <div class="metric-value" :data-test-id="'valuation'">{{ fundInfo?.gsz || '--' }}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">昨日净值</div>
+            <div class="metric-label">{{ t('detail.yesterday_nav') }}</div>
             <div class="metric-value">{{ fundInfo?.dwjz || '--' }}</div>
           </div>
           <div class="metric-item">
@@ -700,17 +701,17 @@ function formatPercent(num: number): string {
     <div v-if="holdingDetails" class="holding-panel" :class="{ collapsed: !holdingExpanded }">
       <div class="holding-summary" @click="holdingExpanded = !holdingExpanded">
         <div class="summary-item">
-          <span class="summary-label">持有金额</span>
+          <span class="summary-label">{{ t('detail.hold_amount') }}</span>
           <span class="summary-value">{{ formatNum(holdingDetails.amount) }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">持有收益</span>
+          <span class="summary-label">{{ t('detail.hold_profit') }}</span>
           <span class="summary-value" :class="holdingDetails.profit >= 0 ? 'up' : 'down'">
             {{ formatNum(holdingDetails.profit) }}
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">收益率</span>
+          <span class="summary-label">{{ t('holding.profit_rate_label') }}</span>
           <span class="summary-value" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
             {{ formatPercent(holdingDetails.profitRate) }}
           </span>
@@ -724,47 +725,47 @@ function formatPercent(num: number): string {
       <transition name="slide">
         <div v-show="holdingExpanded" class="holding-grid">
           <div class="holding-item">
-            <div class="item-label">持有金额</div>
+            <div class="item-label">{{ t('detail.hold_amount') }}</div>
             <div class="item-value">{{ formatNum(holdingDetails.amount) }}</div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持有份额</div>
+            <div class="item-label">{{ t('detail.hold_shares') }}</div>
             <div class="item-value">{{ formatNum(holdingDetails.shares) }}</div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持仓占比</div>
+            <div class="item-label"{{ t('detail.holding_ratio') }}</div>
             <div class="item-value">{{ holdingDetails.ratio.toFixed(2) }}%</div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持有收益</div>
+            <div class="item-label">{{ t('detail.hold_profit') }}</div>
             <div class="item-value" :class="holdingDetails.profit >= 0 ? 'up' : 'down'">
               {{ formatNum(holdingDetails.profit) }}
             </div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持有收益率</div>
+            <div class="item-label">{{ t('detail.hold_profit_rate') }}</div>
             <div class="item-value" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
               {{ formatPercent(holdingDetails.profitRate) }}
             </div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持仓成本</div>
+            <div class="item-label"{{ t('detail.holding_cost') }}</div>
             <div class="item-value">{{ holdingDetails.cost.toFixed(4) }}</div>
           </div>
           <div class="holding-item">
-            <div class="item-label">当日收益</div>
+            <div class="item-label">{{ t('detail.today_profit') }}</div>
             <div class="item-value" :class="holdingDetails.todayProfit >= 0 ? 'up' : 'down'">
               {{ formatNum(holdingDetails.todayProfit) }}
             </div>
           </div>
           <div class="holding-item">
-            <div class="item-label">昨日收益</div>
+            <div class="item-label">{{ t('detail.yesterday_profit') }}</div>
             <div class="item-value" :class="holdingDetails.yesterdayProfit >= 0 ? 'up' : 'down'">
               {{ formatNum(holdingDetails.yesterdayProfit) }}
             </div>
           </div>
           <div class="holding-item">
-            <div class="item-label">持有天数</div>
+            <div class="item-label">{{ t('detail.hold_days') }}</div>
             <div class="item-value">{{ holdingDetails.holdDays }}</div>
           </div>
         </div>
@@ -809,13 +810,13 @@ function formatPercent(num: number): string {
       <div v-if="holdingDetails" class="profit-chart">
         <div class="profit-summary">
           <div class="profit-total">
-            <span class="label">累计收益</span>
+            <span class="label">{{ t('detail.total_profit') }}</span>
             <span class="value" :class="holdingDetails.profit >= 0 ? 'up' : 'down'">
               {{ formatNum(holdingDetails.profit) }}
             </span>
           </div>
           <div class="profit-rate">
-            <span class="label">收益率</span>
+            <span class="label">{{ t('holding.profit_rate_label') }}</span>
             <span class="value" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
               {{ formatPercent(holdingDetails.profitRate) }}
             </span>
@@ -835,7 +836,7 @@ function formatPercent(num: number): string {
     <!-- 关联板块 -->
     <div v-if="sectorInfo" class="sector-section" @click="searchSimilarFunds">
       <div class="sector-info">
-        <span class="sector-label">关联板块：</span>
+        <span class="sector-label">{{ t('detail.related_sectors') }}</span>
         <span class="sector-name">{{ sectorInfo.name }}</span>
         <span class="sector-change" :class="sectorInfo.dayReturn >= 0 ? 'up' : 'down'">
           {{ formatPercent(sectorInfo.dayReturn) }}
@@ -850,7 +851,7 @@ function formatPercent(num: number): string {
     <!-- 自定义行业板块 -->
     <div v-if="holdingInfo?.industrySectors?.length" class="info-section">
       <div class="section-header">
-        <span>自定义行业板块</span>
+        <span>{{ t('detail.custom_sectors') }}</span>
       </div>
       <div class="sector-tags">
         <span class="sector-tag">
@@ -862,7 +863,7 @@ function formatPercent(num: number): string {
     <!-- 来源信息 -->
     <div v-if="holdingInfo?.source || holdingInfo?.isQDII" class="info-section">
       <div class="section-header">
-        <span>基金来源</span>
+        <span>{{ t('detail.fund_source') }}</span>
       </div>
       <div class="source-info">
         <van-icon name="shop-o" size="16" />
@@ -874,8 +875,8 @@ function formatPercent(num: number): string {
     <!-- 同类基金 -->
     <div v-if="similarFunds.length > 0" class="similar-section">
       <div class="section-header">
-        <span>同类基金</span>
-        <span class="section-tip">年涨幅TOP5</span>
+        <span>{{ t('detail.similar_funds') }}</span>
+        <span class="section-tip">{{ t('detail.year_up_top5') }}</span>
       </div>
       <div class="similar-list">
         <div 
@@ -898,25 +899,25 @@ function formatPercent(num: number): string {
     <!-- ========== 基金规模 ========== -->
     <div v-if="fundScale && fundScale.scale > 0" class="info-section">
       <div class="section-header">
-        <span>基金规模</span>
+        <span>{{ t('detail.fund_scale') }}</span>
         <span class="section-tip">{{ fundScale.scaleDate }}</span>
       </div>
       <div class="scale-grid">
         <div class="scale-item">
           <div class="scale-value">{{ fundScale.scale.toFixed(2) }}亿</div>
-          <div class="scale-label">资产规模</div>
+          <div class="scale-label">{{ t('detail.asset_scale') }}</div>
         </div>
         <div class="scale-item">
           <div class="scale-value">{{ fundScale.shareTotal.toFixed(2) }}亿份</div>
-          <div class="scale-label">总份额</div>
+          <div class="scale-label">{{ t('detail.total_shares') }}</div>
         </div>
         <div class="scale-item">
           <div class="scale-value">{{ fundScale.institutionRatio.toFixed(1) }}%</div>
-          <div class="scale-label">机构持有</div>
+          <div class="scale-label">{{ t('detail.inst_hold') }}</div>
         </div>
         <div class="scale-item">
           <div class="scale-value">{{ fundScale.personalRatio.toFixed(1) }}%</div>
-          <div class="scale-label">个人持有</div>
+          <div class="scale-label">{{ t('detail.personal_hold') }}</div>
         </div>
       </div>
     </div>
@@ -924,30 +925,30 @@ function formatPercent(num: number): string {
     <!-- ========== 费率信息 ========== -->
     <div v-if="fundFees" class="info-section">
       <div class="section-header">
-        <span>费率信息</span>
+        <span>{{ t('detail.fee_info') }}</span>
       </div>
       <div class="fee-grid">
         <div class="fee-item">
-          <div class="fee-label">管理费</div>
+          <div class="fee-label">{{ t('detail.management_fee') }}</div>
           <div class="fee-value">{{ fundFees.managementFee.toFixed(2) }}%/年</div>
         </div>
         <div class="fee-item">
-          <div class="fee-label">托管费</div>
+          <div class="fee-label">{{ t('detail.custodian_fee') }}</div>
           <div class="fee-value">{{ fundFees.custodianFee.toFixed(2) }}%/年</div>
         </div>
         <div class="fee-item" v-if="fundFees.salesServiceFee > 0">
-          <div class="fee-label">销售服务费</div>
+          <div class="fee-label">{{ t('detail.sales_service_fee') }}</div>
           <div class="fee-value">{{ fundFees.salesServiceFee.toFixed(2) }}%/年</div>
         </div>
       </div>
       
      
       <div class="fee-table">
-        <div class="table-title">申购费率</div>
+        <div class="table-title">{{ t('detail.purchase_rate') }}</div>
         <div class="table-row header">
-          <span>金额</span>
-          <span>原费率</span>
-          <span>优惠费率</span>
+          <span>{{ t('detail.amount') }}</span>
+          <span>{{ t('detail.original_rate') }}</span>
+          <span>{{ t('detail.discounted_rate') }}</span>
         </div>
         <div 
           v-for="(fee, idx) in fundFees.purchaseFees.slice(0, 4)" 
@@ -970,10 +971,10 @@ function formatPercent(num: number): string {
       
      
       <div class="fee-table">
-        <div class="table-title">赎回费率</div>
+        <div class="table-title">{{ t('detail.redemption_fee') }}</div>
         <div class="table-row header">
-          <span>持有期限</span>
-          <span>费率</span>
+          <span>{{ t('detail.hold_days') }}</span>
+          <span>{{ t('detail.rate') }}</span>
         </div>
         <div 
           v-for="(fee, idx) in fundFees.redemptionFees" 
@@ -1005,7 +1006,7 @@ function formatPercent(num: number): string {
     <!-- ========== 重仓股票 ========== -->
     <div class="info-section">
       <div class="section-header">
-        <span>重仓股票</span>
+        <span>{{ t('detail.top_stocks') }}</span>
         <span class="section-tip" v-if="stockHoldings.length > 0">
           TOP{{ stockHoldings.length }}
         </span>
@@ -1023,17 +1024,17 @@ function formatPercent(num: number): string {
           </div>
           <div class="holding-ratio">
             <div class="ratio-value">{{ stock.holdingRatio.toFixed(2) }}%</div>
-            <div class="ratio-label">持仓占比</div>
+            <div class="ratio-label">{{ t('detail.hold_ratio') }}</div>
           </div>
         </div>
       </div>
-      <div v-else class="empty-hint">暂无持仓数据</div>
+      <div v-else class="empty-hint"{{ t('detail.no_holding_data') }}</div>
     </div>
 
     <!-- ========== 行业配置 ========== -->
     <div class="info-section" v-if="industryAllocation.length > 0">
       <div class="section-header">
-        <span>行业配置</span>
+        <span>{{ t('detail.industry_alloc') }}</span>
       </div>
       <div class="industry-chart">
      
@@ -1069,32 +1070,32 @@ function formatPercent(num: number): string {
    
     <div class="info-section" v-if="assetAllocation">
       <div class="section-header">
-        <span>资产配置</span>
+        <span>{{ t('detail.asset_alloc') }}</span>
       </div>
       <div class="asset-bars">
         <div class="asset-item" v-if="assetAllocation.stock > 0">
-          <span class="asset-label">股票</span>
+          <span class="asset-label">{{ t('detail.stock_label') }}</span>
           <div class="asset-bar">
             <div class="bar-fill stock" :style="{ width: assetAllocation.stock + '%' }"></div>
           </div>
           <span class="asset-value">{{ assetAllocation.stock }}%</span>
         </div>
         <div class="asset-item" v-if="assetAllocation.bond > 0">
-          <span class="asset-label">债券</span>
+          <span class="asset-label">{{ t('detail.bond_label') }}</span>
           <div class="asset-bar">
             <div class="bar-fill bond" :style="{ width: assetAllocation.bond + '%' }"></div>
           </div>
           <span class="asset-value">{{ assetAllocation.bond }}%</span>
         </div>
         <div class="asset-item" v-if="assetAllocation.cash > 0">
-          <span class="asset-label">现金</span>
+          <span class="asset-label">{{ t('detail.cash_label') }}</span>
           <div class="asset-bar">
             <div class="bar-fill cash" :style="{ width: assetAllocation.cash + '%' }"></div>
           </div>
           <span class="asset-value">{{ assetAllocation.cash }}%</span>
         </div>
         <div class="asset-item" v-if="assetAllocation.other > 0">
-          <span class="asset-label">其他</span>
+          <span class="asset-label">{{ t('detail.other_label') }}</span>
           <div class="asset-bar">
             <div class="bar-fill other" :style="{ width: assetAllocation.other + '%' }"></div>
           </div>
@@ -1105,7 +1106,7 @@ function formatPercent(num: number): string {
 
     <div class="info-section" v-if="fundRating">
       <div class="section-header">
-        <span>基金评级</span>
+        <span>{{ t('detail.fund_rating') }}</span>
         <span class="section-tip">{{ fundRating.riskLevel }}</span>
       </div>
       <div class="rating-content">
@@ -1122,19 +1123,19 @@ function formatPercent(num: number): string {
         <div class="rating-metrics">
           <div class="metric-item">
             <div class="metric-value">{{ fundRating.sharpeRatio || '--' }}</div>
-            <div class="metric-label">夏普比率</div>
+            <div class="metric-label">{{ t('detail.sharpe_ratio') }}</div>
           </div>
           <div class="metric-item">
             <div class="metric-value danger">{{ fundRating.maxDrawdown ? fundRating.maxDrawdown + '%' : '--' }}</div>
-            <div class="metric-label">最大回撤</div>
+            <div class="metric-label">{{ t('detail.max_drawdown') }}</div>
           </div>
           <div class="metric-item">
             <div class="metric-value">{{ fundRating.volatility ? fundRating.volatility + '%' : '--' }}</div>
-            <div class="metric-label">波动率</div>
+            <div class="metric-label">{{ t('detail.volatility') }}</div>
           </div>
           <div class="metric-item">
             <div class="metric-value primary">{{ fundRating.rankInSimilar }}</div>
-            <div class="metric-label">同类排名</div>
+            <div class="metric-label">{{ t('detail.peer_rank') }}</div>
           </div>
         </div>
       </div>
@@ -1159,19 +1160,19 @@ function formatPercent(num: number): string {
     <div class="bottom-bar">
       <div class="bar-item" @click="editHolding">
         <van-icon name="edit" size="20" />
-        <span>修改持仓</span>
+        <span{{ t('detail.edit_holding') }}</span>
       </div>
       <div class="bar-item" v-if="holdingInfo" @click="handleDelete">
         <van-icon name="delete" size="20" />
-        <span>删除持仓</span>
+        <span{{ t('detail.remove_from_holdings') }}</span>
       </div>
       <div class="bar-item" @click="manageSource">
         <van-icon name="shop-o" size="20" />
-        <span>来源</span>
+        <span>{{ t('news.source') }}</span>
       </div>
       <div class="bar-item" @click="showTransactions">
         <van-icon name="orders-o" size="20" />
-        <span>交易记录</span>
+        <span{{ t('detail.trade_record') }}</span>
       </div>
       <div class="bar-item" @click="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()">
         <van-icon :name="fundStore.isFundInWatchlist(fundCode) ? 'star' : 'star-o'" size="20" />
@@ -1179,11 +1180,11 @@ function formatPercent(num: number): string {
       </div>
       <div class="bar-item" @click="manageSectors">
         <van-icon name="cluster-o" size="20" />
-        <span>行业板块</span>
+        <span>{{ t('detail.industry_sector') }}</span>
       </div>
       <div class="bar-item" @click="showMore">
         <van-icon name="ellipsis" size="20" />
-        <span>更多</span>
+        <span>{{ t('detail.more') }}</span>
       </div>
     </div>
 
@@ -1196,37 +1197,37 @@ function formatPercent(num: number): string {
     >
       <div class="cost-dialog">
         <div class="dialog-header">
-          <span>调整持仓成本</span>
+          <span>{{ t('detail.adjust_cost') }}</span>
           <van-icon name="cross" @click="showCostDialog = false" />
         </div>
 
         <div class="dialog-content">
           <van-field
             :model-value="`${costFormData.name} (${costFormData.code})`"
-            label="基金"
+            :label="t("基金")
             readonly
           />
           <van-field
             v-model="costFormData.amount"
             type="number"
-            label="持仓金额"
-            placeholder="调整后的持仓金额（元）"
+            :label="t("持仓金额")
+            :placeholder="t("调整后的持仓金额（元）")
           />
           <van-field
             v-model="costFormData.profit"
             type="number"
-            label="持仓收益"
-            placeholder="调整后的持仓收益（元）"
+            :label="t("持仓收益")
+            :placeholder="t("调整后的持仓收益（元）")
           />
           <div class="cost-tip">
             <van-icon name="info-o" />
-            <span>用于分红再投、补仓摊薄等场景</span>
+            <span>{{ t('detail.cost_desc') }}</span>
           </div>
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showCostDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitCostAdjust">确定</van-button>
+          <van-button @click="showCostDialog = false">{{ t("取消") }}/van-button>
+          <van-button type="primary" @click="submitCostAdjust">{{ t("确定") }}/van-button>
         </div>
       </div>
     </van-popup>
@@ -1240,32 +1241,32 @@ function formatPercent(num: number): string {
     >
       <div class="cost-dialog">
         <div class="dialog-header">
-          <span>管理行业板块</span>
+          <span>{{ t('detail.manage_sectors') }}</span>
           <van-icon name="cross" @click="showSectorDialog = false" />
         </div>
 
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            label="基金"
+            :label="t("基金")
             readonly
           />
           <van-field
             v-model="sectorFormData.sectors"
             type="textarea"
-            label="行业板块"
+            :label="t("行业板块")
             placeholder="每行输入一个行业板块，例如：\n新能源\n半导体\n医药"
             :rows="5"
           />
           <div class="cost-tip">
             <van-icon name="info-o" />
-            <span>为基金关联行业板块，便于趋势分析</span>
+            <span>{{ t('detail.sectors_desc') }}</span>
           </div>
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showSectorDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitSectorAdjust">确定</van-button>
+          <van-button @click="showSectorDialog = false">{{ t("取消") }}/van-button>
+          <van-button type="primary" @click="submitSectorAdjust">{{ t("确定") }}/van-button>
         </div>
       </div>
     </van-popup>
@@ -1279,18 +1280,18 @@ function formatPercent(num: number): string {
     >
       <div class="cost-dialog">
         <div class="dialog-header">
-          <span>管理来源</span>
+          <span>{{ t('detail.manage_source') }}</span>
           <van-icon name="cross" @click="showSourceDialog = false" />
         </div>
 
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            label="基金"
+            :label="t("基金")
             readonly
           />
           <div class="form-item">
-            <label class="form-label">来源</label>
+            <label class="form-label">{{ t('news.source') }}</label>
             <van-radio-group v-model="sourceFormData.source" class="source-radio-group">
               <van-radio 
                 v-for="option in sourceOptions" 
@@ -1304,19 +1305,19 @@ function formatPercent(num: number): string {
           </div>
           <div class="form-item">
             <div class="qdii-toggle">
-              <span class="qdii-label">是否为QDII</span>
+              <span class="qdii-label">{{ t('detail.is_qdii') }}</span>
               <van-switch v-model="sourceFormData.isQDII" size="24" />
             </div>
           </div>
           <div class="cost-tip">
             <van-icon name="info-o" />
-            <span>记录基金的购买渠道，便于管理</span>
+            <span>{{ t('detail.source_desc') }}</span>
           </div>
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showSourceDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitSourceAdjust">确定</van-button>
+          <van-button @click="showSourceDialog = false">{{ t("取消") }}/van-button>
+          <van-button type="primary" @click="submitSourceAdjust">{{ t("确定") }}/van-button>
         </div>
       </div>
     </van-popup>
