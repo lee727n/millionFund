@@ -3,7 +3,7 @@
     <!-- 导航栏 -->
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">交易记录</span>
+      <span class="header-title">{{ t('trades.title') }}</span>
       <van-icon name="plus" size="22" @click="showPopup = true" />
     </div>
 
@@ -17,8 +17,8 @@
       <!-- 空状态 -->
       <div v-if="fundTrades.length === 0" class="empty-state">
         <van-icon name="records-o" size="48" :style="{ color: 'var(--van-text-color-3)' }" />
-        <p class="empty-text">暂无交易记录</p>
-        <p class="empty-hint">点击右上角 + 添加第一条记录</p>
+        <p class="empty-text">{{ t('trades.no_records') }}</p>
+        <p class="empty-hint">{{ t('trades.add_hint') }}</p>
       </div>
 
       <!-- 交易记录列表 -->
@@ -38,20 +38,20 @@
               <span class="value">¥{{ trade.amount.toFixed(2) }}</span>
             </div>
             <div class="trade-item" v-if="trade.netValue">
-              <span class="label">净值</span>
+              <span class="label">{{ t('trades.net_value') }}</span>
               <span class="value">{{ trade.netValue.toFixed(4) }}</span>
             </div>
             <div class="trade-item" v-if="trade.shares">
-              <span class="label">份额</span>
+              <span class="label">{{ t('trades.shares') }}</span>
               <span class="value">{{ trade.shares.toFixed(2) }}</span>
             </div>
             <div class="trade-item" v-if="trade.remark">
-              <span class="label">备注</span>
+              <span class="label">{{ t('trades.remark') }}</span>
               <span class="value">{{ trade.remark }}</span>
             </div>
           </div>
           <div class="trade-actions">
-            <van-button size="mini" type="danger" plain round @click="onDelete(trade.id)">删除</van-button>
+            <van-button size="mini" type="danger" plain round @click="onDelete(trade.id)">{{ t('trades.delete_btn') }}</van-button>
           </div>
         </div>
       </div>
@@ -67,7 +67,7 @@
       :style="{ height: '75%' }"
     >
       <div class="popup-header">
-        <span>添加交易记录</span>
+        <span>{{ t('trades.add_record') }}</span>
         <van-icon name="cross" @click="showPopup = false" />
       </div>
       <div class="popup-body">
@@ -75,14 +75,14 @@
           <van-field
             v-model="form.type"
             name="type"
-            label="类型"
-            :rules="[{ required: true, message: '请选择类型' }]"
+            label="t('trades.type')"
+            :rules="[{ required: true, message: t('trades.select_type') }]"
           >
             <template #input>
               <van-radio-group v-model="form.type" direction="horizontal">
-                <van-radio name="buy">买入</van-radio>
-                <van-radio name="sell">卖出</van-radio>
-                <van-radio name="dividend">分红</van-radio>
+                <van-radio name="buy">{{ t('trades.buy') }}</van-radio>
+                <van-radio name="sell">{{ t('trades.sell') }}</van-radio>
+                <van-radio name="dividend">{{ t('trades.dividend_reinvest') }}</van-radio>
               </van-radio-group>
             </template>
           </van-field>
@@ -91,40 +91,40 @@
             v-model="form.amount"
             type="number"
             name="amount"
-            label="金额 (¥)"
-            placeholder="请输入金额"
-            :rules="[{ required: true, message: '请输入金额' }]"
+            label="t('trades.amount')"
+            placeholder="t('trades.enter_amount')"
+            :rules="[{ required: true, message: t('trades.enter_amount') }]"
           />
 
           <van-field
             v-model="form.netValue"
             type="number"
             name="netValue"
-            label="净值"
-            placeholder="请输入净值"
+            :label="t('trades.net_value_label')"
+            :placeholder="t('trades.enter_net_value')"
           />
 
           <van-field
             v-model="form.shares"
             type="number"
             name="shares"
-            label="份额"
-            placeholder="请输入份额"
+            :label="t('trades.shares_label')"
+            :placeholder="t('trades.enter_shares')"
           />
 
           <van-field
             v-model="form.fee"
             type="number"
             name="fee"
-            label="手续费 (¥)"
+            :label="t('trades.fee_label')"
             placeholder="可选"
           />
 
           <van-field
             v-model="form.date"
             name="date"
-            label="日期"
-            placeholder="请选择日期"
+            :label="t('trades.date_label')"
+            :placeholder="t('trades.select_date')"
             :rules="[{ required: true, message: '请选择日期' }]"
             @click="showDatePicker = true"
           />
@@ -157,13 +157,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { showConfirmDialog } from 'vant'
+import { useI18n } from 'vue-i18n'
+import { showToast, showConfirmDialog } from 'vant'
 import { useTradeStore } from '@/stores/trade'
 import { useHoldingStore } from '@/stores/holding'
 import type { TradeRecord } from '@/types/fund'
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 const tradeStore = useTradeStore()
 const holdingStore = useHoldingStore()
 
