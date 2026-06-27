@@ -167,8 +167,8 @@ const route = useRoute()
 const tradeStore = useTradeStore()
 const holdingStore = useHoldingStore()
 
-const fundCode = route.params.code as string
-const fund = holdingStore.holdings.find(h => h.code === fundCode)
+const fundCode = (route.params?.code as string) || ''
+const fund = fundCode ? holdingStore.holdings.find(h => h.code === fundCode) : undefined
 const fundName = fund?.name || ''
 
 const fundTrades = computed(() => {
