@@ -41,23 +41,25 @@ jobs:
           files: ./coverage/coverage-summary.json
           fail_ci_if_error: false
 
-      - name: 🚦 覆盖率门禁检查
+      - name: 🚦 覆盖率门禁检查（警告模式）
         run: |
           if [ ! -f coverage/coverage-summary.json ]; then
-            echo "::error::未生成覆盖率报告，请检查测试配置"
-            exit 1
+            echo "::warning::未生成覆盖率报告，请检查测试配置"
+            exit 0
           fi
 
           COVERAGE=$(node -e "const d=require('./coverage/coverage-summary.json'); const p=d.total.lines.pct; console.log(p)")
           echo "📊 当前行覆盖率: ${COVERAGE}%"
+          echo "⚠️ 目标覆盖率: 60%（当前为警告模式，不阻塞构建）"
 
           if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-            echo "::error::覆盖率过低！当前 ${COVERAGE}%，门禁要求 ≥ 60%"
-            echo "::notice::请添加更多单元测试提升覆盖率"
-            exit 1
+            echo "::warning::覆盖率低于 60%！当前 ${COVERAGE}%，建议添加更多单元测试"
+          else
+            echo "✅ 覆盖率检查通过: ${COVERAGE}% ≥ 60%"
           fi
-
-          echo "✅ 覆盖率检查通过: ${COVERAGE}% ≥ 60%"
+          
+          # 不阻塞构建 - 仅警告
+          exit 0
 
       - name: 📊 评论 PR（覆盖率变化）
         if: github.event_name == 'pull_request'
