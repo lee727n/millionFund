@@ -3,7 +3,7 @@
     <!-- 导航栏 -->
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">涨跌提醒</span>
+      <span class="header-title">{{ t('alerts.title') }}</span>/span>
       <van-icon name="plus" size="22" @click="showAdd = true" />
     </div>
 
@@ -11,8 +11,8 @@
       <!-- 空状态 -->
       <div v-if="rules.length === 0" class="empty-state">
         <van-icon name="bell-o" size="48" :style="{ color: 'var(--van-text-color-3)' }" />
-        <p class="empty-text">暂无提醒规则</p>
-        <p class="empty-hint">点击右上角 + 添加第一条提醒</p>
+        <p class="empty-text">{{ t('alerts.no_rules') }}</p>/p>
+        <p class="empty-hint">{{ t('alerts.add_hint') }}</p>/p>
       </div>
 
       <!-- 提醒规则列表 -->
@@ -31,7 +31,7 @@
             <span class="rule-detail">{{ detailLabel(rule) }}</span>
           </div>
           <div class="rule-actions">
-            <van-button size="mini" type="danger" plain round @click="onRemove(rule.id)">删除</van-button>
+            <van-button size="mini" type="danger" plain round @click="onRemove(rule.id)">{{ t('alerts.delete') }}</van-button>/van-button>
           </div>
         </div>
       </div>
@@ -47,7 +47,7 @@
       :style="{ height: '80%' }"
     >
       <div class="popup-header">
-        <span>添加提醒规则</span>
+        <span>{{ t('alerts.add_rule') }}</span>/span>
         <van-icon name="cross" @click="showAdd = false" />
       </div>
       <div class="popup-body">
@@ -56,24 +56,24 @@
           <van-field
             v-model="form.fundName"
             name="fund"
-            label="基金"
-            placeholder="请选择基金"
+            :label="t('alerts.fund_label')"
+            :placeholder="t('alerts.select_fund')"
             readonly
             is-link
             @click="showFundPicker = true"
-            :rules="[{ required: true, message: '请选择基金' }]"
+            :rules="[{ required: true, message: t('alerts.select_fund') }]"
           />
 
           <!-- 提醒类型 -->
           <van-field
             v-model="form.typeLabel"
             name="type"
-            label="提醒类型"
-            placeholder="请选择提醒类型"
+            :label="t('alerts.type_label')"
+            :placeholder="t('alerts.select_type')"
             readonly
             is-link
             @click="showTypePicker = true"
-            :rules="[{ required: true, message: '请选择提醒类型' }]"
+            :rules="[{ required: true, message: t('alerts.select_type') }]"
           />
 
           <!-- 阈值提醒：净值阈值 -->
@@ -82,20 +82,20 @@
             v-model="form.threshold"
             type="number"
             name="threshold"
-            label="净值阈值"
-            placeholder="请输入净值阈值"
-            :rules="[{ required: true, message: '请输入净值阈值' }]"
+            :label="t('alerts.threshold_label')"
+            :placeholder="t('alerts.enter_threshold')"
+            :rules="[{ required: true, message: t('alerts.enter_threshold') }]"
           />
           <van-field
             v-if="form.type === 'threshold'"
             v-model="form.directionLabel"
             name="direction"
-            label="方向"
-            placeholder="请选择方向"
+            :label="t('alerts.direction_label')"
+            :placeholder="t('alerts.select_direction')"
             readonly
             is-link
             @click="showDirectionPicker = true"
-            :rules="[{ required: true, message: '请选择方向' }]"
+            :rules="[{ required: true, message: t('alerts.select_direction') }]"
           />
 
           <!-- 涨跌幅提醒 -->
@@ -162,6 +162,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAlertsStore } from '@/stores/alerts'
 import { useHoldingStore } from '@/stores/holding'
 import { showToast } from 'vant'
@@ -169,6 +170,7 @@ import type { HoldingRecord } from '@/types/fund'
 import type { AlertRule } from '@/stores/alerts'
 
 const router = useRouter()
+const { t } = useI18n()
 const alertsStore = useAlertsStore()
 const holdingStore = useHoldingStore()
 
@@ -201,14 +203,14 @@ const fundOptions = computed(() => {
 })
 
 const typeOptions = [
-  { text: '净值跌破/突破提醒', value: 'threshold' },
-  { text: '单日涨跌幅提醒', value: 'change' },
-  { text: '定时估值推送', value: 'scheduled' },
+  { text: t('alerts.threshold_text'), value: 'threshold' },
+  { text: t('alerts.change_text'), value: 'change' },
+  { text: t('alerts.scheduled_text'), value: 'scheduled' },
 ]
 
 const directionOptions = [
-  { text: '突破 (≥ 阈值)', value: 'above' },
-  { text: '跌破 (≤ 阈值)', value: 'below' },
+  { text: t('alerts.above_text'), value: 'above' },
+  { text: t('alerts.below_text'), value: 'below' },
 ]
 
 function onPickFund(item: any) {
@@ -249,7 +251,7 @@ function onToggle(id: string) {
 
 function onRemove(id: string) {
   alertsStore.removeRule(id)
-  showToast('提醒规则已删除')
+  showToast(t('alerts.rule_deleted'))
 }
 
 function onSubmit() {
@@ -263,7 +265,7 @@ function onSubmit() {
     scheduleTime: form.type === 'scheduled' ? form.scheduleTime : undefined,
     enabled: true,
   })
-  showToast('提醒规则已添加')
+  showToast(t('alerts.rule_added'))
   showAdd.value = false
   resetForm()
 }
