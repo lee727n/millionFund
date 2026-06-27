@@ -18,6 +18,15 @@ import {
   loadGlobalIndices,
 } from './homeState'
 
+// [WHY] 模拟 vue-i18n
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => key, // 返回 key 作为翻译（测试用）
+    locale: { value: 'zh-CN' },
+  }),
+  createI18n: vi.fn(),
+}))
+
 // [WHY] 模拟 vue-router
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -272,8 +281,9 @@ describe('Home.vue - 首页', () => {
 
     const wrapper = mount(Home)
     await flushPromises()
-    expect(wrapper.text()).toContain('利润率')
-    expect(wrapper.text()).toContain('今日盈亏')
+    // 检查 i18n key 是否存在（测试 i18n 集成）
+    expect(wrapper.text()).toContain('home.profit_rate')
+    expect(wrapper.text()).toContain('home.today_profit')
   })
 
   /**

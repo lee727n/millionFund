@@ -3,12 +3,28 @@
     "title": "AI Million Fund",
     "subtitle": "AI Real Trading Reference"
   },
+  "nav": {
+    "home": "Home",
+    "portfolio": "Portfolio",
+    "search": "Search",
+    "watchlist": "Watchlist",
+    "about": "About"
+  },
   "home": {
+    "title": "AI Million Fund",
+    "subtitle": "AI Real Trading Reference",
     "welcome": "Welcome to Fund Manager",
     "description": "Manage your watchlist and holdings here",
     "add_fund": "Add Fund",
     "add_holding": "Add Holding",
-    "tip": "Tip: Long press on holdings page for quick actions"
+    "tip": "Tip: Long press on holdings page for quick actions",
+    "profit_rate": "Profit Rate",
+    "today_profit": "Today's Profit",
+    "holding_trend": "Holding Trend",
+    "watchlist": "Watchlist",
+    "market_closed": "Closed",
+    "sort_asc": "Ascending",
+    "sort_desc": "Descending"
   },
   "portfolio": {
     "title": "Portfolio",
@@ -16,7 +32,52 @@
     "today_profit": "Today's Profit",
     "total_profit": "Total Profit",
     "profit_rate": "Profit Rate",
-    "holdings": "Holdings"
+    "holdings": "Holdings",
+    "no_holdings": "No holdings yet",
+    "sorted_by_profit": "Holdings (Sorted by Profit)"
+  },
+  "holding": {
+    "title": "My Holdings",
+    "add": "Add Holding",
+    "edit": "Edit Holding",
+    "delete": "Delete Holding",
+    "delete_confirm": "Are you sure to delete this holding?",
+    "amount": "Holding Amount",
+    "market_value": "Market Value",
+    "profit": "Profit",
+    "amount_placeholder": "Enter holding amount (CNY)",
+    "market_value_placeholder": "Enter adjusted market value (CNY)",
+    "profit_placeholder": "Enter holding profit (CNY)",
+    "hint": "Enter fund code, amount and profit. System will auto-fetch fund info",
+    "no_data": "No holdings yet",
+    "adjust_cost": "Adjust Cost",
+    "import_screenshot": "Import from Screenshot",
+    "select_screenshot": "Select Screenshot",
+    "screenshot_tip": "Supports Alipay, Tiantian, Danjuan and other platforms",
+    "recognize_failed": "No holding info recognized. Please ensure screenshot is clear",
+    "already_in_holdings": "Fund already in holdings",
+    "select_to_import": "Please select holdings to import",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "watchlist": {
+    "title": "Watchlist",
+    "under_development": "Watchlist page - Under development"
+  },
+  "detail": {
+    "add_to_watchlist": "Add to Watchlist",
+    "remove_from_watchlist": "Remove from Watchlist",
+    "add_to_holdings": "Add to Holdings",
+    "remove_from_holdings": "Remove from Holdings",
+    "adjust_cost": "Adjust Cost",
+    "holding_ratio": "Holding Ratio",
+    "holding_cost": "Holding Cost",
+    "no_holding_data": "No holding data",
+    "edit_holding": "Edit Holding",
+    "delete_holding": "Delete Holding",
+    "delete_confirm": "Are you sure to delete this holding?",
+    "already_in_watchlist": "Already in watchlist",
+    "added_to_watchlist": "Added to watchlist"
   },
   "common": {
     "confirm": "Confirm",
@@ -26,11 +87,47 @@
     "success": "Success",
     "delete": "Delete",
     "edit": "Edit",
-    "save": "Save"
+    "save": "Save",
+    "import": "Import",
+    "export": "Export",
+    "backup": "Backup",
+    "restore": "Restore"
   },
   "market": {
     "shanghai": "Shanghai Index",
     "chinext": "ChiNext Index",
     "nasdaq": "NASDAQ"
+  },
+  "alerts": {
+    "title": "Price Alerts",
+    "add": "Add Alert",
+    "edit": "Edit Alert",
+    "delete": "Delete Alert",
+    "threshold": "Alert Threshold",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "ai_tracking": {
+    "title": "AI Trading",
+    "add": "Add Trading Record",
+    "edit": "Edit Trading Record",
+    "delete": "Delete Trading Record",
+    "success_rate": "Success Rate"
+  },
+  "news": {
+    "title": "Financial News",
+    "no_data": "No news available"
+  },
+  "trades": {
+    "title": "Trading Records",
+    "add": "Add Trade",
+    "edit": "Edit Trade",
+    "delete": "Delete Trade",
+    "buy": "Buy",
+    "sell": "Sell"
+  },
+  "finance_news": {
+    "title": "Finance News",
+    "no_data": "No news available"
   }
 }

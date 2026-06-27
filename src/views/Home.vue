@@ -2,7 +2,8 @@
 // [WHY] 首页 - 展示自选基金列表、市场概览和快捷入口
 // [WHAT] 支持下拉刷新、左滑删除、点击跳转搜索添加、设置提醒
 
-import { ref, onMounted, watch, computed, onUnmounted, onErrorCaptured } from 'vue'
+import { ref, onMounted, watch, computed, onUnmounted, onErrorCaptured, useTemplateRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
@@ -28,6 +29,7 @@ const router = useRouter()
 const fundStore = useFundStore()
 const holdingStore = useHoldingStore()
 const networkStore = useNetworkStore()
+const { t, locale } = useI18n()
 
 // 使用首页数据 hook
 const { indices, globalIndices, tradingSession, currentTime, isRefreshing, loadIndices, loadGlobalIndices } = useHomeData()
@@ -674,15 +676,15 @@ function goToDetail(code: string) {
           <div class="holding-stats">
             <div class="profit-section">
               <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                <span class="profit-label">利润率</span>
+                <span class="profit-label">{{ t('home.profit_rate') }}</span>
                 <span class="profit-percent" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                  {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
+                  {{ isWeekend ? t('home.market_closed') : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
                 </span>
               </div>
               <div class="profit-divider"></div>
               <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
-                <span class="profit-label">今日盈亏</span>
-                <span class="profit-value">{{ isWeekend ? '休市' : ((totalTodayProfit >= 0 ? '+' : '') + totalTodayProfit.toFixed(2) + '元') }}</span>
+                <span class="profit-label">{{ t('home.today_profit') }}</span>
+                <span class="profit-value">{{ isWeekend ? t('home.market_closed') : ((totalTodayProfit >= 0 ? '+' : '') + totalTodayProfit.toFixed(2) + '元') }}</span>
               </div>
             </div>
             <div class="trading-status" :class="tradingStatus.class">

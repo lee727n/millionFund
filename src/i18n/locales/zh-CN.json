@@ -3,12 +3,28 @@
     "title": "AI 百万实盘",
     "subtitle": "AI实盘参考"
   },
+  "nav": {
+    "home": "首页",
+    "portfolio": "持仓",
+    "search": "搜索",
+    "watchlist": "自选",
+    "about": "关于"
+  },
   "home": {
+    "title": "AI 百万实盘",
+    "subtitle": "AI实盘参考",
     "welcome": "欢迎使用基金管理",
     "description": "在这里管理你的自选和持仓基金",
     "add_fund": "添加自选基金",
     "add_holding": "添加持仓记录",
-    "tip": "小提示：在持仓页长按基金可快速操作"
+    "tip": "小提示：在持仓页长按基金可快速操作",
+    "profit_rate": "利润率",
+    "today_profit": "今日盈亏",
+    "holding_trend": "持仓趋势",
+    "watchlist": "自选基金",
+    "market_closed": "休市",
+    "sort_asc": "升序",
+    "sort_desc": "降序"
   },
   "portfolio": {
     "title": "持仓",
@@ -16,7 +32,52 @@
     "today_profit": "今日盈亏",
     "total_profit": "累计盈亏",
     "profit_rate": "利润率",
-    "holdings": "持仓"
+    "holdings": "持仓",
+    "no_holdings": "暂无持仓",
+    "sorted_by_profit": "持仓列表（按盈亏排序）"
+  },
+  "holding": {
+    "title": "我的持仓",
+    "add": "添加持仓",
+    "edit": "编辑持仓",
+    "delete": "删除持仓",
+    "delete_confirm": "确定要删除该持仓记录吗？",
+    "amount": "持仓金额",
+    "market_value": "持仓市值",
+    "profit": "持仓收益",
+    "amount_placeholder": "请输入持仓金额（元）",
+    "market_value_placeholder": "请输入调整后的持仓市值（元）",
+    "profit_placeholder": "请输入持仓收益（元）",
+    "hint": "请输入基金代码、持仓金额和持有收益，系统会自动查询基金信息",
+    "no_data": "暂无持仓记录",
+    "adjust_cost": "调整持仓成本",
+    "import_screenshot": "截图导入持仓",
+    "select_screenshot": "选择持仓截图",
+    "screenshot_tip": "支持支付宝、天天基金、蛋卷基金等平台的持仓截图",
+    "recognize_failed": "未识别到持仓信息，请确保截图清晰",
+    "already_in_holdings": "该基金已在持仓中",
+    "select_to_import": "请选择要导入的持仓",
+    "save": "保存",
+    "cancel": "取消"
+  },
+  "watchlist": {
+    "title": "自选列表",
+    "under_development": "自选基金列表页面 — 开发中"
+  },
+  "detail": {
+    "add_to_watchlist": "加自选",
+    "remove_from_watchlist": "删自选",
+    "add_to_holdings": "加入持仓",
+    "remove_from_holdings": "删除持仓",
+    "adjust_cost": "调整持仓成本",
+    "holding_ratio": "持仓占比",
+    "holding_cost": "持仓成本",
+    "no_holding_data": "暂无持仓数据",
+    "edit_holding": "修改持仓",
+    "delete_holding": "删除持仓",
+    "delete_confirm": "确定要删除该持仓记录吗？",
+    "already_in_watchlist": "已在自选中",
+    "added_to_watchlist": "已加入自选"
   },
   "common": {
     "confirm": "确认",
@@ -26,11 +87,47 @@
     "success": "成功",
     "delete": "删除",
     "edit": "编辑",
-    "save": "保存"
+    "save": "保存",
+    "import": "导入",
+    "export": "导出",
+    "backup": "备份",
+    "restore": "恢复"
   },
   "market": {
     "shanghai": "上证指数",
     "chinext": "创业板指",
     "nasdaq": "纳斯达克"
+  },
+  "alerts": {
+    "title": "涨跌提醒",
+    "add": "添加提醒",
+    "edit": "编辑提醒",
+    "delete": "删除提醒",
+    "threshold": "提醒阈值",
+    "enabled": "已启用",
+    "disabled": "已禁用"
+  },
+  "ai_tracking": {
+    "title": "AI调仓",
+    "add": "添加调仓记录",
+    "edit": "编辑调仓记录",
+    "delete": "删除调仓记录",
+    "success_rate": "成功率"
+  },
+  "news": {
+    "title": "财经资讯",
+    "no_data": "暂无资讯"
+  },
+  "trades": {
+    "title": "交易记录",
+    "add": "添加交易",
+    "edit": "编辑交易",
+    "delete": "删除交易",
+    "buy": "买入",
+    "sell": "卖出"
+  },
+  "finance_news": {
+    "title": "财经新闻",
+    "no_data": "暂无新闻"
   }
 }
