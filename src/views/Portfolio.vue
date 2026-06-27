@@ -4,6 +4,7 @@
 // [WHAT] 添加历史走势图，展示资产总值变化趋势
 
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useHoldingStore } from '@/stores/holding'
 import { useHistoryStore } from '@/stores/history'
 import { useRouter } from 'vue-router'
@@ -39,6 +40,7 @@ ChartJS.register(
 const router = useRouter()
 const holdingStore = useHoldingStore()
 const historyStore = useHistoryStore()
+const { t } = useI18n()
 
 // 是否正在刷新
 const isRefreshing = ref(false)
@@ -227,27 +229,27 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="portfolio-page">
-    <!-- 顶部汇总卡片 -->
-    <div class="summary-card">
-      <h2 class="page-title">百万实盘 - 资产总览</h2>
-
-      <div class="summary-item">
-        <span class="label">总资产</span>
+    <div class="portfolio-page">
+      <!-- 顶部汇总卡片 -->
+      <div class="summary-card">
+        <h2 class="page-title">{{ t('app.title') }} - {{ t('nav.portfolio') }}</h2>
+        
+        <div class="summary-item">
+          <span class="label">{{ t('portfolio.total_assets') }}</span>
         <span class="value">¥{{ summary ? formatMoney(summary.totalValueCNY) : '0.00' }}</span>
       </div>
 
       <div class="summary-row">
         <div class="summary-item-small">
-          <span class="label">今日盈亏</span>
+          <span class="label">{{ t('portfolio.today_profit') }}</span>
           <span :class="['value-small', (summary?.todayChangeCNY || 0) >= 0 ? 'profit' : 'loss']">
             {{ summary ? ((summary.todayChangeCNY >= 0 ? '+' : '') + formatMoney(summary.todayChangeCNY)) : '0.00' }}
             ({{ summary ? formatPercent(summary.todayChangeRate) : '0.00%' }})
           </span>
         </div>
-
+        
         <div class="summary-item-small">
-          <span class="label">累计盈亏</span>
+          <span class="label">{{ t('portfolio.total_profit') }}</span>
           <span :class="['value-small', (summary?.totalProfitCNY || 0) >= 0 ? 'profit' : 'loss']">
             {{ summary ? ((summary.totalProfitCNY >= 0 ? '+' : '') + formatMoney(summary.totalProfitCNY)) : '0.00' }}
             ({{ summary ? formatPercent(summary.totalProfitRate) : '0.00%' }})
@@ -259,7 +261,7 @@ onMounted(async () => {
     <!-- 历史走势图 -->
     <div class="section-card" v-if="trendData.dates.length > 0">
       <div class="section-header">
-        <h3 class="section-title">📈 资产走势</h3>
+        <h3 class="section-title">{{ t('portfolio.asset_trend_chart') }}</h3>
       </div>
 
       <!-- 时间范围切换 -->
@@ -302,14 +304,14 @@ onMounted(async () => {
     <!-- 资产分配 -->
     <div class="section-card" v-if="summary">
       <div class="section-header">
-        <h3 class="section-title">📊 资产分配</h3>
+        <h3 class="section-title">{{ t('portfolio.asset_allocation') }}</h3>
         <van-button
           size="small"
           plain
           @click="toggleAllocationView"
           class="toggle-btn"
         >
-          {{ allocationViewMode === 'pie' ? '条形图' : '饼图' }}
+          {{ allocationViewMode === 'pie' ? t('portfolio.bar_chart') : t('portfolio.pie_chart') }}
         </van-button>
       </div>
 
@@ -318,7 +320,7 @@ onMounted(async () => {
         <div class="pie-chart" :style="{ background: pieChartGradient }">
           <div class="pie-chart-inner">
             <div class="pie-total">{{ formatMoney(summary.totalValueCNY) }}</div>
-            <div class="pie-label">总资产(元)</div>
+            <div class="pie-label">{{ t('portfolio.total_assets_unit') }}</div>
           </div>
         </div>
 
@@ -362,9 +364,9 @@ onMounted(async () => {
     <!-- 持仓列表 -->
     <div class="section-card">
       <div class="section-header">
-        <h3 class="section-title">💼 持仓列表（按盈亏排序）</h3>
+        <h3 class="section-title">{{ t('portfolio.holdings_list') }}</h3>
         <van-button size="small" type="primary" @click="goToAddHolding">
-          + 添加
+          + {{ t('portfolio.add') }}
         </van-button>
       </div>
 

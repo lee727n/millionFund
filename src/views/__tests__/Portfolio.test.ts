@@ -7,6 +7,30 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import Portfolio from '../Portfolio.vue'
 
+// [WHY] 模拟 vue-i18n - 返回正确的翻译值（用于测试）
+const mockTranslations: Record<string, string> = {
+  'app.title': 'AI 百万实盘',
+  'nav.portfolio': '持仓',
+  'portfolio.total_assets': '总资产',
+  'portfolio.today_profit': '今日盈亏',
+  'portfolio.total_profit': '累计盈亏',
+  'portfolio.asset_trend_chart': '资产走势',
+  'portfolio.asset_allocation': '资产分配',
+  'portfolio.bar_chart': '条形图',
+  'portfolio.pie_chart': '饼图',
+  'portfolio.holdings_list': '持仓列表（按盈亏排序）',
+  'portfolio.add': '添加',
+  'portfolio.total_assets_unit': '总资产(元)',
+}
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => mockTranslations[key] || key,
+    locale: { value: 'zh-CN' },
+  }),
+  createI18n: vi.fn(),
+}))
+
 // [WHY] 模拟 holding store
 vi.mock('@/stores/holding', () => ({
   useHoldingStore: () => ({
@@ -88,7 +112,8 @@ describe('Portfolio.vue - 资产总览', () => {
   it('应渲染资产总览页面', () => {
     const wrapper = mount(Portfolio)
     expect(wrapper.find('.portfolio-page').exists()).toBe(true)
-    expect(wrapper.find('.page-title').text()).toBe('百万实盘 - 资产总览')
+    // 检查 i18n 集成：组件应使用 t() 渲染翻译后的文本
+    expect(wrapper.find('.page-title').text()).toBe('AI 百万实盘 - 持仓')
   })
 
   /**
