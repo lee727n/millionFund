@@ -1,0 +1,36 @@
+{
+  "app": {
+    "title": "AI 百万实盘",
+    "subtitle": "AI实盘参考"
+  },
+  "home": {
+    "welcome": "欢迎使用基金管理",
+    "description": "在这里管理你的自选和持仓基金",
+    "add_fund": "添加自选基金",
+    "add_holding": "添加持仓记录",
+    "tip": "小提示：在持仓页长按基金可快速操作"
+  },
+  "portfolio": {
+    "title": "持仓",
+    "total_assets": "总资产",
+    "today_profit": "今日盈亏",
+    "total_profit": "累计盈亏",
+    "profit_rate": "利润率",
+    "holdings": "持仓"
+  },
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "delete": "删除",
+    "edit": "编辑",
+    "save": "保存"
+  },
+  "market": {
+    "shanghai": "上证指数",
+    "chinext": "创业板指",
+    "nasdaq": "纳斯达克"
+  }
+}

@@ -6,6 +6,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
+import { i18n } from '@/i18n'
 
 import { logger } from '@/utils/logger'
 import { checkVersionAndClearCache, checkSchemaAndMigrate } from '@/utils/storage'
@@ -23,6 +24,7 @@ const app = createApp(App)
 
 app.use(pinia)
 app.use(router)
+app.use(i18n)
 
 // [WHY] 全局 Vue 错误处理器 - 捕获组件渲染/事件处理中的未处理异常
 // [NOTE] 同时写入 logger，便于用户通过"复制日志"带过来

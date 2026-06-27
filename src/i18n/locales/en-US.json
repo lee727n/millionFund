@@ -1,0 +1,36 @@
+{
+  "app": {
+    "title": "AI Million Fund",
+    "subtitle": "AI Real Trading Reference"
+  },
+  "home": {
+    "welcome": "Welcome to Fund Manager",
+    "description": "Manage your watchlist and holdings here",
+    "add_fund": "Add Fund",
+    "add_holding": "Add Holding",
+    "tip": "Tip: Long press on holdings page for quick actions"
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "total_assets": "Total Assets",
+    "today_profit": "Today's Profit",
+    "total_profit": "Total Profit",
+    "profit_rate": "Profit Rate",
+    "holdings": "Holdings"
+  },
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "delete": "Delete",
+    "edit": "Edit",
+    "save": "Save"
+  },
+  "market": {
+    "shanghai": "Shanghai Index",
+    "chinext": "ChiNext Index",
+    "nasdaq": "NASDAQ"
+  }
+}
