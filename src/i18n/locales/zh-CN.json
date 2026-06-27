@@ -29,7 +29,16 @@
     "total_profit": "累计盈亏",
     "holdings": "持仓",
     "no_holdings": "暂无持仓",
-    "sorted_by_profit": "持仓列表（按盈亏排序）"
+    "sorted_by_profit": "持仓列表（按盈亏排序）",
+    "app_title_full": "AI 百万实盘",
+    "app_title_short": "AI实盘",
+    "reference_ma": "参考均线",
+    "filter_all": "全部",
+    "error_title": "页面加载出现问题",
+    "error_detail": "部分数据暂时无法加载",
+    "retry": "点击重试",
+    "market_closed_short": "休市",
+    "profit_short": "盈亏"
   },
   "portfolio": {
     "title": "持仓",

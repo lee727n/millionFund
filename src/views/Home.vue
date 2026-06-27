@@ -504,12 +504,12 @@ function goToDetail(code: string) {
     <!-- 顶部搜索栏 -->
     <div class="top-header">
       <div class="header-left">
-        <span class="app-title web-only">AI 百万实盘</span>
-        <span class="app-title mobile-only">AI实盘</span>
+        <span class="app-title web-only">{{ t('home.app_title_full') }}</span>
+        <span class="app-title mobile-only">{{ t('home.app_title_short') }}</span>
         <!-- 网页端：参考均线和指数横向显示 -->
         <div class="web-only">
           <div class="reference-ma-badge header-ma-badge">
-            <span class="reference-ma-label">参考均线</span>
+            <span class="reference-ma-label">{{ t('home.reference_ma') }}</span>
             <span class="reference-ma-value" :class="hs300ChangePercent >= 0 ? 'up' : 'down'">
               {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
             </span>
@@ -531,9 +531,8 @@ function goToDetail(code: string) {
         </div>
         <!-- 移动端：参考均线和指数横向排列，每个都是上下布局 -->
         <div class="mobile-indices-container mobile-only">
-          <!-- 参考均线 - 保持蓝色，不受涨跌影响 -->
           <div class="mobile-ma-item">
-            <span class="mobile-ma-name">参考均线</span>
+            <span class="mobile-ma-name">{{ t('home.reference_ma') }}</span>
             <span class="mobile-ma-value">
               {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
             </span>
@@ -568,7 +567,7 @@ function goToDetail(code: string) {
           class="filter-tab" 
           :class="{ active: currentAssetClassFilter === '' }"
           @click="filterByAssetClass('')"
-        >全部</span>
+        >{{ t('home.filter_all') }}</span>
         <span 
           v-for="(config, assetClass) in ASSET_CLASS_CONFIG" 
           :key="assetClass"
@@ -590,13 +589,12 @@ function goToDetail(code: string) {
       :data-test-id="'loading'"
     >
 
-      <!-- [WHY] 渲染错误的降级显示：给用户刷新的机会而不是白屏 -->
       <div v-if="hasError" class="error-fallback" :data-test-id="'error-message'">
         <div class="error-icon">⚠️</div>
-        <div class="error-title">页面加载出现问题</div>
-        <div class="error-detail">{{ errorMessage || '部分数据暂时无法加载' }}</div>
+        <div class="error-title">{{ t('home.error_title') }}</div>
+        <div class="error-detail">{{ errorMessage || t('home.error_detail') }}</div>
         <van-button round type="primary" @click="() => { hasError = false; refreshData(); }">
-          点击重试
+          {{ t('home.retry') }}
         </van-button>
       </div>
       
@@ -605,13 +603,13 @@ function goToDetail(code: string) {
         <div class="overview-title">
           <div class="title-left">
             <span class="live-dot" :class="tradingStatus.class"></span>
-            <span>持仓趋势</span>
-            <div class="mobile-profit-summary mobile-only">
+            <span>{{ t('home.holding_trend') }}</span>
+              <div class="mobile-profit-summary mobile-only">
               <span :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
+                {{ isWeekend ? t('home.market_closed_short') : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
               </span>
               <span :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
-                {{ isWeekend ? '' : '盈亏' + Math.round(totalTodayProfit) }}
+                {{ isWeekend ? '' : t('home.profit_short') + Math.round(totalTodayProfit) }}
               </span>
             </div>
             <!-- 网页端：按钮在第一行 -->

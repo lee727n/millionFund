@@ -18,10 +18,36 @@ import {
   loadGlobalIndices,
 } from './homeState'
 
-// [WHY] 模拟 vue-i18n
+// [WHY] 模拟 vue-i18n - 返回正确的翻译值（用于测试）
+const mockTranslations: Record<string, string> = {
+  'home.app_title_full': 'AI 百万实盘',
+  'home.app_title_short': 'AI实盘',
+  'home.reference_ma': '参考均线',
+  'home.filter_all': '全部',
+  'home.error_title': '页面加载出现问题',
+  'home.error_detail': '部分数据暂时无法加载',
+  'home.retry': '点击重试',
+  'home.holding_trend': '持仓趋势',
+  'home.profit_rate': '利润率',
+  'home.today_profit': '今日盈亏',
+  'home.market_closed': '休市',
+  'home.sort_asc': '升序',
+  'home.sort_desc': '降序',
+  'home.total_assets': '总资产',
+  'home.total_profit': '累计盈亏',
+  'home.holdings': '持仓',
+  'home.no_holdings': '暂无持仓',
+  'home.sorted_by_profit': '持仓列表（按盈亏排序）',
+  'home.welcome': '欢迎使用基金管理',
+  'home.description': '在这里管理你的自选和持仓基金',
+  'home.add_fund': '添加自选基金',
+  'home.add_holding': '添加持仓记录',
+  'home.tip': '小提示：在持仓页长按基金可快速操作',
+}
+
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => key, // 返回 key 作为翻译（测试用）
+    t: (key: string) => mockTranslations[key] || key,
     locale: { value: 'zh-CN' },
   }),
   createI18n: vi.fn(),
@@ -281,9 +307,9 @@ describe('Home.vue - 首页', () => {
 
     const wrapper = mount(Home)
     await flushPromises()
-    // 检查 i18n key 是否存在（测试 i18n 集成）
-    expect(wrapper.text()).toContain('home.profit_rate')
-    expect(wrapper.text()).toContain('home.today_profit')
+    // 检查 i18n 集成：组件应使用 t() 渲染翻译后的文本
+    expect(wrapper.text()).toContain('利润率')
+    expect(wrapper.text()).toContain('今日盈亏')
   })
 
   /**
