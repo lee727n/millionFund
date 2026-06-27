@@ -2,6 +2,9 @@
 [WHAT] 展示基金公告列表，支持点击打开链接
 -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 defineProps<{
   announcements: Array<{
     id: string
@@ -20,7 +23,7 @@ defineEmits<{
 <template>
   <div class="info-section" v-if="announcements.length > 0">
     <div class="section-header">
-      <span>基金公告</span>
+      <span>{{ t('fund_announcements.title') }}</span>
     </div>
     <div class="announcement-list">
       <div

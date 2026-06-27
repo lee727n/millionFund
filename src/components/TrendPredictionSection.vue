@@ -3,6 +3,8 @@
 -->
 <script setup lang="ts">
 import type { TrendPrediction, FundScore } from '@/utils/statistics'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 defineProps<{
   trendPrediction: TrendPrediction
@@ -13,7 +15,7 @@ defineProps<{
 
 <template>
   <div class="trend-section">
-    <van-loading v-if="isTrendLoading" size="24" vertical>加载中...</van-loading>
+    <van-loading v-if="isTrendLoading" size="24" :vertical="true">{{ t('common.loading') }}</van-loading>
 
     <template v-else-if="trendPrediction">
       <!-- 趋势方向 -->
@@ -23,11 +25,11 @@ defineProps<{
             {{ trendPrediction.trend === 'up' ? '📈' : trendPrediction.trend === 'down' ? '📉' : '📊' }}
           </span>
           <span class="trend-text">
-            {{ trendPrediction.trend === 'up' ? '看涨' : trendPrediction.trend === 'down' ? '看跌' : '震荡' }}
+            {{ trendPrediction.trend === 'up' ? t('trend.up') : trendPrediction.trend === 'down' ? t('trend.down') : t('trend.sideways') }}
           </span>
         </div>
         <div class="trend-confidence">
-          <span class="label">置信度</span>
+          <span class="label">{{ t('trend.confidence') }}</span>
           <span class="value">{{ trendPrediction.confidence }}%</span>
         </div>
       </div>
@@ -35,11 +37,11 @@ defineProps<{
       <!-- 技术指标 -->
       <div class="trend-levels">
         <div class="level-item">
-          <span class="level-label">支撑位</span>
+          <span class="level-label">{{ t('trend.support_level') }}</span>
           <span class="level-value down">{{ trendPrediction.supportLevel }}</span>
         </div>
         <div class="level-item">
-          <span class="level-label">阻力位</span>
+          <span class="level-label">{{ t('trend.resistance_level') }}</span>
           <span class="level-value up">{{ trendPrediction.resistanceLevel }}</span>
         </div>
       </div>
@@ -48,7 +50,7 @@ defineProps<{
       <div class="signal-list">
         <div v-for="signal in trendPrediction.signals" :key="signal.name" class="signal-item">
           <span class="signal-type" :class="signal.type">
-            {{ signal.type === 'buy' ? '买' : signal.type === 'sell' ? '卖' : '持' }}
+            {{ signal.type === 'buy' ? t('trend.signal_buy') : signal.type === 'sell' ? t('trend.signal_sell') : t('trend.signal_hold') }}
           </span>
           <div class="signal-info">
             <span class="signal-name">{{ signal.name }}</span>
@@ -60,15 +62,15 @@ defineProps<{
       <!-- 基金评分 -->
       <div v-if="fundScore" class="fund-score-card">
         <div class="score-header">
-          <span class="score-title">综合评分</span>
-          <span class="score-level" :class="'level-' + fundScore.level">{{ fundScore.level }}级</span>
+          <span class="score-title">{{ t('trend.score_title') }}</span>
+          <span class="score-level" :class="'level-' + fundScore.level">{{ fundScore.level }}{{ t('trend.level_suffix') }}</span>
         </div>
         <div class="score-value">{{ fundScore.totalScore }}</div>
         <div class="score-desc">{{ fundScore.recommendation }}</div>
       </div>
     </template>
 
-    <van-empty v-else description="暂无趋势数据" />
+    <van-empty v-else :description="t('trend.no_data')" />
   </div>
 </template>
 

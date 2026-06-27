@@ -21,6 +21,10 @@ const mockTranslations: Record<string, string> = {
   'portfolio.holdings_list': '持仓列表（按盈亏排序）',
   'portfolio.add': '添加',
   'portfolio.total_assets_unit': '总资产(元)',
+  'portfolio.day_7': '7天',
+  'portfolio.day_30': '30天',
+  'portfolio.day_90': '90天',
+  'portfolio.no_holdings': '暂无持仓',
 }
 
 vi.mock('vue-i18n', () => ({

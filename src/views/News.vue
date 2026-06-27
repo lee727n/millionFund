@@ -11,8 +11,10 @@ import { fetchHotDiscussions, fetchStockSentimentList, fetchUserViews, type HotD
 import { fetchNorthFlow, fetchSectorFlows, fetchMainForceFlow, type NorthFlowData, type SectorFlow, type MainForceFlow } from '@/api/choice'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { logger, copyLogsToClipboard } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 
 // ========== 数据源选择 ==========
 type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice'
@@ -56,32 +58,32 @@ const isLoading = ref(false)
 async function loadJin10News() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try {
     const data = await fetchNewsList(newsPage.value, 20, activeCategory.value)
     if (data.length === 0) hasMoreNews.value = false
     else { newsList.value = [...newsList.value, ...data]; newsPage.value++ }
-  } catch { showToast('加载失败') }
+  } catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadJin10Flash() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { flashList.value = await fetchFlashNews() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadJin10Calendar() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try {
     const today = new Date().toISOString().split('T')[0]
     calendarList.value = await fetchEconomicCalendar(today)
-  } catch { showToast('加载失败') }
+  } catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
@@ -103,27 +105,27 @@ function onCategoryChange(category: string) {
 async function loadClsTelegram() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { telegramList.value = await fetchClsTelegram() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadClsHotTopics() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { hotTopicsList.value = await fetchClsHotTopics() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadClsPlate() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { plateList.value = await fetchClsPlateMovement() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
@@ -136,8 +138,8 @@ function onClsTabChange(tab: 'telegram' | 'hotTopics' | 'plate') {
 
 async function onCopyLogs(): Promise<void> {
   const ok = await copyLogsToClipboard()
-  if (ok) showToast(`日志已复制 (${logger.getAll().length}条)`)
-  else showToast('复制失败，请手动复制')
+  if (ok) showToast(t('news.logs_copied'))
+  else showToast(t('news.copy_failed'))
 }
 
 // ========== 雪球 ==========
@@ -145,27 +147,27 @@ async function onCopyLogs(): Promise<void> {
 async function loadXueqiuDiscussions() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { discussionList.value = await fetchHotDiscussions(discussionType.value) }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadXueqiuSentiment() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { sentimentList.value = await fetchStockSentimentList(discussionType.value) }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadXueqiuViews() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { userViewsList.value = await fetchUserViews() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
@@ -187,27 +189,27 @@ function onXueqiuTypeChange(type: 'fund' | 'stock') {
 async function loadChoiceNorth() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { northFlow.value = await fetchNorthFlow() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadChoiceSector() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { sectorFlows.value = await fetchSectorFlows() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
 async function loadChoiceMainForce() {
   if (isLoading.value) return
   isLoading.value = true
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
   try { mainForceFlows.value = await fetchMainForceFlow() }
-  catch { showToast('加载失败') }
+  catch { showToast(t('common.load_failed')) }
   finally { isLoading.value = false; closeToast() }
 }
 
@@ -273,7 +275,7 @@ onMounted(() => {
   <div class="news-page">
     <!-- 导航栏 -->
     <div class="custom-nav-bar">
-      <div class="nav-title">财经资讯</div>
+      <div class="nav-title">{{ t('news.title') }}</div>
       <div class="nav-actions">
         <van-icon name="replay" size="20" @click="refreshCurrentSource" title="刷新" style="margin-right: 12px" />
         <van-icon name="description-o" size="20" @click="onCopyLogs" title="复制日志" />
@@ -286,30 +288,30 @@ onMounted(() => {
         class="source-item"
         :class="{ active: activeSource === 'jin10' }"
         @click="onSourceChange('jin10')"
-      >金十数据</div>
+      >{{ t('news.jin10') }}</div>
       <div
         class="source-item"
         :class="{ active: activeSource === 'cls' }"
         @click="onSourceChange('cls')"
-      >财联社</div>
+      >{{ t('news.cls') }}</div>
       <div
         class="source-item"
         :class="{ active: activeSource === 'xueqiu' }"
         @click="onSourceChange('xueqiu')"
-      >雪球</div>
+      >{{ t('news.xueqiu') }}</div>
       <div
         class="source-item"
         :class="{ active: activeSource === 'choice' }"
         @click="onSourceChange('choice')"
-      >资金流向</div>
+      >{{ t('news.capital_flow') }}</div>
     </div>
 
-    <!-- ==================== 金十数据 ==================== -->
+    <!-- ==================== {{ t('news.jin10') }} ==================== -->
     <template v-if="activeSource === 'jin10'">
       <div class="sub-tabs">
-        <div class="sub-tab" :class="{ active: jin10Tab === 'news' }" @click="onJin10TabChange('news')">📰 新闻</div>
-        <div class="sub-tab" :class="{ active: jin10Tab === 'flash' }" @click="onJin10TabChange('flash')">⚡ 快讯</div>
-        <div class="sub-tab" :class="{ active: jin10Tab === 'calendar' }" @click="onJin10TabChange('calendar')">📅 日历</div>
+        <div class="sub-tab" :class="{ active: jin10Tab === 'news' }" @click="onJin10TabChange('news')">{{ t('news.tab_news') }}</div>
+        <div class="sub-tab" :class="{ active: jin10Tab === 'flash' }" @click="onJin10TabChange('flash')">{{ t('news.tab_flash') }}</div>
+        <div class="sub-tab" :class="{ active: jin10Tab === 'calendar' }" @click="onJin10TabChange('calendar')">{{ t('news.tab_calendar') }}</div>
       </div>
 
       <!-- 新闻 -->
@@ -333,10 +335,10 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无新闻" />
+          <van-empty v-else :description="t('news.no_news')" />
           <div v-if="hasMoreNews" class="load-more" @click="loadJin10News">
             <van-loading v-if="isLoading" size="small" />
-            <span v-else>点击加载更多</span>
+            <span v-else>{{ t('news.load_more') }}</span>
           </div>
         </div>
       </div>
@@ -348,14 +350,14 @@ onMounted(() => {
             <div v-for="flash in flashList" :key="flash.id" class="flash-card" :class="'flash-' + flash.type">
               <div class="flash-header">
                 <span class="flash-type-badge" :class="'flash-' + flash.type">
-                  {{ flash.type === 'important' ? '重要' : flash.type === 'warning' ? '警告' : '快讯' }}
+                  {{ flash.type === 'important' ? t('news.important') : flash.type === 'warning' ? t('news.warning') : t('news.flash_type') }}
                 </span>
                 <span class="flash-time">{{ flash.time }}</span>
               </div>
               <div class="flash-content">{{ flash.content }}</div>
             </div>
           </template>
-          <van-empty v-else description="暂无快讯" />
+          <van-empty v-else :description="t('news.no_flash')" />
         </div>
       </div>
 
@@ -366,28 +368,28 @@ onMounted(() => {
             <div v-for="item in calendarList" :key="item.id" class="calendar-card">
               <div class="calendar-time">{{ item.time }}</div>
               <span class="calendar-importance" :class="'imp-' + item.importance">
-                {{ item.importance === 'high' ? '高' : item.importance === 'medium' ? '中' : '低' }}
+                {{ item.importance === 'high' ? t('news.high') : item.importance === 'medium' ? t('news.medium') : t('news.low') }}
               </span>
               <div class="calendar-title">{{ item.title }}</div>
               <div v-if="item.currency" class="calendar-currency">{{ item.currency }}</div>
               <div v-if="item.actual || item.forecast || item.previous" class="calendar-data-row">
-                <div class="data-cell"><span class="data-lbl">实际</span><span class="data-val">{{ item.actual || '--' }}</span></div>
-                <div class="data-cell"><span class="data-lbl">预期</span><span class="data-val">{{ item.forecast || '--' }}</span></div>
-                <div class="data-cell"><span class="data-lbl">前值</span><span class="data-val">{{ item.previous || '--' }}</span></div>
+                <div class="data-cell"><span class="data-lbl">{{ t('news.actual') }}</span><span class="data-val">{{ item.actual || '--' }}</span></div>
+                <div class="data-cell"><span class="data-lbl">{{ t('news.forecast') }}</span><span class="data-val">{{ item.forecast || '--' }}</span></div>
+                <div class="data-cell"><span class="data-lbl">{{ t('news.previous') }}</span><span class="data-val">{{ item.previous || '--' }}</span></div>
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无经济数据" />
+          <van-empty v-else :description="t('news.no_calendar')" />
         </div>
       </div>
     </template>
 
-    <!-- ==================== 财联社 ==================== -->
+    <!-- ==================== {{ t('news.cls') }} ==================== -->
     <template v-if="activeSource === 'cls'">
       <div class="sub-tabs">
-        <div class="sub-tab" :class="{ active: clsTab === 'telegram' }" @click="onClsTabChange('telegram')">📡 电报</div>
-        <div class="sub-tab" :class="{ active: clsTab === 'hotTopics' }" @click="onClsTabChange('hotTopics')">🔥 热门</div>
-        <div class="sub-tab" :class="{ active: clsTab === 'plate' }" @click="onClsTabChange('plate')">📊 异动</div>
+        <div class="sub-tab" :class="{ active: clsTab === 'telegram' }" @click="onClsTabChange('telegram')">{{ t('news.tab_telegram') }}</div>
+        <div class="sub-tab" :class="{ active: clsTab === 'hotTopics' }" @click="onClsTabChange('hotTopics')">{{ t('news.tab_hot') }}</div>
+        <div class="sub-tab" :class="{ active: clsTab === 'plate' }" @click="onClsTabChange('plate')">{{ t('news.tab_plate') }}</div>
       </div>
 
       <!-- 电报 -->
@@ -397,7 +399,7 @@ onMounted(() => {
             <div v-for="item in telegramList" :key="item.id" class="flash-card" :class="'flash-' + item.type">
               <div class="flash-header">
                 <span class="flash-type-badge" :class="'flash-' + item.type">
-                  {{ item.type === 'urgent' ? '紧急' : item.type === 'important' ? '重要' : '快讯' }}
+                  {{ item.type === 'urgent' ? t('news.urgent') : item.type === 'important' ? t('news.important') : t('news.flash_type') }}
                 </span>
                 <span class="flash-time">{{ item.time }}</span>
               </div>
@@ -407,7 +409,7 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无电报" />
+          <van-empty v-else :description="t('news.no_telegram')" />
         </div>
       </div>
 
@@ -426,7 +428,7 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无热门主题" />
+          <van-empty v-else :description="t('news.no_hot_topics')" />
         </div>
       </div>
 
@@ -437,27 +439,27 @@ onMounted(() => {
             <div v-for="plate in plateList" :key="plate.id" class="plate-card">
               <div class="plate-name">{{ plate.plateName }}</div>
               <div class="plate-change" :class="plate.direction">{{ plate.direction === 'up' ? '+' : '-' }}{{ plate.changePercent }}%</div>
-              <div class="plate-leader">领涨：{{ plate.leadingStock }}</div>
+              <div class="plate-leader">{{ t('news.leader') }}<{{ plate.leadingStock }}</div>
               <div class="plate-reason">{{ plate.reason }}</div>
             </div>
           </template>
-          <van-empty v-else description="暂无板块异动" />
+          <van-empty v-else :description="t('news.no_plate')" />
         </div>
       </div>
     </template>
 
-    <!-- ==================== 雪球 ==================== -->
+    <!-- ==================== {{ t('news.xueqiu') }} ==================== -->
     <template v-if="activeSource === 'xueqiu'">
       <div class="sub-tabs">
-        <div class="sub-tab" :class="{ active: xueqiuTab === 'discussion' }" @click="onXueqiuTabChange('discussion')">💬 热帖</div>
-        <div class="sub-tab" :class="{ active: xueqiuTab === 'sentiment' }" @click="onXueqiuTabChange('sentiment')">🌡️ 情绪</div>
-        <div class="sub-tab" :class="{ active: xueqiuTab === 'views' }" @click="onXueqiuTabChange('views')">👤 大V</div>
+        <div class="sub-tab" :class="{ active: xueqiuTab === 'discussion' }" @click="onXueqiuTabChange('discussion')">{{ t('news.tab_discussion') }}</div>
+        <div class="sub-tab" :class="{ active: xueqiuTab === 'sentiment' }" @click="onXueqiuTabChange('sentiment')">{{ t('news.tab_sentiment') }}</div>
+        <div class="sub-tab" :class="{ active: xueqiuTab === 'views' }" @click="onXueqiuTabChange('views')">{{ t('news.tab_views') }}</div>
       </div>
 
       <!-- 类型切换 -->
       <div v-if="xueqiuTab === 'discussion' || xueqiuTab === 'sentiment'" class="type-switch-bar">
-        <span class="type-switch" :class="{ active: discussionType === 'fund' }" @click="onXueqiuTypeChange('fund')">基金</span>
-        <span class="type-switch" :class="{ active: discussionType === 'stock' }" @click="onXueqiuTypeChange('stock')">股票</span>
+        <span class="type-switch" :class="{ active: discussionType === 'fund' }" @click="onXueqiuTypeChange('fund')">{{ t('news.fund') }}</span>
+        <span class="type-switch" :class="{ active: discussionType === 'stock' }" @click="onXueqiuTypeChange('stock')">{{ t('news.stock') }}</span>
       </div>
 
       <!-- 热帖 -->
@@ -478,7 +480,7 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无热门讨论" />
+          <van-empty v-else :description="t('news.no_discussion')" />
         </div>
       </div>
 
@@ -490,14 +492,14 @@ onMounted(() => {
               <div class="sentiment-header">
                 <div class="sentiment-code">{{ item.name }}</div>
                 <div class="sentiment-badge" :class="item.sentiment">
-                  {{ item.sentiment === 'bullish' ? '🟢 看多' : item.sentiment === 'bearish' ? '🔴 看空' : '⚪ 中性' }}
+                  {{ item.sentiment === 'bullish' ? t('news.bullish') : item.sentiment === 'bearish' ? t('news.bearish') : t('news.neutral') }}
                 </div>
               </div>
               <div class="sentiment-bar-wrap">
                 <div class="sentiment-bar">
                   <div class="bar-bullish" :style="{ width: item.bullishRatio + '%' }"></div>
                 </div>
-                <span class="sentiment-ratio">{{ item.bullishRatio }}% 看多</span>
+                <span class="sentiment-ratio">{{ item.bullishRatio }}% {{ t('news.bullish_short') }}</span>
               </div>
               <div class="sentiment-stats">
                 <span>讨论 {{ item.discussionCount }}</span>
@@ -505,7 +507,7 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无情绪数据" />
+          <van-empty v-else :description="t('news.no_sentiment')" />
         </div>
       </div>
 
@@ -522,23 +524,23 @@ onMounted(() => {
               <div class="views-summary">{{ item.summary }}</div>
               <div class="views-footer">
                 <span class="views-direction" :class="item.direction">
-                  {{ item.direction === 'bullish' ? '看多 ↗' : item.direction === 'bearish' ? '看空 ↘' : '中性 →' }}
+                  {{ item.direction === 'bullish' ? t('news.bullish_arrow') : item.direction === 'bearish' ? t('news.bearish_arrow') : t('news.neutral_arrow') }}
                 </span>
                 <span>❤️ {{ item.likes }}</span>
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无大V观点" />
+          <van-empty v-else :description="t('news.no_views')" />
         </div>
       </div>
     </template>
 
-    <!-- ==================== 东方财富 资金流向 ==================== -->
+    <!-- ==================== 东方财富 {{ t('news.capital_flow') }} ==================== -->
     <template v-if="activeSource === 'choice'">
       <div class="sub-tabs">
-        <div class="sub-tab" :class="{ active: choiceTab === 'north' }" @click="onChoiceTabChange('north')">🔄 北向资金</div>
-        <div class="sub-tab" :class="{ active: choiceTab === 'sector' }" @click="onChoiceTabChange('sector')">📊 板块资金</div>
-        <div class="sub-tab" :class="{ active: choiceTab === 'mainforce' }" @click="onChoiceTabChange('mainforce')">💰 主力资金</div>
+        <div class="sub-tab" :class="{ active: choiceTab === 'north' }" @click="onChoiceTabChange('north')">{{ t('news.tab_north') }}</div>
+        <div class="sub-tab" :class="{ active: choiceTab === 'sector' }" @click="onChoiceTabChange('sector')">{{ t('news.tab_sector') }}</div>
+        <div class="sub-tab" :class="{ active: choiceTab === 'mainforce' }" @click="onChoiceTabChange('mainforce')">{{ t('news.tab_mainforce') }}</div>
       </div>
 
       <!-- 北向资金 -->
@@ -547,32 +549,32 @@ onMounted(() => {
           <div v-if="northFlow" class="north-card">
             <div class="north-date">{{ northFlow.date }}</div>
             <div class="north-total">
-              <span class="total-label">北向合计净流入</span>
+              <span class="total-label">{{ t('news.north_total') }}</span>
               <span class="total-value" :class="northFlow.totalNetInflow >= 0 ? 'up' : 'down'">
                 {{ northFlow.totalNetInflow >= 0 ? '+' : '' }}{{ northFlow.totalNetInflow.toFixed(2) }} 亿
               </span>
             </div>
             <div class="north-detail">
               <div class="north-item">
-                <span class="north-item-label">沪股通</span>
+                <span class="north-item-label">{{ t('news.sh_connect') }}</span>
                 <span class="north-item-value" :class="northFlow.shNetInflow >= 0 ? 'up' : 'down'">
                   {{ northFlow.shNetInflow >= 0 ? '+' : '' }}{{ northFlow.shNetInflow.toFixed(2) }}亿
                 </span>
               </div>
               <div class="north-item">
-                <span class="north-item-label">深股通</span>
+                <span class="north-item-label">{{ t('news.sz_connect') }}</span>
                 <span class="north-item-value" :class="northFlow.szNetInflow >= 0 ? 'up' : 'down'">
                   {{ northFlow.szNetInflow >= 0 ? '+' : '' }}{{ northFlow.szNetInflow.toFixed(2) }}亿
                 </span>
               </div>
               <div class="north-item">
-                <span class="north-item-label">当日余额</span>
+                <span class="north-item-label">{{ t('news.balance') }}</span>
                 <span class="north-item-value">{{ northFlow.balance.toFixed(0) }}亿</span>
               </div>
             </div>
             <!-- 近5日趋势 -->
             <div v-if="northFlow.recent5Day.length" class="north-trend">
-              <div class="trend-title">近5日北向资金</div>
+              <div class="trend-title">{{ t('news.north_trend') }}</div>
               <div class="trend-bars">
                 <div v-for="day in northFlow.recent5Day" :key="day.date" class="trend-bar-item">
                   <div class="trend-bar-track">
@@ -587,7 +589,7 @@ onMounted(() => {
               </div>
             </div>
           </div>
-          <van-empty v-else description="暂无北向资金数据" />
+          <van-empty v-else :description="t('news.no_north')" />
         </div>
       </div>
 
@@ -599,14 +601,14 @@ onMounted(() => {
               <div class="sector-flow-rank">{{ idx + 1 }}</div>
               <div class="sector-flow-info">
                 <div class="sector-flow-name">{{ item.sectorName }}</div>
-                <div class="sector-flow-leader" v-if="item.leadingStock">领涨：{{ item.leadingStock }}</div>
+                <div class="sector-flow-leader" v-if="item.leadingStock">{{ t('news.leader') }}<{{ item.leadingStock }}</div>
               </div>
               <div class="sector-flow-value" :class="item.netInflow >= 0 ? 'up' : 'down'">
                 {{ item.netInflow >= 0 ? '+' : '' }}{{ item.netInflow.toFixed(1) }}亿
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无板块资金数据" />
+          <van-empty v-else :description="t('news.no_sector')" />
         </div>
       </div>
 
@@ -628,7 +630,7 @@ onMounted(() => {
               </div>
             </div>
           </template>
-          <van-empty v-else description="暂无主力资金数据" />
+          <van-empty v-else :description="t('news.no_mainforce')" />
         </div>
       </div>
     </template>

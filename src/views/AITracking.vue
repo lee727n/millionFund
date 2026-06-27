@@ -3,7 +3,7 @@
     <div class="page-header">
       <h1 class="page-title">
         AI 追踪
-        <span class="success-rate web-only" v-if="records.length > 0">调仓成功率({{ successRate }}%)</span>
+        <span class="success-rate web-only" v-if="records.length > 0">{{ t('aitracking.success_rate', { rate: successRate }) }}</span>
         <span class="success-rate mobile-only" v-if="records.length > 0">{{ successRate }}%</span>
       </h1>
       <div class="header-actions">
@@ -12,12 +12,12 @@
             class="ui-mode-btn" 
             :class="{ active: uiMode === 'simple' }"
             @click="uiMode = 'simple'"
-          >简</span>
+          >{{ t('common.simple') }}</span>
           <span 
             class="ui-mode-btn" 
             :class="{ active: uiMode === 'full' }"
             @click="uiMode = 'full'"
-          >全</span>
+          >{{ t('common.full') }}</span>
         </div>
         <van-icon name="replay" size="20" @click="refreshPrices" />
         <van-button size="small" type="primary" @click="showAddModal = true" style="margin-left: 8px;">
@@ -55,12 +55,12 @@
             <span class="simple-status" :class="getStatusClass(record)">{{ getStatusText(record) }}</span>
             <div class="simple-funds">
               <div class="simple-fund-item">
-                <span class="simple-label sell">卖</span>
+                <span class="simple-label sell">{{ t('aitracking.sell') }}</span>
                 <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.sellName || record.sellCode }}</span>
                 <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
               </div>
               <div class="simple-fund-item">
-                <span class="simple-label buy">买</span>
+                <span class="simple-label buy">{{ t('aitracking.buy') }}</span>
                 <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.buyName || record.buyCode }}</span>
                 <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
               </div>
@@ -88,7 +88,7 @@
           </div>
           <div class="record-content">
             <div class="fund-item sell">
-              <div class="fund-label">卖</div>
+              <div class="fund-label">{{ t('aitracking.sell') }}</div>
               <div class="fund-info">
                 <div class="fund-name">{{ record.sellName || record.sellCode }}</div>
                 <div class="fund-row">
@@ -103,7 +103,7 @@
               </div>
             </div>
             <div class="fund-item buy">
-              <div class="fund-label">买</div>
+              <div class="fund-label">{{ t('aitracking.buy') }}</div>
               <div class="fund-info">
                 <div class="fund-name">{{ record.buyName || record.buyCode }}</div>
                 <div class="fund-row">
@@ -125,28 +125,28 @@
       </div>
     </div>
 
-    <van-empty v-else description="暂无调仓记录，点击右上角添加" />
+    <van-empty v-else ::description="t('aitracking.no_data')" />
 
     <van-dialog
       v-model:show="showAddModal"
-      title="添加调仓记录"
+      :title="t('aitracking.add_title')"
       show-cancel-button
       @confirm="confirmAddRecord"
     >
       <div class="add-form">
         <div class="form-item">
-          <label>调仓日期（可选）</label>
+          <label>{{ t('aitracking.date_label') }}</label>
           <van-field
             v-model="newRecord.date"
             type="date"
-            placeholder="不填则使用今日最新净值"
+            :placeholder="t('aitracking.date_placeholder')"
           />
         </div>
         <div class="form-item">
-          <label>卖出基金代码</label>
+          <label>{{ t('aitracking.sell_code') }}</label>
           <van-field
             v-model="newRecord.sellCode"
-            placeholder="请输入基金代码"
+            :placeholder="t('common.please_input')"
             @blur="fetchFundInfo('sell')"
           />
           <div class="fund-name-preview" v-if="newRecord.sellName">
@@ -154,10 +154,10 @@
           </div>
         </div>
         <div class="form-item">
-          <label>买入基金代码</label>
+          <label>{{ t('aitracking.buy_code') }}</label>
           <van-field
             v-model="newRecord.buyCode"
-            placeholder="请输入基金代码"
+            :placeholder="t('common.please_input')"
             @blur="fetchFundInfo('buy')"
           />
           <div class="fund-name-preview" v-if="newRecord.buyName">
@@ -169,12 +169,14 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts">const { t } = useI18n()
+
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useAITrackingStore, type AITrackingRecord } from '@/stores/aiTracking'
 import { logger } from '@/utils/logger'
 import { fetchFundAccurateData, fetchNetValueHistoryFast } from '@/api/fundFast'
+import { useI18n } from 'vue-i18n'
 
 const aiTrackingStore = useAITrackingStore()
 

@@ -9,8 +9,10 @@ import { searchFund } from '@/api/fundFast'
 import { fetchFundEstimateFast } from '@/api/fundFast'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import type { FundInfo } from '@/types/fund'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 const route = useRoute()
 const fundStore = useFundStore()
 
@@ -186,9 +188,9 @@ function isInWatchlist(code: string): boolean {
 <template>
   <div class="search-page">
     <!-- 搜索栏 -->
-    <van-nav-bar title="搜索基金" left-arrow @click-left="goBack">
+    <van-nav-bar :title="t('search.title')" left-arrow @click-left="goBack">
       <template #right>
-        <span v-if="isSearching" class="searching-text" :data-test-id="'loading'">搜索中...</span>
+        <span v-if="isSearching" class="searching-text" :data-test-id="'loading'">{{ t('common.loading') }}</span>
       </template>
     </van-nav-bar>
 
@@ -196,7 +198,7 @@ function isInWatchlist(code: string): boolean {
     <div data-test-id="search-input">
       <van-search
         v-model="keyword"
-        placeholder="输入基金代码或名称"
+        :placeholder="t('search.placeholder')"
         show-action
         autofocus
         @cancel="goBack"
@@ -206,7 +208,7 @@ function isInWatchlist(code: string): boolean {
     <!-- 搜索历史 -->
     <div v-if="!keyword && searchHistory.length > 0" class="search-history">
       <div class="history-header">
-        <span class="history-title">搜索历史</span>
+        <span class="history-title">{{ t('search.history') }}</span>
         <van-icon name="delete-o" size="16" class="history-clear" @click="clearSearchHistory" />
       </div>
       <div class="history-tags">
@@ -264,14 +266,14 @@ function isInWatchlist(code: string): boolean {
       <van-empty
         v-if="keyword && searchResults.length === 0 && !isSearching"
         image="search"
-        description="未找到相关基金"
+        :description="t('search.no_result')"
         data-test-id="empty-result"
       />
 
       <!-- 搜索提示 -->
       <div v-if="!keyword && searchHistory.length === 0" class="search-tip">
         <van-icon name="info-o" />
-        <span>输入基金代码（如 001186）或名称搜索</span>
+        <span>{{ t('search.tip') }}</span>
       </div>
     </div>
   </div>

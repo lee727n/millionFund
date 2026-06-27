@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { showToast } from 'vant'
+const { t } = useI18n()
 
 const { locale, t } = useI18n()
 

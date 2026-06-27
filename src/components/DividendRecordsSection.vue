@@ -2,6 +2,9 @@
 [WHAT] 展示基金历史分红记录
 -->
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 defineProps<{
   dividendRecords: Array<{
     date: string
@@ -15,7 +18,7 @@ defineProps<{
 <template>
   <div class="info-section" v-if="dividendRecords.length > 0">
     <div class="section-header">
-      <span>分红记录</span>
+      <span>{{ t('dividend_records.title') }}</span>
       <span class="section-tip">
         累计{{ dividendRecords.length }}次，共{{ totalDividend.toFixed(4) }}元/份
       </span>

@@ -74,7 +74,7 @@ const chartData = computed(() => {
     labels: trendData.value.dates,
     datasets: [
       {
-        label: '资产总值',
+        label: t('portfolio.chart_title'),
         data: trendData.value.values,
         borderColor: '#1989fa',
         backgroundColor: 'rgba(25, 137, 250, 0.1)',
@@ -273,8 +273,7 @@ onMounted(async () => {
           @click="setTrendDays(7)"
           class="trend-tab"
         >
-          7天
-        </van-button>
+          {{ t('portfolio.day_7') }}</van-button>
         <van-button
           size="small"
           :plain="trendDays !== 30"
@@ -282,8 +281,7 @@ onMounted(async () => {
           @click="setTrendDays(30)"
           class="trend-tab"
         >
-          30天
-        </van-button>
+          {{ t('portfolio.day_30') }}</van-button>
         <van-button
           size="small"
           :plain="trendDays !== 90"
@@ -291,8 +289,7 @@ onMounted(async () => {
           @click="setTrendDays(90)"
           class="trend-tab"
         >
-          90天
-        </van-button>
+          {{ t('portfolio.day_90') }}</van-button>
       </div>
 
       <!-- 走势图 -->
@@ -401,7 +398,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <van-empty v-if="sortedHoldings.length === 0" description="暂无持仓" />
+          <van-empty v-if="sortedHoldings.length === 0" :description="t('portfolio.no_holdings')" />
         </van-list>
       </van-pull-refresh>
     </div>

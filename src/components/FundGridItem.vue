@@ -5,6 +5,8 @@ import JDIcon from '@/assets/JD.jpg'
 import eyeIcon from '@/assets/eye.png'
 import { getSourceLabel } from '@/config/sources'
 import type { HoldingWithProfit } from '@/stores/holding'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 defineProps<{
   fund: HoldingWithProfit

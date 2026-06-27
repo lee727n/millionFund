@@ -27,8 +27,8 @@
             <ul class="changelog-bullets">
               <li>{{ t('about.changelog_new') }}<strong>{{ t('about.feature_alert') }}</strong>：设置涨跌幅阈值，触发时自动推送通知</li>
               <li>{{ t('about.changelog_fix') }}生产环境 API 404 问题</li>
-              <li>大幅减少 JSONP 使用，改用 fetch 直接解析</li>
-              <li>统一错误处理，提示更友好</li>
+              <li>{{ t('about.li_fetch') }}</li>
+              <li>{{ t('about.li_error') }}</li>
             </ul>
           </div>
 
@@ -36,9 +36,9 @@
             <div class="changelog-version">v1.9.0</div>
             <div class="changelog-date">2026-06-14</div>
             <ul class="changelog-bullets">
-              <li>API 层合并重构，减少 ~1500 行冗余代码</li>
-              <li>解决 JSONP 全局变量污染问题</li>
-              <li>GitHub Actions 全平台并行构建</li>
+              <li>{{ t('about.li_refactor') }}</li>
+              <li>{{ t('about.li_jsonp') }}</li>
+              <li>{{ t('about.li_ci') }}</li>
             </ul>
           </div>
 
@@ -53,8 +53,8 @@
           <div class="changelog-item">
             <div class="changelog-version">v1.7.0</div>
             <ul class="changelog-bullets">
-              <li>Material Design 3 样式系统</li>
-              <li>CSP 安全头 + ProGuard 混淆</li>
+              <li>{{ t('about.li_m3') }}</li>
+              <li>{{ t('about.li_security') }}</li>
             </ul>
           </div>
 
@@ -79,7 +79,7 @@
         </div>
       </div>
 
-      <!-- ========== 全平台下载 ========== -->
+      <!-- ========== 全平台{{ t('common.download') }} ========== -->
       <div class="section">
         <div class="section-title">📥 {{ t('about.download') }}</div>
         <div class="section-desc">{{ t('about.detected_platform') }} <strong>{{ platformLabel }}</strong></div>
@@ -92,8 +92,8 @@
             <div class="download-desc">{{ t('about.android_desc') }}</div>
           </div>
           <div class="download-buttons">
-            <van-button type="primary" size="small" round @click="downloadAndInstallApk">📲 安装</van-button>
-            <van-button plain size="small" round @click="showApkQr = true">二维码</van-button>
+            <van-button type="primary" size="small" round @click="downloadAndInstallApk">📲 {{ t('common.install') }}</van-button>
+            <van-button plain size="small" round @click="showApkQr = true">{{ t('common.qr_code') }}</van-button>
           </div>
         </div>
 
@@ -104,7 +104,7 @@
             <div class="download-name">Windows</div>
             <div class="download-desc">{{ t('about.windows_desc') }}</div>
           </div>
-          <van-button type="primary" size="small" round @click="downloadWin('nsis')">下载</van-button>
+          <van-button type="primary" size="small" round @click="downloadWin('nsis')">{{ t('common.download') }}</van-button>
         </div>
 
         <!-- macOS -->
@@ -114,7 +114,7 @@
             <div class="download-name">macOS</div>
             <div class="download-desc">{{ t('about.macos_desc') }}</div>
           </div>
-          <van-button type="primary" size="small" round @click="downloadMac('dmg')">下载</van-button>
+          <van-button type="primary" size="small" round @click="downloadMac('dmg')">{{ t('common.download') }}</van-button>
         </div>
 
         <!-- Linux -->
@@ -124,20 +124,20 @@
             <div class="download-name">Linux</div>
             <div class="download-desc">{{ t('about.linux_desc') }}</div>
           </div>
-          <van-button type="primary" size="small" round @click="downloadLinux('appimage')">下载</van-button>
+          <van-button type="primary" size="small" round @click="downloadLinux('appimage')">{{ t('common.download') }}</van-button>
         </div>
 
         <!-- Web 版 -->
         <div class="download-card" v-if="isWeb()">
           <div class="download-icon">🌐</div>
           <div class="download-info">
-            <div class="download-name">Web 在线版</div>
+            <div class="download-name">{{ t('about.web_title') }}</div>
             <div class="download-desc">{{ t('about.web_desc') }}</div>
           </div>
-          <van-button plain size="small" round @click="copyWebUrl">复制链接</van-button>
+          <van-button plain size="small" round @click="copyWebUrl">{{ t('common.copy_link') }}</van-button>
         </div>
 
-        <!-- PWA 安装横幅 -->
+        <!-- PWA {{ t('common.install') }}横幅 -->
         <div v-if="canInstallPwa" class="pwa-install-banner">
           <div class="pwa-install-info">
             <span>📲</span>
@@ -147,11 +147,11 @@
         </div>
       </div>
 
-      <!-- ========== APK 二维码弹窗 ========== -->
+      <!-- ========== APK {{ t('common.qr_code') }}弹窗 ========== -->
       <van-overlay :show="showApkQr" @click="showApkQr = false">
         <div class="qr-modal" @click.stop>
           <div class="qr-title">📱 {{ t('about.qr_title') }}</div>
-          <img :src="apkQrUrl" alt="APK 下载二维码" class="qr-image" />
+          <img :src="apkQrUrl" alt="APK {{ t('common.download') }}{{ t('common.qr_code') }}" class="qr-image" />
           <div class="qr-url">{{ apkDownloadUrl }}</div>
           <van-button type="primary" size="small" round @click="downloadApk('debug')">{{ t('about.direct_download') }}</van-button>
           <van-button plain size="small" round style="margin-top: 8px" @click="showApkQr = false">{{ t('about.qr_close') }}</van-button>
@@ -199,7 +199,7 @@ const router = useRouter()
 const { t } = useI18n()
 const buildTime = ref(getBuildTime())
 
-// ========== PWA 安装 ==========
+// ========== PWA {{ t('common.install') }} ==========
 const pwaInstallEvent = ref<any>(null)
 const canInstallPwa = ref(false)
 
@@ -228,7 +228,7 @@ async function installPwa() {
   canInstallPwa.value = false
 }
 
-/** 点击安装/下载 APK */
+/** 点击{{ t('common.install') }}/{{ t('common.download') }} APK */
 async function downloadAndInstallApk() {
   const dlUrl = DOWNLOAD_URLS.android.debug
   if (isAndroid()) {
@@ -239,9 +239,9 @@ async function downloadAndInstallApk() {
   window.open(dlUrl, '_blank')
   showToast('{{ t('about.downloading_apk') }}...')
   showConfirmDialog({
-    title: '📱 手机安装',
+    title: '📱 手机{{ t('common.install') }}',
     message: '{{ t('about.scan_install') }}',
-    confirmButtonText: '扫码安装',
+    confirmButtonText: '扫码{{ t('common.install') }}',
   }).then(() => showApkQr.value = true).catch(() => {})
 }
 
@@ -262,7 +262,7 @@ const platformLabel = computed(() => ({
 const showAndroid = computed(() => !isAndroid())
 const dataSourceCount = 10
 
-// ========== 下载处理 ==========
+// ========== {{ t('common.download') }}处理 ==========
 function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast('{{ t('about.downloading_apk') }}...') }
 function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast('{{ t('about.downloading_windows') }}...') }
 function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast('{{ t('about.downloading_mac') }}...') }
@@ -343,7 +343,7 @@ function openUrl(url: string) { window.open(url, '_blank') }
 .feature-icon { font-size: 24px; }
 .feature-tag span:last-child { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 
-/* ========== 下载卡片 ========== */
+/* ========== {{ t('common.download') }}卡片 ========== */
 .download-card {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 16px; background: var(--bg-card);
@@ -382,7 +382,7 @@ function openUrl(url: string) { window.open(url, '_blank') }
 }
 .pwa-install-info { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); }
 
-/* ========== 二维码弹窗 ========== */
+/* ========== {{ t('common.qr_code') }}弹窗 ========== */
 .qr-modal {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 280px; background: var(--bg-card); border-radius: 16px; padding: 24px;

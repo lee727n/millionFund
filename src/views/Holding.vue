@@ -939,13 +939,13 @@ async function onCopyLogs(): Promise<void> {
                 <div class="fund-name-line">
                   <span v-if="holding.isQDII" class="qdii-tag">QD</span>
                   <div class="fund-name">
-                    {{ holding.name || {{ t("holding.loading") }} }}
+                    {{ holding.name || t("holding.loading") }}
                   </div>
                 </div>
               </div>
               <div class="fund-meta">
                 <span class="update-status-tag" :class="holding.isUpdated ? 'updated' : 'not-updated'">
-                  {{ holding.isUpdated ? {{ t("holding.updated") }} : {{ t("holding.not_updated") }} }}
+                  {{ holding.isUpdated ? t("holding.updated") : t("holding.not_updated") }}
                 </span>
                 <span class="amount">¥{{ formatMoney(holding.marketValue ?? 0) }}</span>
               </div>
@@ -988,7 +988,7 @@ async function onCopyLogs(): Promise<void> {
     >
       <div class="add-dialog">
         <div class="dialog-header">
-          <span>{{ isEditing ? {{ t("holding.edit_holding") }} : {{ t("holding.add_holding") }} }}</span>
+          <span>{{ isEditing ? t("holding.edit_holding") : t("holding.add_holding") }}</span>
           <van-icon name="cross" @click="showAddDialog = false" />
         </div>
 

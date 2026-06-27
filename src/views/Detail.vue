@@ -461,10 +461,10 @@ async function submitCostAdjust() {
     }
     
     holdingStore.addOrUpdateHolding(record)
-    showToast(t("holding.cost_adjust_success"))
+    showToast(t('holding.cost_adjust_success'))
     router.back()
   } catch (error) {
-    showToast(t("holding.cost_adjust_failed"))
+    showToast(t('holding.cost_adjust_failed'))
   } finally {
     closeToast()
     showCostDialog.value = false
@@ -482,7 +482,7 @@ async function handleDelete() {
   try {
     await showConfirmDialog({
       title: t('common.confirm_delete'),
-      message: t("detail.delete_confirm")
+      message: t('detail.delete_confirm')
     })
     await holdingStore.removeHolding(fundCode.value)
     showToast(t('common.deleted'))
@@ -516,7 +516,7 @@ async function removeFromWatchlist() {
 
 async function addToWatchlist() {
   if (fundStore.isFundInWatchlist(fundCode.value)) {
-    showToast(t("detail.already_in_watchlist"))
+    showToast(t('detail.already_in_watchlist'))
     return
   }
   await fundStore.addFund(fundCode.value, fundInfo.value?.name || '')
@@ -733,7 +733,7 @@ function formatPercent(num: number): string {
             <div class="item-value">{{ formatNum(holdingDetails.shares) }}</div>
           </div>
           <div class="holding-item">
-            <div class="item-label"{{ t('detail.holding_ratio') }}</div>
+            <div class="item-label">{{ t('detail.holding_ratio') }}</div>
             <div class="item-value">{{ holdingDetails.ratio.toFixed(2) }}%</div>
           </div>
           <div class="holding-item">
@@ -749,7 +749,7 @@ function formatPercent(num: number): string {
             </div>
           </div>
           <div class="holding-item">
-            <div class="item-label"{{ t('detail.holding_cost') }}</div>
+            <div class="item-label">{{ t('detail.holding_cost') }}</div>
             <div class="item-value">{{ holdingDetails.cost.toFixed(4) }}</div>
           </div>
           <div class="holding-item">
@@ -1028,7 +1028,7 @@ function formatPercent(num: number): string {
           </div>
         </div>
       </div>
-      <div v-else class="empty-hint"{{ t('detail.no_holding_data') }}</div>
+      <div v-else class="empty-hint">{{ t('detail.no_holding_data') }}</div>
     </div>
 
     <!-- ========== 行业配置 ========== -->
@@ -1160,11 +1160,11 @@ function formatPercent(num: number): string {
     <div class="bottom-bar">
       <div class="bar-item" @click="editHolding">
         <van-icon name="edit" size="20" />
-        <span{{ t('detail.edit_holding') }}</span>
+        <span>{{ t('detail.edit_holding') }}</span>
       </div>
       <div class="bar-item" v-if="holdingInfo" @click="handleDelete">
         <van-icon name="delete" size="20" />
-        <span{{ t('detail.remove_from_holdings') }}</span>
+        <span>{{ t('detail.remove_from_holdings') }}</span>
       </div>
       <div class="bar-item" @click="manageSource">
         <van-icon name="shop-o" size="20" />
@@ -1172,7 +1172,7 @@ function formatPercent(num: number): string {
       </div>
       <div class="bar-item" @click="showTransactions">
         <van-icon name="orders-o" size="20" />
-        <span{{ t('detail.trade_record') }}</span>
+        <span>{{ t('detail.trade_record') }}</span>
       </div>
       <div class="bar-item" @click="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()">
         <van-icon :name="fundStore.isFundInWatchlist(fundCode) ? 'star' : 'star-o'" size="20" />
@@ -1204,20 +1204,20 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${costFormData.name} (${costFormData.code})`"
-            :label="t("基金")
+            :label="t('基金')
             readonly
           />
           <van-field
             v-model="costFormData.amount"
             type="number"
-            :label="t("持仓金额")
-            :placeholder="t("调整后的持仓金额（元）")
+            :label="t('持仓金额')
+            :placeholder="t('调整后的持仓金额（元）')
           />
           <van-field
             v-model="costFormData.profit"
             type="number"
-            :label="t("持仓收益")
-            :placeholder="t("调整后的持仓收益（元）")
+            :label="t('持仓收益')
+            :placeholder="t('调整后的持仓收益（元）')
           />
           <div class="cost-tip">
             <van-icon name="info-o" />
@@ -1226,8 +1226,8 @@ function formatPercent(num: number): string {
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showCostDialog = false">{{ t("取消") }}/van-button>
-          <van-button type="primary" @click="submitCostAdjust">{{ t("确定") }}/van-button>
+          <van-button @click="showCostDialog = false">{{ t('common.cancel') }}</van-button>
+          <van-button type="primary" @click="submitCostAdjust">{{ t('common.confirm') }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -1248,13 +1248,13 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            :label="t("基金")
+            :label="t('基金')
             readonly
           />
           <van-field
             v-model="sectorFormData.sectors"
             type="textarea"
-            :label="t("行业板块")
+            :label="t('行业板块')
             placeholder="每行输入一个行业板块，例如：\n新能源\n半导体\n医药"
             :rows="5"
           />
@@ -1265,8 +1265,8 @@ function formatPercent(num: number): string {
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showSectorDialog = false">{{ t("取消") }}/van-button>
-          <van-button type="primary" @click="submitSectorAdjust">{{ t("确定") }}/van-button>
+          <van-button @click="showSectorDialog = false">{{ t('common.cancel') }}</van-button>
+          <van-button type="primary" @click="submitSectorAdjust">{{ t('common.confirm') }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -1287,7 +1287,7 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            :label="t("基金")
+            :label="t('基金')
             readonly
           />
           <div class="form-item">
@@ -1316,8 +1316,8 @@ function formatPercent(num: number): string {
         </div>
 
         <div class="dialog-footer">
-          <van-button @click="showSourceDialog = false">{{ t("取消") }}/van-button>
-          <van-button type="primary" @click="submitSourceAdjust">{{ t("确定") }}/van-button>
+          <van-button @click="showSourceDialog = false">{{ t('common.cancel') }}</van-button>
+          <van-button type="primary" @click="submitSourceAdjust">{{ t('common.confirm') }}</van-button>
         </div>
       </div>
     </van-popup>

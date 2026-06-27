@@ -6,6 +6,8 @@ import { ref, watch, nextTick, onUnmounted } from 'vue'
 import { fetchIntradayData, type IntradayPoint } from '@/api/fundFast'
 import { logger } from '@/utils/logger'
 import { useTimer } from '@/composables/useTimer'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const { safeTimeout, clearSafeTimeout } = useTimer()
 
@@ -212,7 +214,7 @@ const lastPoint = () => {
         </div>
       </div>
       <div class="intraday-popup-loading" v-else>
-        <van-loading size="24px">加载中...</van-loading>
+        <van-loading size="24px"{{ t('common.loading') }}</van->
       </div>
       <button class="intraday-popup-close-btn" @click="close">关闭</button>
     </div>

@@ -2,10 +2,10 @@
   <div class="finance-news-page">
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">金融资讯</span>
+      <span class="header-title">{{ t('finance_news.title') }}</span>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
+    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else class="news-list">
       <div v-for="news in newsList" :key="news.id" class="news-item" @click="showNewsDetail(news)">
@@ -20,8 +20,8 @@
         <h2 class="detail-title">{{ selectedNews.title }}</h2>
         <p class="detail-time">{{ selectedNews.time }}</p>
         <p class="detail-content">{{ selectedNews.summary }}</p>
-        <a :href="selectedNews.url" target="_blank" class="detail-link">查看原文</a>
-        <van-button type="primary" @click="selectedNews = null" class="detail-close">关闭</van-button>
+        <a :href="selectedNews.url" target="_blank" class="detail-link">{{ t('finance_news.view_original') }}</a>
+        <van-button type="primary" @click="selectedNews = null" class="detail-close">{{ t('common.close') }}</van-button>
       </div>
     </div>
   </div>
@@ -31,8 +31,10 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchNewsList } from '@/api/jin10'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 const newsList = ref([])
 const loading = ref(false)
 const error = ref('')
@@ -45,7 +47,7 @@ const loadNews = async () => {
     const data = await fetchNewsList(1, 20, 'all')
     newsList.value = data
   } catch (err) {
-    error.value = '加载失败，请稍后重试'
+    error.value = t('finance_news.load_failed')
     console.error('[FinanceNews] 加载新闻失败', err)
   } finally {
     loading.value = false

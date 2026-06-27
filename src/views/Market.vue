@@ -3,7 +3,7 @@
     <!-- 导航栏 -->
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">市场概览</span>
+      <span class="header-title">{{ t('market.title') }}</span>
       <van-icon name="replay" size="20" :class="{ refreshing: isRefreshing }" @click="refreshData" />
     </div>
 
@@ -13,12 +13,12 @@
         class="market-tab"
         :class="{ active: activeTab === 'index' }"
         @click="activeTab = 'index'"
-      >指数</div>
+      >{{ t('market.tab_index') }}</div>
       <div
         class="market-tab"
         :class="{ active: activeTab === 'future' }"
         @click="activeTab = 'future'"
-      >期货</div>
+      >{{ t('market.tab_future') }}</div>
     </div>
 
     <div class="scroll-content">
@@ -34,7 +34,7 @@
         <!-- A股指数 -->
         <div class="section">
           <div class="section-header">
-            <span class="section-title">A股指数</span>
+            <span class="section-title">{{ t('market.a_share_indices') }}</span>
           </div>
           <div class="index-grid">
             <div
@@ -56,7 +56,7 @@
         <!-- 全球指数 -->
         <div class="section">
           <div class="section-header">
-            <span class="section-title">全球指数</span>
+            <span class="section-title">{{ t('market.global_indices') }}</span>
             <span class="section-tip" v-if="globalIndices.length > 0">{{ globalIndices.length }}个市场</span>
           </div>
           <div class="index-grid">
@@ -82,13 +82,13 @@
       <template v-else-if="activeTab === 'future'">
         <div class="section">
           <div class="section-header">
-            <span class="section-title">期货行情</span>
+            <span class="section-title">{{ t('market.future_quotes') }}</span>
             <span class="section-tip" v-if="futures.length > 0">{{ futures.length }}个合约</span>
           </div>
 
           <!-- 加载状态 -->
           <div v-if="isLoadingFutures" class="loading-state">
-            <van-loading size="24">加载期货数据...</van-loading>
+            <van-loading size="24">{{ t('market.loading_future') }}</van-loading>
           </div>
 
           <!-- 期货列表 -->
@@ -115,7 +115,7 @@
 
       <!-- 加载/错误状态 -->
       <div v-if="isLoading && activeTab === 'index'" class="loading-state">
-        <van-loading size="24">加载市场数据...</van-loading>
+        <van-loading size="24">{{ t('market.loading_market') }}</van->
       </div>
     </div>
   </div>
@@ -128,8 +128,10 @@ import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, typ
 import { fetchFutureBatch, type FutureQuote } from '@/api/future'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { logger } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 
 // Tab 切换
 const activeTab = ref<'index' | 'future'>('index')

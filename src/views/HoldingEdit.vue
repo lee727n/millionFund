@@ -9,9 +9,11 @@ import { useHoldingStore } from '@/stores/holding'
 import { ASSET_CLASS_CONFIG, type AssetClass } from '@/types/holding'
 import { fetchFundEstimate } from '@/api/fundFast'
 import type { HoldingRecord } from '@/types/fund'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const holdingStore = useHoldingStore()
 
 // [WHAT] 是否为编辑模式
@@ -60,7 +62,7 @@ const codePlaceholder = computed(() => {
     gold: '请输入黄金品种（如：黄金ETF）',
     commodity: '请输入大宗商品代码'
   }
-  return placeholders[form.value.assetClass] || '请输入代码/符号'
+  return placeholders.value[form.value.assetClass] || t('holding_edit.code_symbol_default')
 })
 
 // [WHAT] 名称输入框的 placeholder
@@ -90,7 +92,7 @@ const costPriceLabel = computed(() => {
 // [WHAT] 数量标签
 const sharesLabel = computed(() => {
   const labels: Record<AssetClass, string> = {
-    fund: '持有份额',
+    fund: t('holding_edit.shares'),
     astock: '持有数量（股）',
     hkstock: '持有数量（股）',
     usstock: '持有数量（股）',
@@ -286,8 +288,8 @@ onMounted(() => {
 <template>
   <div class="holding-edit-page">
     <van-nav-bar
-      :title="isEdit ? '编辑持仓' : '添加持仓'"
-      left-text="返回"
+      :title="isEdit ? t('holding_edit.edit') : t('holding_edit.add')"
+      :left-text="t('common.back')"
       @click-left="onCancel"
     />
     
@@ -297,7 +299,7 @@ onMounted(() => {
         v-model="form.assetClass"
         is-link
         readonly
-        label="资产类别"
+        :label="t('holding_edit.asset_class')"
         :placeholder="assetClassOptions.find(o => o.value === form.assetClass)?.text || '请选择'"
         @click="showAssetClassPicker = true"
       />
@@ -313,8 +315,8 @@ onMounted(() => {
       <template v-if="form.assetClass === 'fund'">
         <van-field
           v-model="searchKeyword"
-          label="基金代码"
-          placeholder="输入代码或名称搜索"
+          :label="t('holding_edit.fund_code')"
+          :placeholder="t('holding_edit.search_placeholder')"
           @input="onSearchInput"
         />
         
@@ -334,11 +336,11 @@ onMounted(() => {
         <van-field
           v-if="form.code"
           :model-value="`${form.name} (${form.code})`"
-          label="已选基金"
+          :label="t('holding_edit.selected_fund')"
           readonly
         >
           <template #button>
-            <van-button size="small" @click="form.code = ''; form.name = ''; searchKeyword = ''">重选</van-button>
+            <van-button size="small" @click="form.code = ''; form.name = ''; searchKeyword = ''">{{ t('holding_edit.reselect') }}</van-button>
           </template>
         </van-field>
       </template>
@@ -347,12 +349,12 @@ onMounted(() => {
       <template v-else>
         <van-field
           v-model="form.code"
-          label="代码/符号"
+          :label="t('holding_edit.code_symbol')"
           :placeholder="codePlaceholder"
         />
         <van-field
           v-model="form.name"
-          label="名称"
+          :label="t('holding_edit.name')"
           :placeholder="namePlaceholder"
         />
       </template>
@@ -362,7 +364,7 @@ onMounted(() => {
         v-model="form.costPrice"
         type="number"
         :label="costPriceLabel"
-        placeholder="请输入"
+        :placeholder="t('common.please_input')"
       />
       
       <!-- 持有数量 -->
@@ -370,7 +372,7 @@ onMounted(() => {
         v-model="form.shares"
         type="number"
         :label="sharesLabel"
-        placeholder="请输入"
+        :placeholder="t('common.please_input')"
       />
       
       <!-- 买入日期 -->
@@ -378,8 +380,8 @@ onMounted(() => {
         v-model="form.buyDate"
         is-link
         readonly
-        label="买入日期"
-        placeholder="请选择"
+        :label="t('holding_edit.buy_date')"
+        :placeholder="t('common.please_select')"
         @click="showDatePicker = true"
       />
       <van-popup v-model:show="showDatePicker" position="bottom">
@@ -394,23 +396,23 @@ onMounted(() => {
       <van-field
         v-model="form.marketValue"
         type="number"
-        label="持仓市值"
-        placeholder="可选，用于计算份额"
+        :label="t('holding_edit.market_value')"
+        :placeholder="t('holding_edit.market_value_ph')"
       />
       
       <!-- 持仓收益（可选，用于反推成本价） -->
       <van-field
         v-model="form.profit"
         type="number"
-        label="持仓收益"
-        placeholder="可选，用于计算成本价"
+        :label="t('holding_edit.profit')"
+        :placeholder="t('holding_edit.profit_ph')"
       />
     </div>
     
     <!-- 提交按钮 -->
     <div class="submit-bar">
       <van-button block type="primary" @click="onSubmit">
-        {{ isEdit ? '保存修改' : '确认添加' }}
+        {{ isEdit ? t('holding_edit.save') : t('holding_edit.confirm_add') }}
       </van-button>
     </div>
   </div>

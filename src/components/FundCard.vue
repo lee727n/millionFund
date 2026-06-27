@@ -9,6 +9,8 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import { useTimer } from '@/composables/useTimer'
 import type { AssetClass } from '@/types/holding'
 import { ASSET_CLASS_CONFIG } from '@/types/holding'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const { safeTimeout, clearSafeTimeout } = useTimer()
 

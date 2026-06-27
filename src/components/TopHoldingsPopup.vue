@@ -5,6 +5,8 @@
 import { ref, watch } from 'vue'
 import { fetchTopHoldings, type HoldingStock } from '@/api/fundFast'
 import { logger } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const props = defineProps<{
   show: boolean
@@ -89,7 +91,7 @@ function close() {
         </div>
       </div>
       <div class="top-holdings-loading" v-else>
-        <van-loading size="24px">加载中...</van-loading>
+        <van-loading size="24px"{{ t('common.loading') }}</van->
       </div>
       <button class="top-holdings-close-btn" @click="close">关闭</button>
     </div>

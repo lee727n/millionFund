@@ -12,6 +12,8 @@ import { useHoldingStore } from '@/stores/holding'
 import { logger } from '@/utils/logger'
 import { requestPermissions } from '@/utils/permissions'
 import type { HoldingRecord, FundInfo } from '@/types/fund'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const props = defineProps<{
   show: boolean

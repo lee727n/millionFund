@@ -8,6 +8,8 @@ import { fetchSimpleKLineData, calculatePeriodReturns, clearFundCache, fetchHS30
 import { logger } from '@/utils/logger'
 import { useThemeStore } from '@/stores/theme'
 import { isTradingTime } from '@/api/tiantianApi'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const props = defineProps<{
   fundCode: string
@@ -1140,7 +1142,7 @@ onUnmounted(() => {
     <!-- 图表区域 -->
     <div class="chart-container">
       <div v-if="isLoading" class="chart-loading">
-        <van-loading size="24px" color="#0ecb81">加载中...</van-loading>
+        <van-loading size="24px" color="#0ecb81"{{ t('common.loading') }}</van->
       </div>
       <canvas v-else ref="canvasRef" class="chart-canvas"></canvas>
     </div>
