@@ -3,9 +3,8 @@
 // [DEPS] @vue/test-utils、vitest、pinia
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { ref } from 'vue'
 import Home from '../Home.vue'
 // [WHY] 导入共享响应式状态（放在单独模块避免 vi.mock 提升导致的初始化顺序问题）
 import {
@@ -17,47 +16,6 @@ import {
   loadIndices,
   loadGlobalIndices,
 } from './homeState'
-
-// [WHY] 模拟 vue-i18n - 返回正确的翻译值（用于测试）
-const mockTranslations: Record<string, string> = {
-  'home.app_title_full': 'AI 百万实盘',
-  'home.app_title_short': 'AI实盘',
-  'home.reference_ma': '参考均线',
-  'home.filter_all': '全部',
-  'home.error_title': '页面加载出现问题',
-  'home.error_detail': '部分数据暂时无法加载',
-  'home.retry': '点击重试',
-  'home.holding_trend': '持仓趋势',
-  'home.profit_rate': '利润率',
-  'home.today_profit': '今日盈亏',
-  'home.market_closed': '休市',
-  'home.sort_asc': '升序',
-  'home.sort_desc': '降序',
-  'home.total_assets': '总资产',
-  'home.total_profit': '累计盈亏',
-  'home.holdings': '持仓',
-  'home.no_holdings': '暂无持仓',
-  'home.sorted_by_profit': '持仓列表（按盈亏排序）',
-  'home.welcome': '欢迎使用基金管理',
-  'home.description': '在这里管理你的自选和持仓基金',
-  'home.add_fund': '添加自选基金',
-  'home.add_holding': '添加持仓记录',
-  'home.tip': '小提示：在持仓页长按基金可快速操作',
-  'home.quant_observe': '量化观察',
-  'home.global_indices': '全球主要指数',
-  'home.watchlist': '自选基金',
-  'home.market_closed_short': '休市',
-  'common.simple': '简',
-  'common.full': '全',
-}
-
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string) => mockTranslations[key] || key,
-    locale: { value: 'zh-CN' },
-  }),
-  createI18n: vi.fn(),
-}))
 
 // [WHY] 模拟 vue-router
 vi.mock('vue-router', () => ({
@@ -79,15 +37,25 @@ vi.mock('@/stores/fund', () => ({
   }),
 }))
 
-// [WHY] 模拟 holding store - 使用 getter 支持动态更新
-const mockHoldings = ref<any[]>([])
+// [WHY] 模拟 holding store - 使用共享引用确保测试修改能反映到组件
+const mockHoldingStore = {
+  holdings: [],
+  isRefreshing: false,
+  portfolioSummary: null,
+  summary: { totalValue: 0, totalProfit: 0, totalProfitRate: 0, todayProfit: 0 },
+  holdingCodes: [],
+  initHoldings: vi.fn(),
+  refreshEstimates: vi.fn().mockResolvedValue(undefined),
+  addOrUpdateHolding: vi.fn(),
+  removeHolding: vi.fn(),
+  hasHolding: vi.fn(),
+  getHoldingByCode: vi.fn(),
+  updateHoldingDays: vi.fn(),
+  fetchPortfolioSummary: vi.fn(),
+}
+
 vi.mock('@/stores/holding', () => ({
-  useHoldingStore: () => ({
-    get holdings() { return mockHoldings.value },
-    initHoldings: vi.fn(),
-    refreshEstimates: vi.fn().mockResolvedValue(undefined),
-    addOrUpdateHolding: vi.fn(),
-  }),
+  useHoldingStore: () => mockHoldingStore,
 }))
 
 // [WHY] 模拟 network store
@@ -166,6 +134,17 @@ describe('Home.vue - 首页', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    // [WHY] 重置 mockHoldingStore（防止测试间状态泄漏）
+    mockHoldingStore.holdings = []
+    mockHoldingStore.isRefreshing = false
+    mockHoldingStore.portfolioSummary = null
+    mockHoldingStore.summary = {
+      totalValue: 0,
+      totalProfit: 0,
+      totalProfitRate: 0,
+      todayProfit: 0,
+    }
+    mockHoldingStore.holdingCodes = []
     // [WHY] 防止 useHomeData 中的 setInterval 在测试环境执行
     vi.useFakeTimers()
     // [WHY] 重置共享状态
@@ -222,23 +201,28 @@ describe('Home.vue - 首页', () => {
   /**
    * 测试：有持仓时显示持仓趋势区块
    */
-  it('有持仓时应显示持仓趋势区块', async () => {
-    // 直接设置 mock 数据
-    mockHoldings.value = [
+  it('有持仓时应显示持仓趋势区块', () => {
+    mockHoldingStore.holdings = [
       {
         code: '000001',
         name: '测试基金',
-        source: 'tencent',
-        holdShare: '1000',
-        holdCost: '1.5',
+        source: '手动',
+        assetClass: 'fund',
+        buyNetValue: 1.0,
+        shares: 1000,
+        buyDate: '2026-01-01',
+        holdingDays: 180,
+        marketValue: 10000,
+        profit: 1000,
+        profitRate: 10,
+        todayProfit: 100,
         todayChange: '1.0',
         isUpdated: true,
         createdAt: Date.now(),
-      },
+      } as any,
     ]
 
     const wrapper = mount(Home)
-    await flushPromises()
     expect(wrapper.find('.market-overview').exists()).toBe(true)
   })
 
@@ -296,24 +280,34 @@ describe('Home.vue - 首页', () => {
   /**
    * 测试：持仓趋势区块有持仓时应显示盈亏统计
    */
-  it('有持仓时应显示利润率/盈亏统计', async () => {
-    // 直接设置 mock 数据
-    mockHoldings.value = [
+  it('有持仓时应显示利润率/盈亏统计', () => {
+    mockHoldingStore.holdings = [
       {
         code: '000001',
         name: '测试基金',
-        source: 'tencent',
-        holdShare: '1000',
-        holdCost: '1.5',
+        source: '手动',
+        assetClass: 'fund',
+        buyNetValue: 1.0,
+        shares: 1000,
+        buyDate: '2026-01-01',
+        holdingDays: 180,
+        marketValue: 10000,
+        profit: 1000,
+        profitRate: 10,
+        todayProfit: 100,
         todayChange: '1.0',
         isUpdated: true,
         createdAt: Date.now(),
-      },
+      } as any,
     ]
+    mockHoldingStore.summary = {
+      totalValue: 10000,
+      totalProfit: 1000,
+      totalProfitRate: 10,
+      todayProfit: 100,
+    }
 
     const wrapper = mount(Home)
-    await flushPromises()
-    // 检查 i18n 集成：组件应使用 t() 渲染翻译后的文本
     expect(wrapper.text()).toContain('利润率')
     expect(wrapper.text()).toContain('今日盈亏')
   })
@@ -321,20 +315,29 @@ describe('Home.vue - 首页', () => {
   /**
    * 测试：操作按钮存在
    */
-  it('应有排序按钮', async () => {
-    // 直接设置 mock 数据
-    mockHoldings.value = [
+  it('应有排序按钮', () => {
+    mockHoldingStore.holdings = [
       {
         code: '000001',
         name: '测试基金',
-        source: 'tencent',
-        holdShare: '1000',
-        holdCost: '1.5',
-      },
+        source: '手动',
+        assetClass: 'fund',
+        buyNetValue: 1.0,
+        shares: 1000,
+        buyDate: '2026-01-01',
+        holdingDays: 180,
+        marketValue: 10000,
+        profit: 1000,
+        profitRate: 10,
+        todayProfit: 100,
+        todayChange: '1.0',
+        isUpdated: true,
+        createdAt: Date.now(),
+      } as any,
     ]
 
     const wrapper = mount(Home)
-    await flushPromises()
+    // 排序图标按钮通过 CSS 类存在
     const sortButtons = wrapper.findAll('.sort-icon-button')
     expect(sortButtons.length).toBeGreaterThanOrEqual(2)
   })
