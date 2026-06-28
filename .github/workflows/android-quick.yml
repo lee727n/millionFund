@@ -1,0 +1,82 @@
+name: 🤖 Android 快速构建 (APK)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: 构建 Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web + Sync Capacitor
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Build Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cd ..
+
+      - name: 重命名 APK (含版本号)
+        run: |
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          mv android/app/build/outputs/apk/release/app-release.apk AI百万实盘-v${VERSION}.apk
+          echo "APK 版本: v${VERSION}"
+          echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI百万实盘-Android-v${{ github.sha }}
+          path: AI百万实盘-v*.apk
+
+      - name: 删除旧的开发版 Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete android-dev --yes || true
+          git push origin :refs/tags/android-dev || true
+
+      - name: 发布到 GitHub Releases (开发版)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-dev
+          name: 🤖 Android 开发版 (v${{ github.sha }})
+          body: |
+            📱 **AI百万实盘 - Android 开发版**
+
+            - 版本: ${{ github.ref_name }}
+            - 构建时间: ${{ github.event.head_commit.timestamp }}
+            - 提交: ${{ github.sha }}
+
+            💡 安装此 APK 即可测试最新功能
+          prerelease: true
+          files: AI百万实盘-v*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
