@@ -533,6 +533,88 @@ async function backupHoldings() {
   showToast(t('holding.backup_success'))
 }
 
+// [WHAT] 导出持仓数据为 CSV
+function exportCSV() {
+  if (holdingStore.holdings.length === 0) {
+    showToast(t('holding.no_holdings'))
+    return
+  }
+
+  try {
+    // CSV 表头
+    const headers = [
+      '基金代码',
+      '基金名称',
+      '持仓金额(元)',
+      '持有收益(元)',
+      '收益率(%)',
+      '当日收益(元)',
+      '当日涨幅(%)',
+      '持有份额',
+      '成本价',
+      '来源',
+      '是否QDII'
+    ]
+
+    // 构建 CSV 行数据
+    const rows = holdingStore.holdings.map(h => [
+      h.code || '',
+      h.name || '',
+      (h.marketValue ?? h.currentValue ?? 0).toFixed(2),
+      (h.profit ?? 0).toFixed(2),
+      (h.profitRate ?? 0).toFixed(2),
+      (h.todayProfit ?? 0).toFixed(2),
+      (h.todayChange ?? 0).toFixed(2),
+      (h.shares ?? 0).toFixed(2),
+      (h.buyNetValue ?? 0).toFixed(4),
+      h.source || '',
+      h.isQDII ? '是' : '否'
+    ])
+
+    // 转换为 CSV 格式（处理字段中的逗号）
+    const csvRows = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(field => {
+          // 如果字段包含逗号、引号或换行，用双引号包裹
+          const str = String(field)
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"'
+          }
+          return str
+        }).join(',')
+      )
+    ]
+
+    const csvContent = csvRows.join('\n')
+
+    // 添加 BOM（Byte Order Mark）以支持 Excel 正确显示中文
+    const BOM = '\uFEFF'
+    const csvWithBOM = BOM + csvContent
+
+    // 生成文件名（包含日期）
+    const today = new Date().toISOString().split('T')[0]
+    const fileName = `持仓数据_${today}.csv`
+
+    // 创建 Blob 并下载
+    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    showToast(t('holding.export_success'))
+  } catch (error) {
+    logger.error('[Holding] CSV 导出失败', error)
+    showToast(t('holding.export_failed'))
+  }
+}
+
 // [WHAT] 恢复持仓数据
 function restoreHoldings() {
   // 创建文件输入元素
@@ -804,6 +886,7 @@ async function onCopyLogs(): Promise<void> {
           <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
           <van-button size="small" @click="showImportDialog = true" class="nav-btn">{{ t('holding.import_screenshot') }}</van-button>
           <van-button size="small" @click="openBatchDialog" class="nav-btn">{{ t('holding.batch') }}</van-button>
+          <van-button size="small" @click="exportCSV" class="nav-btn">{{ t('holding.export_csv') }}</van-button>
           <van-button size="small" @click="backupHoldings" class="nav-btn">{{ t('holding.backup') }}</van-button>
           <van-button size="small" @click="restoreHoldings" class="nav-btn">{{ t('holding.restore') }}</van-button>
         </div>
@@ -827,6 +910,7 @@ async function onCopyLogs(): Promise<void> {
           <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
           <van-button size="small" @click="showImportDialog = true">{{ t('holding.import_screenshot') }}</van-button>
           <van-button size="small" @click="openBatchDialog">{{ t('holding.batch') }}</van-button>
+          <van-button size="small" @click="exportCSV">{{ t('holding.export_csv') }}</van-button>
           <van-button size="small" @click="restoreHoldings">{{ t('holding.restore') }}</van-button>
         </div>
       </div>

@@ -111,6 +111,7 @@
     "no_holdings": "暂无持仓记录",
     "import_screenshot": "导入",
     "batch": "批量",
+    "export_csv": "导出CSV",
     "backup": "备份",
     "restore": "恢复",
     "refresh": "刷新",
@@ -143,6 +144,8 @@
     "import_success": "成功导入 {count} 只基金",
     "refresh_success": "刷新成功",
     "refresh_failed": "刷新失败，请重试",
+    "export_success": "导出成功",
+    "export_failed": "导出失败",
     "source_ali": "支付宝",
     "source_tx": "腾讯",
     "source_jd": "京东",
@@ -642,7 +645,12 @@
   },
   "mine": {
     "title": "我的",
-    "coming_soon": "个人中心页面 — 开发中"
+    "coming_soon": "个人中心页面 — 开发中",
+    "download_apk": "下载 Android 版",
+    "downloading": "下载中...",
+    "download_started": "下载已开始，请查看浏览器下载栏",
+    "download_tip": "从 GitHub Releases 下载最新 APK 安装包",
+    "download_failed": "下载失败，请重试"
   },
   "search": {
     "title": "搜索基金",

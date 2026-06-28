@@ -102,6 +102,7 @@
     "no_holdings": "No holdings yet",
     "import_screenshot": "Import",
     "batch": "Batch",
+    "export_csv": "Export CSV",
     "backup": "Backup",
     "restore": "Restore",
     "refresh": "Refresh",
@@ -134,6 +135,8 @@
     "import_success": "Successfully imported {count} funds",
     "refresh_success": "Refresh successful",
     "refresh_failed": "Refresh failed, please retry",
+    "export_success": "Export successful",
+    "export_failed": "Export failed",
     "source_ali": "Alipay",
     "source_tx": "Tencent",
     "source_jd": "JD.com",
@@ -615,7 +618,12 @@
   },
   "mine": {
     "title": "Mine",
-    "coming_soon": "Personal center page - Under development"
+    "coming_soon": "Personal center page - Under development",
+    "download_apk": "Download Android App",
+    "downloading": "Downloading...",
+    "download_started": "Download started, check browser download bar",
+    "download_tip": "Download latest APK from GitHub Releases",
+    "download_failed": "Download failed, please retry"
   },
   "search": {
     "title": "Search Funds",
