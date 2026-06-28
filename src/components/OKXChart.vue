@@ -1142,7 +1142,7 @@ onUnmounted(() => {
     <!-- 图表区域 -->
     <div class="chart-container">
       <div v-if="isLoading" class="chart-loading">
-        <van-loading size="24px" color="#0ecb81"{{ t('common.loading') }}</van->
+        <van-loading size="24px" color="#0ecb81">{{ t('common.loading') }}</van-loading>
       </div>
       <canvas v-else ref="canvasRef" class="chart-canvas"></canvas>
     </div>

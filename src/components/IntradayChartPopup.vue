@@ -214,7 +214,7 @@ const lastPoint = () => {
         </div>
       </div>
       <div class="intraday-popup-loading" v-else>
-        <van-loading size="24px"{{ t('common.loading') }}</van->
+        <van-loading size="24px">{{ t('common.loading') }}</van-loading>
       </div>
       <button class="intraday-popup-close-btn" @click="close">关闭</button>
     </div>

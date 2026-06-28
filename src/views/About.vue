@@ -212,18 +212,18 @@ onMounted(() => {
   window.addEventListener('appinstalled', () => {
     canInstallPwa.value = false
     pwaInstallEvent.value = null
-    showSuccessToast('{{ t('about.install_success') }} 🎉')
+    showSuccessToast(t('about.install_success') + ' 🎉')
   })
 })
 
 async function installPwa() {
   if (!pwaInstallEvent.value) {
-    showToast('{{ t('about.use_browser_menu') }}')
+    showToast(t('about.use_browser_menu'))
     return
   }
   pwaInstallEvent.value.prompt()
   const result = await pwaInstallEvent.value.userChoice
-  if (result.outcome === 'accepted') showSuccessToast('{{ t('about.install_success') }} 🎉')
+  if (result.outcome === 'accepted') showSuccessToast(t('about.install_success') + ' 🎉')
   pwaInstallEvent.value = null
   canInstallPwa.value = false
 }
@@ -233,15 +233,15 @@ async function downloadAndInstallApk() {
   const dlUrl = DOWNLOAD_URLS.android.debug
   if (isAndroid()) {
     window.open(dlUrl, '_system')
-    showToast('{{ t('about.apk_downloading') }}')
+    showToast(t('about.apk_downloading'))
     return
   }
   window.open(dlUrl, '_blank')
-  showToast('{{ t('about.downloading_apk') }}...')
+  showToast(t('about.downloading_apk') + '...')
   showConfirmDialog({
-    title: '📱 手机{{ t('common.install') }}',
-    message: '{{ t('about.scan_install') }}',
-    confirmButtonText: '扫码{{ t('common.install') }}',
+    title: '📱 手机' + t('common.install'),
+    message: t('about.scan_install'),
+    confirmButtonText: '扫码' + t('common.install'),
   }).then(() => showApkQr.value = true).catch(() => {})
 }
 
@@ -263,14 +263,14 @@ const showAndroid = computed(() => !isAndroid())
 const dataSourceCount = 10
 
 // ========== {{ t('common.download') }}处理 ==========
-function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast('{{ t('about.downloading_apk') }}...') }
-function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast('{{ t('about.downloading_windows') }}...') }
-function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast('{{ t('about.downloading_mac') }}...') }
-function downloadLinux(type: 'appimage' | 'deb') { window.open(DOWNLOAD_URLS.linux[type], '_blank'); showToast('{{ t('about.downloading_linux') }}...') }
+function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast(t('about.downloading_apk') + '...') }
+function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast(t('about.downloading_windows') + '...') }
+function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast(t('about.downloading_mac') + '...') }
+function downloadLinux(type: 'appimage' | 'deb') { window.open(DOWNLOAD_URLS.linux[type], '_blank'); showToast(t('about.downloading_linux') + '...') }
 
 async function copyWebUrl() {
-  try { await navigator.clipboard.writeText(window.location.origin); showSuccessToast('{{ t('about.copy_success') }}') }
-  catch { showToast('{{ t('about.copy_failed') }}') }
+  try { await navigator.clipboard.writeText(window.location.origin); showSuccessToast(t('about.copy_success')) }
+  catch { showToast(t('about.copy_failed')) }
 }
 function openUrl(url: string) { window.open(url, '_blank') }
 </script>

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { showToast } from 'vant'
-const { t } = useI18n()
-
-const { locale, t } = useI18n()
+const { t, locale } = useI18n()
 
 function toggleLanguage() {
   const newLocale = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN'

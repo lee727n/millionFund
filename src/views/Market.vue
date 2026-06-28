@@ -115,7 +115,7 @@
 
       <!-- 加载/错误状态 -->
       <div v-if="isLoading && activeTab === 'index'" class="loading-state">
-        <van-loading size="24">{{ t('market.loading_market') }}</van->
+        <van-loading size="24">{{ t('market.loading_market') }}</van-loading>
       </div>
     </div>
   </div>

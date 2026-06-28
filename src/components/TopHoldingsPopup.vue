@@ -91,7 +91,7 @@ function close() {
         </div>
       </div>
       <div class="top-holdings-loading" v-else>
-        <van-loading size="24px"{{ t('common.loading') }}</van->
+        <van-loading size="24px">{{ t('common.loading') }}</van-loading>
       </div>
       <button class="top-holdings-close-btn" @click="close">关闭</button>
     </div>
