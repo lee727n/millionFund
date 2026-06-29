@@ -227,8 +227,8 @@ function onSubmit() {
 
 function onDelete(id: string) {
   showConfirmDialog({
-    title: '确认删除',
-    message: '确定要删除这条交易记录吗？',
+    title: t('common.confirm_delete'),
+    message: t('trades.delete_confirm'),
   }).then(() => {
     tradeStore.deleteTrade(id)
   }).catch(() => {})

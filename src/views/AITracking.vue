@@ -20,8 +20,8 @@
           >{{ t('common.full') }}</span>
         </div>
         <van-icon name="replay" size="20" @click="refreshPrices" />
-        <van-button size="small" type="primary" @click="showAddModal = true" style="margin-left: 8px;">
-          <van-icon name="plus" /> 添加
+          <van-button size="small" type="primary" @click="showAddModal = true" style="margin-left: 8px;">
+          <van-icon name="plus" /> {{ t('common.add') }}
         </van-button>
       </div>
     </div>

@@ -10,7 +10,7 @@
               <div class="app-icon">📱</div>
               <div class="app-details">
                 <div class="app-name">{{ t('app.title') }}</div>
-                <div class="app-version">v1.9.8</div>
+                <div class="app-version">v{{ version }}</div>
               </div>
             </div>
           </template>
@@ -54,12 +54,14 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { showToast } from 'vant'
+import pkg from '../../package.json'
 
 const { t } = useI18n()
 const isDownloading = ref(false)
 
-const APK_URL = 'https://github.com/ghshhf/millionFund/releases/download/android-dev/AI%E7%99%BE%E4%B8%87%E5%AE%9E%E7%9B%98-v1.9.8.apk'
-const APK_FILENAME = 'AI百万实盘-v1.9.8.apk'
+const version = pkg.version
+const APK_URL = `https://github.com/ghshhf/millionFund/releases/download/android-dev/AI%E7%99%BE%E4%B8%87%E5%AE%9E%E7%9B%98-v${version}.apk`
+const APK_FILENAME = `AI百万实盘-v${version}.apk`
 
 function downloadAPK() {
   isDownloading.value = true
