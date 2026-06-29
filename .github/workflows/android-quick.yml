@@ -14,16 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -51,7 +51,7 @@ jobs:
           echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
 
       - name: 上传 APK 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: AI百万实盘-Android-v${{ github.sha }}
           path: AI百万实盘-v*.apk
@@ -64,7 +64,7 @@ jobs:
           git push origin :refs/tags/android-dev || true
 
       - name: 发布到 GitHub Releases (开发版)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v4
         with:
           tag_name: android-dev
           name: 🤖 Android 开发版 (v${{ github.sha }})
