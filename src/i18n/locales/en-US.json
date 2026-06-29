@@ -315,7 +315,9 @@
     "load_failed": "加载失败",
     "deleted": "已删除",
     "add_success": "添加成功",
-    "confirm_delete": "确认删除"
+    "confirm_delete": "确认删除",
+    "saving": "Saving...",
+    "save_failed": "Save failed"
   },
   "market": {
     "title": "Market Overview",
@@ -661,7 +663,8 @@
     "code_symbol_default": "Enter code/symbol",
     "cost_price": "Cost Price",
     "shares": "Shares",
-    "quantity": "Quantity"
+    "quantity": "Quantity",
+    "save_success": "Save succeeded"
   },
   "aitracking": {
     "title": "AI Tracking",
@@ -677,5 +680,21 @@
     "no_data": "No records, click + to add",
     "status_success": "Success",
     "status_in_progress": "In Progress"
+  },
+  "aitracking_toast": {
+    "drag_start": "Start dragging, release at target position",
+    "sort_updated": "Sort order updated",
+    "please_fill_code": "Please enter fund code",
+    "fetch_sell_failed": "Failed to fetch sell fund info",
+    "fetch_buy_failed": "Failed to fetch buy fund info",
+    "fetch_sell_nav_failed": "Failed to fetch sell fund NAV or no estimate",
+    "fetch_buy_nav_failed": "Failed to fetch buy fund NAV or no estimate",
+    "add_success": "Added successfully",
+    "add_failed": "Failed to add",
+    "delete_success": "Deleted successfully",
+    "refresh_success": "Refreshed successfully",
+    "refresh_failed": "Failed to refresh",
+    "auto_refresh_on": "Auto refresh enabled",
+    "auto_refresh_off": "Auto refresh disabled"
   }
 }

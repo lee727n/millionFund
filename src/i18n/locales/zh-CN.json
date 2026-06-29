@@ -328,7 +328,9 @@
     "load_failed": "加载失败",
     "deleted": "已删除",
     "add_success": "添加成功",
-    "confirm_delete": "确认删除"
+    "confirm_delete": "确认删除",
+    "saving": "保存中...",
+    "save_failed": "保存失败"
   },
   "market": {
     "title": "市场概览",
@@ -688,7 +690,8 @@
     "code_symbol_default": "请输入代码/符号",
     "cost_price": "买入价格",
     "shares": "持有份额",
-    "quantity": "数量"
+    "quantity": "数量",
+    "save_success": "修改成功"
   },
   "aitracking": {
     "title": "AI 追踪",
@@ -717,5 +720,21 @@
     "type_report": "报告",
     "type_personnel": "人事",
     "type_default": "公告"
+  },
+  "aitracking_toast": {
+    "drag_start": "开始拖拽，拖动到目标位置松开",
+    "sort_updated": "排序已更新",
+    "please_fill_code": "请填写基金代码",
+    "fetch_sell_failed": "获取卖出基金信息失败",
+    "fetch_buy_failed": "获取买入基金信息失败",
+    "fetch_sell_nav_failed": "获取卖出基金信息失败或无估值数据",
+    "fetch_buy_nav_failed": "获取买入基金信息失败或无估值数据",
+    "add_success": "添加成功",
+    "add_failed": "添加失败",
+    "delete_success": "删除成功",
+    "refresh_success": "刷新成功",
+    "refresh_failed": "刷新失败",
+    "auto_refresh_on": "自动刷新已开启",
+    "auto_refresh_off": "自动刷新已关闭"
   }
 }

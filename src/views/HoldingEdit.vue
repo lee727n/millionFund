@@ -237,16 +237,16 @@ async function onSubmit() {
     profit: form.value.profit ? parseFloat(form.value.profit) : undefined
   }
   
-  showLoadingToast({ message: '保存中...', forbidClick: true })
+  showLoadingToast({ message: t('common.saving'), forbidClick: true })
   try {
     holdingStore.addOrUpdateHolding(record)
     closeToast()
-    showToast(isEdit.value ? '修改成功' : '添加成功')
+    showToast({ message: t(isEdit.value ? 'holding_edit.save_success' : 'aitracking_toast.add_success'), duration: 2000 })
     // 保存成功后跳转回资产总览页面
     router.push('/portfolio')
   } catch (err) {
     closeToast()
-    showToast('保存失败')
+    showToast({ message: t('common.save_failed'), duration: 2000 })
     console.error('[HoldingEdit] 保存失败', err)
   }
 }

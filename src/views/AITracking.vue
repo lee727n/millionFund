@@ -248,7 +248,7 @@ function handleTouchStart(event: TouchEvent, index: number) {
   touchDragElement.value = target
   target.classList.add('dragging')
   
-  showToast({ message: '开始拖拽，拖动到目标位置松开', duration: 1500 })
+  showToast({ message: t('aitracking_toast.drag_start'), duration: 1500 })
 }
 
 function handleTouchMove(event: TouchEvent) {
@@ -293,7 +293,7 @@ function handleTouchEnd(_event: TouchEvent) {
   // 执行排序
   if (draggingIndex.value !== null && dragOverIndex.value !== null && draggingIndex.value !== dragOverIndex.value) {
     aiTrackingStore.reorderRecords(draggingIndex.value, dragOverIndex.value)
-    showToast({ message: '排序已更新', duration: 1000 })
+    showToast({ message: t('aitracking_toast.sort_updated'), duration: 1000 })
   }
   
   // 清理状态
@@ -345,7 +345,7 @@ async function fetchFundInfo(type: 'sell' | 'buy') {
 
 async function confirmAddRecord() {
   if (!newRecord.value.sellCode || !newRecord.value.buyCode) {
-    showToast({ message: '请填写基金代码', duration: 2000 })
+    showToast({ message: t('aitracking_toast.please_fill_code'), duration: 2000 })
     return
   }
 
@@ -387,7 +387,7 @@ async function confirmAddRecord() {
           sellName = sellInfo.name
           sellNav = sellInfo.currentValue
         } else {
-          showToast({ message: '获取卖出基金信息失败', duration: 2000 })
+          showToast({ message: t('aitracking_toast.fetch_sell_failed'), duration: 2000 })
           closeToast()
           return
         }
@@ -395,7 +395,7 @@ async function confirmAddRecord() {
           buyName = buyInfo.name
           buyNav = buyInfo.currentValue
         } else {
-          showToast({ message: '获取买入基金信息失败', duration: 2000 })
+          showToast({ message: t('aitracking_toast.fetch_buy_failed'), duration: 2000 })
           closeToast()
           return
         }
@@ -411,7 +411,7 @@ async function confirmAddRecord() {
         sellName = sellInfo.name
         sellNav = sellInfo.currentValue
       } else {
-        showToast({ message: '获取卖出基金信息失败或无估值数据', duration: 2000 })
+        showToast({ message: t('aitracking_toast.fetch_sell_nav_failed'), duration: 2000 })
         closeToast()
         return
       }
@@ -419,7 +419,7 @@ async function confirmAddRecord() {
         buyName = buyInfo.name
         buyNav = buyInfo.currentValue
       } else {
-        showToast({ message: '获取买入基金信息失败或无估值数据', duration: 2000 })
+        showToast({ message: t('aitracking_toast.fetch_buy_nav_failed'), duration: 2000 })
         closeToast()
         return
       }
@@ -437,18 +437,18 @@ async function confirmAddRecord() {
       date: targetDate
     })
 
-    showToast({ message: '添加成功', duration: 2000 })
+    showToast({ message: t('aitracking_toast.add_success'), duration: 2000 })
     resetNewRecord()
     showAddModal.value = false
   } catch (e) {
-    showToast({ message: '添加失败', duration: 2000 })
+    showToast({ message: t('aitracking_toast.add_failed'), duration: 2000 })
     logger.error('添加调仓记录失败', e)
   }
 }
 
 function deleteRecord(id: string) {
   aiTrackingStore.removeRecord(id)
-  showToast({ message: '删除成功', duration: 2000 })
+  showToast({ message: t('aitracking_toast.delete_success'), duration: 2000 })
 }
 
 function selectRecord(_record: AITrackingRecord) {
@@ -471,9 +471,9 @@ async function refreshPrices() {
   
   try {
     await fetchCurrentPrices()
-    showToast({ message: '刷新成功', duration: 2000 })
+    showToast({ message: t('aitracking_toast.refresh_success'), duration: 2000 })
   } catch (e) {
-    showToast({ message: '刷新失败', duration: 2000 })
+    showToast({ message: t('aitracking_toast.refresh_failed'), duration: 2000 })
   } finally {
     isRefreshing.value = false
     closeToast()
@@ -485,13 +485,13 @@ watch(autoRefreshEnabled, (newValue) => {
     autoRefreshInterval = window.setInterval(() => {
       fetchCurrentPrices()
     }, 60000)
-    showToast({ message: '自动刷新已开启', duration: 2000 })
+    showToast({ message: t('aitracking_toast.auto_refresh_on'), duration: 2000 })
   } else {
     if (autoRefreshInterval) {
       clearInterval(autoRefreshInterval)
       autoRefreshInterval = null
     }
-    showToast({ message: '自动刷新已关闭', duration: 2000 })
+    showToast({ message: t('aitracking_toast.auto_refresh_off'), duration: 2000 })
   }
 })
 
@@ -609,7 +609,7 @@ function handleDragStart(event: DragEvent, index: number) {
     (event.target as HTMLElement).classList.add('dragging')
   }
   
-  showToast({ message: '开始拖拽，拖动到目标位置松开', duration: 1500 })
+  showToast({ message: t('aitracking_toast.drag_start'), duration: 1500 })
 }
 
 function handleDragOver(event: DragEvent, index: number) {
@@ -630,7 +630,7 @@ function handleDrop(event: DragEvent, targetIndex: number) {
   
   if (draggingIndex.value !== null && draggingIndex.value !== targetIndex) {
     aiTrackingStore.reorderRecords(draggingIndex.value, targetIndex)
-    showToast({ message: '排序已更新', duration: 1000 })
+    showToast({ message: t('aitracking_toast.sort_updated'), duration: 1000 })
   }
   
   draggingIndex.value = null
@@ -646,7 +646,7 @@ function handleDragEnd(event: DragEvent) {
   // 如果有目标位置，执行排序（fallback）
   if (draggingIndex.value !== null && dragOverIndex.value !== null && draggingIndex.value !== dragOverIndex.value) {
     aiTrackingStore.reorderRecords(draggingIndex.value, dragOverIndex.value)
-    showToast({ message: '排序已更新', duration: 1000 })
+    showToast({ message: t('aitracking_toast.sort_updated'), duration: 1000 })
   }
   
   draggingIndex.value = null
