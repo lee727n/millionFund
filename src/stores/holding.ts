@@ -541,7 +541,7 @@ export const useHoldingStore = defineStore('holding', () => {
       marketValue,
       profit,
       profitRate,
-      todayChange: data.dayChange.toFixed(2),
+      todayChange: data.dayChange != null ? data.dayChange.toFixed(2) : undefined,
       todayProfit,
       loading: false,
       shares,
