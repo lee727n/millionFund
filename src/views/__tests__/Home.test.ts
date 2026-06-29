@@ -145,8 +145,6 @@ describe('Home.vue - 首页', () => {
       todayProfit: 0,
     }
     mockHoldingStore.holdingCodes = []
-    // [WHY] 防止 useHomeData 中的 setInterval 在测试环境执行
-    vi.useFakeTimers()
     // [WHY] 重置共享状态
     indices.value = [
       { code: '000001', name: '上证指数', current: 3200, change: 20, changePercent: 0.63 },
@@ -158,10 +156,6 @@ describe('Home.vue - 首页', () => {
     tradingSession.value = 'closed'
     currentTime.value = new Date('2026-06-27T14:30:00')
     isRefreshing.value = false
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
   /**

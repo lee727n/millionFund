@@ -13,3 +13,5 @@ holdings-calculation.json
 test-results/
 count-eslint.cjs
 eslint-results.json
+actions-logs/
+actions-logs.zip
