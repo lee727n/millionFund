@@ -3,10 +3,6 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/utils/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/utils/http', () => ({ http: { text: vi.fn(), json: vi.fn() } }))
 vi.mock('./cache', () => ({ cache: { get: vi.fn(), set: vi.fn() } }))
-vi.mock('./unifiedCache', () => ({
-  unifiedCache: { getMemory: vi.fn(), setMemory: vi.fn(), getPersistent: vi.fn(), setPersistent: vi.fn(), getOrSet: vi.fn() },
-  UNIFIED_CACHE_TTL: { FUND_INFO: 60000, DIVIDEND: 60000, FEES: 60000, FUND_LIST: 60000 },
-}))
 
 describe('astock.ts', () => {
   beforeEach(() => {
@@ -57,8 +53,54 @@ describe('astock.ts', () => {
 
   test('fetchSingleAStock 失败时返回 null', async () => {
     const { fetchSingleAStock } = await import('@/api/astock')
-    // 网络请求会失败，应该返回 null
     const result = await fetchSingleAStock('sh600519')
     expect(result).toBeNull()
+  })
+
+  describe('parseSinaResponse', () => {
+    test('解析单只股票响应', async () => {
+      const { parseSinaResponse } = await import('@/api/astock')
+      const text = 'var hq_str_sh600519="贵州茅台,1234.56,1233.33,1240.00,1245.00,1230.00,100,200,1234567,9876543";'
+      const result = parseSinaResponse(text, ['sh600519'])
+      expect(result).toHaveLength(1)
+      expect(result[0]!.symbol).toBe('sh600519')
+      expect(result[0]!.name).toBe('贵州茅台')
+      expect(result[0]!.currentPrice).toBe(1240)
+      expect(result[0]!.prevClose).toBe(1233.33)
+      expect(result[0]!.change).toBeCloseTo(6.67, 1)
+      expect(result[0]!.changePercent).toBeCloseTo(0.54, 1)
+    })
+
+    test('解析多只股票响应', async () => {
+      const { parseSinaResponse } = await import('@/api/astock')
+      const text = [
+        'var hq_str_sh600519="贵州茅台,1234.56,1233.33,1240.00,1245.00,1230.00,100,200,1234567,9876543";',
+        'var hq_str_sz000001="平安银行,12.34,12.30,12.40,12.50,12.20,10,20,123456,98765";'
+      ].join('\n')
+      const result = parseSinaResponse(text, ['sh600519', 'sz000001'])
+      expect(result).toHaveLength(2)
+      expect(result[0]!.symbol).toBe('sh600519')
+      expect(result[1]!.symbol).toBe('sz000001')
+    })
+
+    test('空响应返回空数组', async () => {
+      const { parseSinaResponse } = await import('@/api/astock')
+      const result = parseSinaResponse('', ['sh600519'])
+      expect(result).toEqual([])
+    })
+
+    test('格式错误行被跳过', async () => {
+      const { parseSinaResponse } = await import('@/api/astock')
+      const text = 'invalid line\nvar hq_str_sh600519="贵州茅台,1234.56,1233.33,1240.00,1245.00,1230.00,100,200,1234567,9876543";'
+      const result = parseSinaResponse(text, ['sh600519'])
+      expect(result).toHaveLength(1)
+    })
+
+    test('数据不足10个字段时跳过', async () => {
+      const { parseSinaResponse } = await import('@/api/astock')
+      const text = 'var hq_str_sh600519="贵州茅台,1234.56";'
+      const result = parseSinaResponse(text, ['sh600519'])
+      expect(result).toEqual([])
+    })
   })
 })

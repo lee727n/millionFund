@@ -5,7 +5,7 @@
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 
-const CACHE_TTL = {
+export const CACHE_TTL = {
   NORTH_FLOW: 30,
   SECTOR_FLOW: 60,
   MAIN_FORCE: 30,

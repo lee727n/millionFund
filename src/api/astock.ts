@@ -48,7 +48,7 @@ function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
  * 解析新浪财经行情响应文本
  * [WHAT] 响应格式：var hq_str_sh600519="贵州茅台,1234.56,1.23,0.10,100,1234567,...";
  */
-function parseSinaResponse(text: string, _symbols: string[]): AStockQuote[] {
+export function parseSinaResponse(text: string, _symbols: string[]): AStockQuote[] {
   const results: AStockQuote[] = []
 
   // 按行分割，每行对应一个股票的响应

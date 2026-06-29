@@ -5,7 +5,7 @@
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 
-const CACHE_TTL = {
+export const CACHE_TTL = {
   TELEGRAM: 20,
   HOT_TOPICS: 60,
   PLATE_MOVEMENT: 60,

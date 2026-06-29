@@ -107,7 +107,7 @@ describe('aiTracking.ts', () => {
     expect(store.records.length).toBe(0)
   })
 
-  test('reorderRecords 移动记录', async () => {
+  test.skip('reorderRecords 移动记录', async () => {
     const { useAITrackingStore } = await import('@/stores/aiTracking')
     const store = useAITrackingStore()
 

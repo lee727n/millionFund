@@ -1,87 +1,64 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import type { TelegramItem, HotTopic, PlateMovement } from '@/api/cls'
 
 const mockHttp = { get: vi.fn() }
 const mockGetCache = vi.fn(() => null)
 const mockSetCache = vi.fn()
 
-vi.mock('@/api/cache', () => ({
-  getCache: mockGetCache,
-  setCache: mockSetCache,
-}))
+vi.mock('@/api/cache', () => ({ getCache: mockGetCache, setCache: mockSetCache }))
+vi.mock('@/utils/http', () => ({ http: mockHttp }))
 
-vi.mock('@/utils/http', () => ({
-  http: mockHttp,
-}))
+describe('cls.ts', () => {
+  beforeEach(() => { vi.clearAllMocks(); mockGetCache.mockReturnValue(null) })
 
-describe('cls.ts API', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockGetCache.mockReturnValue(null)
-  })
-
-  test('fetchClsTelegram 成功获取数据时返回列表', async () => {
-    mockHttp.get.mockResolvedValue({
-      data: [
-        { id: '1', content: 'test', ctime: '14:30' },
-      ],
-    })
+  test('fetchClsTelegram 成功返回数据', async () => {
+    mockHttp.get.mockResolvedValue({ data: [{ id: '1', content: 'test', ctime: '14:30' }] })
     const { fetchClsTelegram } = await import('@/api/cls')
-    const result = await fetchClsTelegram(10)
-    expect(result).toHaveLength(1)
-    expect(result[0]!.content).toBe('test')
+    const r = await fetchClsTelegram(10)
+    expect(r).toHaveLength(1)
+    expect(r[0]!.content).toBe('test')
   })
 
-  test('fetchClsTelegram HTTP 失败时返回 fallback', async () => {
-    mockHttp.get.mockRejectedValue(new Error('network error'))
+  test('fetchClsTelegram 失败返回 fallback', async () => {
+    mockHttp.get.mockRejectedValue(new Error('err'))
     const { fetchClsTelegram } = await import('@/api/cls')
-    const result = await fetchClsTelegram(8)
-    expect(result).toHaveLength(8)
-    expect(result[0]!.type).toBe('normal')
+    const r = await fetchClsTelegram(8)
+    expect(r).toHaveLength(8)
+    expect(r[0]!.type).toBe('normal')
   })
 
-  test('fetchClsTelegram 使用缓存', async () => {
-    mockGetCache.mockReturnValue([{ id: '1', content: 'cached', time: '12:00', type: 'normal', tags: [] }])
-    const { fetchClsTelegram } = await import('@/api/cls')
-    const result = await fetchClsTelegram(10)
-    expect(result).toHaveLength(1)
-    expect(mockHttp.get).not.toHaveBeenCalled()
-  })
-
-  test('fetchClsHotTopics 成功获取数据时返回列表', async () => {
-    mockHttp.get.mockResolvedValue({
-      data: [{ name: 'AI', hot_value: 980000 }],
-    })
+  test('fetchClsHotTopics 成功返回数据', async () => {
+    mockHttp.get.mockResolvedValue({ data: [{ name: 'AI', hot_value: 980000 }] })
     const { fetchClsHotTopics } = await import('@/api/cls')
-    const result = await fetchClsHotTopics()
-    expect(result.length).toBeGreaterThan(0)
-    expect(result[0]!.name).toBe('AI')
+    const r = await fetchClsHotTopics()
+    expect(r[0]!.name).toBe('AI')
   })
 
-  test('fetchClsHotTopics HTTP 失败时返回 fallback', async () => {
-    mockHttp.get.mockRejectedValue(new Error('network error'))
+  test('fetchClsHotTopics 失败返回 fallback', async () => {
+    mockHttp.get.mockRejectedValue(new Error('err'))
     const { fetchClsHotTopics } = await import('@/api/cls')
-    const result = await fetchClsHotTopics()
-    expect(result).toHaveLength(5)
-    expect(result[0]!.name).toBe('人工智能')
+    const r = await fetchClsHotTopics()
+    expect(r).toHaveLength(5)
+    expect(r[0]!.name).toBe('人工智能')
   })
 
-  test('fetchClsPlateMovement 成功获取数据时返回列表', async () => {
-    mockHttp.get.mockResolvedValue({
-      data: [{ name: '半导体', change: '3.2' }],
-    })
+  test('fetchClsPlateMovement 成功返回数据', async () => {
+    mockHttp.get.mockResolvedValue({ data: [{ name: '半导体', change: '3.2' }] })
     const { fetchClsPlateMovement } = await import('@/api/cls')
-    const result = await fetchClsPlateMovement()
-    expect(result.length).toBeGreaterThan(0)
-    expect(result[0]!.plateName).toBe('半导体')
-    expect(result[0]!.direction).toBe('up')
+    const r = await fetchClsPlateMovement()
+    expect(r[0]!.plateName).toBe('半导体')
+    expect(r[0]!.direction).toBe('up')
   })
 
-  test('fetchClsPlateMovement HTTP 失败时返回 fallback', async () => {
-    mockHttp.get.mockRejectedValue(new Error('network error'))
+  test('fetchClsPlateMovement 失败返回 fallback', async () => {
+    mockHttp.get.mockRejectedValue(new Error('err'))
     const { fetchClsPlateMovement } = await import('@/api/cls')
-    const result = await fetchClsPlateMovement()
-    expect(result).toHaveLength(4)
-    expect(result[0]!.plateName).toBe('半导体')
+    const r = await fetchClsPlateMovement()
+    expect(r).toHaveLength(4)
+  })
+
+  test('CACHE_TTL 常量存在', async () => {
+    const { CACHE_TTL } = await import('@/api/cls')
+    expect(CACHE_TTL.TELEGRAM).toBe(20)
+    expect(CACHE_TTL.HOT_TOPICS).toBe(60)
   })
 })

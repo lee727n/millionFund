@@ -125,7 +125,7 @@ export async function fetchTreasuryYieldCurve(): Promise<{ term: string; yield: 
 /**
  * 计算收益率（粗略）
  */
-function calculateYield(price: string, parValue: string = '100'): number {
+export function calculateYield(price: string, parValue: string = '100'): number {
   const p = parseFloat(price) || 100
   const par = parseFloat(parValue) || 100
   return ((par - p) / p) * 100
@@ -134,7 +134,7 @@ function calculateYield(price: string, parValue: string = '100'): number {
 /**
  * 检测债券类型
  */
-function detectBondType(code: string): 'treasury' | 'corporate' | 'etf' | 'convertible' {
+export function detectBondType(code: string): 'treasury' | 'corporate' | 'etf' | 'convertible' {
   if (code.startsWith('511') || code.startsWith('159')) return 'etf'
   if (code.length === 6 && code.startsWith('11')) return 'corporate'
   if (code.length === 6 && code.startsWith('10')) return 'treasury'
@@ -144,7 +144,7 @@ function detectBondType(code: string): 'treasury' | 'corporate' | 'etf' | 'conve
 /**
  * 债券兜底数据
  */
-function getFallbackBond(code: string): BondQuote {
+export function getFallbackBond(code: string): BondQuote {
   const fallbacks: Record<string, BondQuote> = {
     '511010': { code: '511010', name: '国债 ETF', price: 101.25, change: 0.15, changePercent: 0.15, yield: 2.85, type: 'etf' },
     '511260': { code: '511260', name: '国债 ETF', price: 105.80, change: 0.25, changePercent: 0.24, yield: 2.92, type: 'etf' },
@@ -156,7 +156,7 @@ function getFallbackBond(code: string): BondQuote {
 /**
  * 国债收益率曲线兜底数据
  */
-function getFallbackYieldCurve(): { term: string; yield: number }[] {
+export function getFallbackYieldCurve(): { term: string; yield: number }[] {
   return [
     { term: '1Y', yield: 1.85 },
     { term: '3Y', yield: 2.12 },
