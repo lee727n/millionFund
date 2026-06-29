@@ -51,7 +51,7 @@ jobs:
           echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
 
       - name: 上传 APK 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-Android-v${{ github.sha }}
           path: AI百万实盘-v*.apk

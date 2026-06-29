@@ -68,7 +68,7 @@ jobs:
 
       - name: 📊 评论 PR（覆盖率变化）
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs')
@@ -120,7 +120,7 @@ jobs:
 
       - name: 🌐 上传 Playwright 报告（失败时）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
@@ -163,7 +163,7 @@ jobs:
           cd ..
 
       - name: Upload Web 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-Web
           path: AI百万实盘-Web.zip
@@ -209,7 +209,7 @@ jobs:
           echo "APK 大小: $(ls -lh AI百万实盘-Android-debug.apk | awk '{print $5}')"
 
       - name: Upload Android 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-Android-debug
           path: AI百万实盘-Android-debug.apk
@@ -240,7 +240,7 @@ jobs:
         run: npx electron-builder --win --x64
 
       - name: Upload Windows 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-Windows
           path: release/desktop/*.exe
@@ -271,7 +271,7 @@ jobs:
         run: npx electron-builder --mac --x64 --arm64
 
       - name: Upload macOS 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-macOS
           path: release/desktop/*.dmg
@@ -302,7 +302,7 @@ jobs:
         run: npx electron-builder --linux --x64
 
       - name: Upload Linux 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI百万实盘-Linux
           path: |
@@ -317,7 +317,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-assets/
 
@@ -341,7 +341,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-assets/
 
