@@ -51,7 +51,7 @@ jobs:
           echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
 
       - name: 上传 APK 产物
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: AI百万实盘-Android-v${{ github.sha }}
           path: AI百万实盘-v*.apk
@@ -64,7 +64,7 @@ jobs:
           git push origin :refs/tags/android-dev || true
 
       - name: 发布到 GitHub Releases (开发版)
-        uses: softprops/action-gh-release@v4
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: android-dev
           name: 🤖 Android 开发版 (v${{ github.sha }})
