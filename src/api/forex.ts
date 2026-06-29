@@ -1,9 +1,10 @@
 // [WHY] 外汇行情 API - 支持主要货币对实时汇率
-// [WHAT] 提供 USD/CNY、EUR/CNY、GBP/CNY、JPY/CNY 等实时汇率数据
+// [WHAT] 提供 USD/CNY、EUR/CNY、GBP/CNY、JPY/CNY 等实时汇率数据，含缓存
 // [DEPS] 使用 ExchangeRate-API（免费）或新浪财经
 
 import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
+import { getCache, setCache } from '@/api/cache'
 
 const CACHE_TTL = 300 // 缓存 5 分钟（外汇汇率变化较慢）
 
@@ -34,38 +35,47 @@ export const FOREX_PAIRS = {
   HKDUSD: 'HKDUSD',   // 港币/美元
 }
 
+const CACHE_PREFIX = 'forex:'
+
 /**
  * 获取实时汇率（单货币对）
+ * 返回 null 表示获取失败（不返回兜底数据）
  */
 export async function fetchForexRate(pair: string): Promise<ForexQuote | null> {
+  // 先查缓存
+  const cacheKey = `${CACHE_PREFIX}${pair}`
+  const cached = getCache<ForexQuote>(cacheKey)
+  if (cached) return cached
+
   try {
-    // 使用 ExchangeRate-API（免费，无需 API key）
     const base = pair.replace(/CNY$/, '')
     const url = `https://open.er-api.com/v6/latest/${base}`
-    
+
     const response = await http.get<any>(url)
-    
+
     if (response && response.rates) {
       const quote = 'CNY'
       const rate = response.rates[quote]
-      
+
       if (rate) {
-        return {
+        const result: ForexQuote = {
           pair,
           base,
           quote,
           rate,
-          change: 0, // 需要历史数据计算
+          change: 0,
           changePercent: 0,
           updateTime: response.time_last_update_utc || new Date().toISOString()
         }
+        setCache(cacheKey, result, CACHE_TTL)
+        return result
       }
     }
-    
-    return getFallbackForex(pair)
+
+    return null
   } catch (error) {
     logger.error('[forex] 获取汇率失败', { pair, error })
-    return getFallbackForex(pair)
+    return null
   }
 }
 
@@ -75,27 +85,41 @@ export async function fetchForexRate(pair: string): Promise<ForexQuote | null> {
 export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
   try {
     const results: ForexQuote[] = []
-    
+    const toFetch: string[] = []
+
+    // 先查缓存
+    for (const pair of pairs) {
+      const cacheKey = `${CACHE_PREFIX}${pair}`
+      const cached = getCache<ForexQuote>(cacheKey)
+      if (cached) {
+        results.push(cached)
+      } else {
+        toFetch.push(pair)
+      }
+    }
+
+    if (toFetch.length === 0) return results
+
     // 按基础货币分组（减少 API 调用）
     const baseGroups: Record<string, string[]> = {}
-    pairs.forEach(pair => {
+    toFetch.forEach(pair => {
       const base = pair.replace(/CNY$/, '')
       if (!baseGroups[base]) baseGroups[base] = []
       baseGroups[base].push(pair)
     })
-    
-    // 并发请求
+
+    // 并发请求未缓存的货币对
     for (const [base, pairList] of Object.entries(baseGroups)) {
       const url = `https://open.er-api.com/v6/latest/${base}`
-      
+
       try {
         const response = await http.get<any>(url)
-        
+
         if (response && response.rates) {
           pairList.forEach(pair => {
             const rate = response.rates['CNY']
             if (rate) {
-              results.push({
+              const result: ForexQuote = {
                 pair,
                 base,
                 quote: 'CNY',
@@ -103,20 +127,21 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
                 change: 0,
                 changePercent: 0,
                 updateTime: response.time_last_update_utc || new Date().toISOString()
-              })
+              }
+              results.push(result)
+              setCache(`${CACHE_PREFIX}${pair}`, result, CACHE_TTL)
             }
           })
         }
       } catch (err) {
         logger.warn('[forex] 获取汇率失败', { base, error: err })
-        pairList.forEach(pair => results.push(getFallbackForex(pair)))
       }
     }
-    
+
     return results
   } catch (error) {
     logger.error('[forex] 批量获取汇率失败', { pairs, error })
-    return pairs.map(pair => getFallbackForex(pair))
+    return []
   }
 }
 
@@ -126,17 +151,15 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
  */
 export async function fetchPBOCentralParity(): Promise<Record<string, number>> {
   try {
-    // 使用新浪财经外汇数据（免费）
     const url = 'https://hq.sinajs.cn/rn=https://finance.sina.com.cn/money/forex/hq/USDCNY.js'
     const response = await http.get<string>(url)
-    
+
     if (response && typeof response === 'string') {
-      // 解析新浪外汇响应
       const result: Record<string, number> = {}
       const lines = response.split('\n')
-      
+
       lines.forEach(line => {
-        const match = line.match(/var (\\w+)="([^"]+)"/)
+        const match = line.match(/var (\w+)="([^"]+)"/)
         if (match) {
           const [, code, data] = match
           const parts = data.split(',')
@@ -145,68 +168,14 @@ export async function fetchPBOCentralParity(): Promise<Record<string, number>> {
           }
         }
       })
-      
+
       return result
     }
-    
+
     return getFallbackPBORates()
   } catch (error) {
     logger.warn('[forex] 获取人行中间价失败，使用兜底数据', { error })
     return getFallbackPBORates()
-  }
-}
-
-/**
- * 外汇兜底数据
- */
-function getFallbackForex(pair: string): ForexQuote {
-  const fallbacks: Record<string, ForexQuote> = {
-    'USDCNY': {
-      pair: 'USDCNY',
-      base: 'USD',
-      quote: 'CNY',
-      rate: 7.2450,
-      change: -0.0150,
-      changePercent: -0.21,
-      updateTime: new Date().toISOString()
-    },
-    'EURCNY': {
-      pair: 'EURCNY',
-      base: 'EUR',
-      quote: 'CNY',
-      rate: 7.8920,
-      change: 0.0230,
-      changePercent: 0.29,
-      updateTime: new Date().toISOString()
-    },
-    'GBCNY': {
-      pair: 'GBCNY',
-      base: 'GBP',
-      quote: 'CNY',
-      rate: 9.1560,
-      change: 0.0350,
-      changePercent: 0.38,
-      updateTime: new Date().toISOString()
-    },
-    'JPYCNY': {
-      pair: 'JPYCNY',
-      base: 'JPY',
-      quote: 'CNY',
-      rate: 0.0489, // 100日元 = 4.89人民币
-      change: -0.0002,
-      changePercent: -0.41,
-      updateTime: new Date().toISOString()
-    },
-  }
-  
-  return fallbacks[pair] || {
-    pair,
-    base: pair.replace(/CNY$/, ''),
-    quote: 'CNY',
-    rate: 7.25,
-    change: 0,
-    changePercent: 0,
-    updateTime: new Date().toISOString()
   }
 }
 

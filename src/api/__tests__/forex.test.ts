@@ -30,7 +30,7 @@ describe('forex.ts API', () => {
 
   test('fetchForexRate API 失败时返回 null', async () => {
     mockHttp.get.mockRejectedValue(new Error('network error'))
-    const { fetch ForexRate } = await import('@/api/forex')
+    const { fetchForexRate } = await import('@/api/forex')
     const result = await fetchForexRate('USDCNY')
     expect(result).toBeNull()
   })
