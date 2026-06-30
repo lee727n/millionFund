@@ -245,6 +245,8 @@ export const useHoldingStore = defineStore('holding', () => {
       await Promise.all(promises)
     } finally {
       isRefreshing.value = false
+      // 批量持久化，避免每条持仓触发一次完整读写
+      saveHoldings(holdings.value)
       fetchPortfolioSummary()
     }
   }
@@ -259,10 +261,9 @@ export const useHoldingStore = defineStore('holding', () => {
     
     results.forEach((data, index) => {
       if (data) {
-        updateHoldingWithFundData(holdings[index]!.code, data)
+        updateHoldingWithFundData(holdings[index]!.code, data, false)
       } else {
-        const item = holdings.find(h => h.code === holdings[index]!.code)
-        if (item) item.loading = false
+        holdings[index]!.loading = false
       }
     })
   }
@@ -277,7 +278,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach(h => {
       const quote = results.find(q => q.symbol === h.symbol)
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -294,7 +295,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach(h => {
       const quote = results.find(q => q.symbol === h.symbol)
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -311,7 +312,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach(h => {
       const quote = results.find(q => q.symbol === h.symbol)
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.currentPrice, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -330,7 +331,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach((h, index) => {
       const quote = results[index]
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.price, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.price, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -371,7 +372,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach(h => {
       const quote = results.find(q => q.symbol === h.symbol)
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.price, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.price, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -390,7 +391,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach((h, index) => {
       const quote = results[index]
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.price, quote.changePercent)
+        updateHoldingWithStockData(h.code, quote.price, quote.changePercent, false)
       } else {
         h.loading = false
       }
@@ -409,7 +410,7 @@ export const useHoldingStore = defineStore('holding', () => {
       if (quote) {
         // 外汇：汇率变动 = 收益
         const changePercent = quote.changePercent
-        updateHoldingWithStockData(h.code, quote.rate, changePercent)
+        updateHoldingWithStockData(h.code, quote.rate, changePercent, false)
       } else {
         h.loading = false
       }
@@ -426,7 +427,7 @@ export const useHoldingStore = defineStore('holding', () => {
     holdings.forEach(h => {
       const quote = results.get(h.symbol)
       if (quote) {
-        updateHoldingWithStockData(h.code, quote.price, quote.changePercent24h)
+        updateHoldingWithStockData(h.code, quote.price, quote.changePercent24h, false)
       } else {
         h.loading = false
       }
@@ -435,8 +436,9 @@ export const useHoldingStore = defineStore('holding', () => {
   
   /**
    * 使用基金数据更新持仓
+   * @param persist 是否立即持久化到本地存储（批量刷新时传 false）
    */
-  async function updateHoldingWithFundData(code: string, data: FundAccurateData) {
+  async function updateHoldingWithFundData(code: string, data: FundAccurateData, persist = true) {
     const index = holdings.value.findIndex(h => h.code === code)
     if (index === -1) return
 
@@ -452,7 +454,7 @@ export const useHoldingStore = defineStore('holding', () => {
         dataSource: data.dataSource,
         valueDate: data.navDate || data.estimateTime?.split(' ')[0],
       }
-      upsertHolding(holdings.value[index])
+      if (persist) upsertHolding(holdings.value[index])
       return
     }
 
@@ -503,7 +505,7 @@ export const useHoldingStore = defineStore('holding', () => {
         valueDate: data.navDate || data.estimateTime?.split(' ')[0],
         isUpdated: currentValue > 0,
       }
-      upsertHolding(holdings.value[index])
+      if (persist) upsertHolding(holdings.value[index])
       return
     }
 
@@ -553,14 +555,14 @@ export const useHoldingStore = defineStore('holding', () => {
     }
 
     // 保存更新后的持仓到本地存储
-    upsertHolding(holdings.value[index])
+    if (persist) upsertHolding(holdings.value[index])
   }
   
   /**
    * 使用股票/商品/期货数据更新持仓
    * [WHAT] 通用更新函数，适用于所有有实时价格的资产
    */
-  function updateHoldingWithStockData(code: string, currentPrice: number, changePercent: number) {
+  function updateHoldingWithStockData(code: string, currentPrice: number, changePercent: number, persist = true) {
     const index = holdings.value.findIndex(h => h.code === code)
     if (index === -1) return
     
@@ -590,7 +592,9 @@ export const useHoldingStore = defineStore('holding', () => {
       isUpdated: true
     }
     
-    upsertHolding(holdings.value[index])
+    if (persist) {
+      upsertHolding(holdings.value[index])
+    }
   }
   
   /**

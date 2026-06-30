@@ -123,12 +123,11 @@ export function useSmartRefresh<T>(
       const cacheKey = getCacheKey()
       const cached = unifiedCache.getMemory<T>(cacheKey)
 
-      if (cached && !import.meta.env.DEV) {
+      if (cached) {
         data.value = cached
         lastUpdateTime.value = new Date()
-        if (import.meta.env.DEV) {
-          logger.warn('[SmartRefresh] Using cached data')
-        }
+        logger.warn('[SmartRefresh] Using cached data')
+        return
       }
 
       // 调用 fetchFn 获取数据（使用性能监控）

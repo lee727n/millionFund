@@ -8,14 +8,28 @@ import { logger } from './logger'
 /**
  * 检测当前环境是否支持 Tesseract.js 运行
  * [WHY] 某些 Android WebView 无法创建 WebWorker / 加载 WASM
- * [FIX] 改为直接尝试 OCR，不再预先检测（检测本身不可靠）
+ * [HOW] 尝试创建 Worker 来验证环境支持
  * @returns true 表示可用，false 表示不支持
  */
 export async function isTesseractSupported(): Promise<boolean> {
-  // [FIX] 始终返回 true，让 recognizeText 自己去处理错误
-  // 原因：预先检测在很多设备上不可靠，会误报"不支持"
-  // 实际 OCR 时如果真的失败，会在 recognizeText 中捕获并提示
-  return true
+  try {
+    // [CHECK] 检查 Web Worker 支持
+    if (typeof Worker === 'undefined') return false
+
+    // [CHECK] 尝试创建一个 Tesseract worker 来验证
+    // [NOTE] 不加载语言包，仅验证环境
+    const worker = new Worker(
+      new URL('tesseract.js/dist/worker.min.js', import.meta.url),
+      { type: 'module' }
+    )
+
+    // [CLEANUP] 立即终止 worker，只做检测
+    worker.terminate()
+
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

@@ -12,7 +12,7 @@ import { persistCache } from '../utils/persistCache'
 import type { FundEstimate, FundInfo, NetValueRecord } from '@/types/fund'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
-import { parseJsVariable } from './fund/request'
+import { parseJsVariable, ConcurrencyController } from './fund/request'
 
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
@@ -35,39 +35,7 @@ export function clearAllCache(): void {
 }
 
 // ========== 并发控制 ==========
-const MAX_CONCURRENT = 5  // 最大并发数
-let activeRequests = 0
-const requestQueue: (() => void)[] = []
-
-function executeNext() {
-  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT) {
-    const next = requestQueue.shift()
-    if (next) next()
-  }
-}
-
-function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      activeRequests++
-      try {
-        const result = await fn()
-        resolve(result)
-      } catch (err) {
-        reject(err)
-      } finally {
-        activeRequests--
-        executeNext()
-      }
-    }
-
-    if (activeRequests < MAX_CONCURRENT) {
-      execute()
-    } else {
-      requestQueue.push(execute)
-    }
-  })
-}
+const requestConcurrency = new ConcurrencyController(5)
 
 // ========== 全局变量型脚本请求串行化队列 ==========
 // [WHY] pingzhongdata/*.js 这类脚本会在 window 上设置固定名字的全局变量
@@ -163,7 +131,7 @@ export async function fetchFundEstimateFast(code: string): Promise<FundEstimate>
     return Promise.resolve(persisted)
   }
 
-  return withConcurrencyControl(() => {
+  return requestConcurrency.execute(() => {
     return new Promise(async (resolve, reject) => {
       try {
         // [M6] 使用 fetch + 正则解析，替代 JSONP
@@ -1370,37 +1338,6 @@ export async function fetchManagerProfit(fundCode: string): Promise<ManagerProfi
 }
 
 // ========== 全球指数 ==========
-
-/**
- * 全球指数数据结构
- */
-export interface GlobalIndex {
-  name: string
-  code: string
-  price: number
-  change: number
-  changePercent: number
-  region: 'cn' | 'hk' | 'us' | 'eu' | 'asia'
-}
-
-/**
- * 获取全球主要指数行情
- * [WHY] 帮助投资者了解全球市场走势
- * [DEPS] 使用东方财富 push2 接口
- */
-// ========== 全球指数 ==========
-
-/**
- * 全球指数数据结构
- */
-export interface GlobalIndex {
-  name: string
-  code: string
-  price: number
-  change: number
-  changePercent: number
-  region: 'cn' | 'hk' | 'us' | 'eu' | 'asia'
-}
 
 /**
  * 获取全球主要指数行情

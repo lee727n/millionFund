@@ -1,0 +1,69 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mE:/millionFund[39m
+
+ [32m✓[39m src/stores/__tests__/holding-profit.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/tiantianApi.test.ts [2m([22m[2m31 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts [2m([22m[2m23 tests[22m[2m)[22m[90m 34[2mms[22m[39m
+ [32m✓[39m src/api/fund/__tests__/request.test.ts [2m([22m[2m27 tests[22m[2m)[22m[90m 121[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/xueqiu.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 435[2mms[22m[39m
+   [33m[2m✓[22m[39m xueqiu.ts API[2m > [22mfetchHotDiscussions 基金类型默认获取20条 [33m408[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/history.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 72[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/ocr.test.ts [2m([22m[2m26 tests[22m[2m)[22m[90m 37[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/jin10.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 598[2mms[22m[39m
+   [33m[2m✓[22m[39m jin10.ts API[2m > [22mgetNewsCategories 返回所有新闻分类 [33m570[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/aiTracking.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 488[2mms[22m[39m
+   [33m[2m✓[22m[39m aiTracking store[2m > [22maddRecord 添加记录 [33m460[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/holding-extended.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 494[2mms[22m[39m
+   [33m[2m✓[22m[39m holding store[2m > [22mupdateHoldingDays 计算持有天数 [33m455[2mms[22m[39m
+ [32m✓[39m src/utils/storage.test.ts [2m([22m[2m25 tests[22m[2m)[22m[90m 74[2mms[22m[39m
+ [32m✓[39m src/composables/useSmartRefresh.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 203[2mms[22m[39m
+ [32m✓[39m src/stores/holding.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 81[2mms[22m[39m
+ [32m✓[39m src/views/__tests__/Portfolio.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 382[2mms[22m[39m
+ [32m✓[39m src/views/__tests__/Home.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 788[2mms[22m[39m
+ [32m✓[39m src/api/usstock.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 75[2mms[22m[39m
+ [32m✓[39m src/utils/performance.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 98[2mms[22m[39m
+ [32m✓[39m src/api/crypto.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 50[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/errorHandler.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/FundAnnouncementsSection.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 164[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/bond.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/persistCache.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32m✓[39m src/api/hkstock.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 73[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/TrendPredictionSection.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 168[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/network.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 38[2mms[22m[39m
+ [32m✓[39m src/api/news.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 42[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/theme.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 52[2mms[22m[39m
+ [32m✓[39m src/api/jisilu.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1062[2mms[22m[39m
+ [32m✓[39m src/stores/fund.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 119[2mms[22m[39m
+ [32m✓[39m src/composables/__tests__/useHomeData.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32m✓[39m src/utils/statistics.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/forex.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/choice.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 70[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/csindex.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 127[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/cls.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 121[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/DividendRecordsSection.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 135[2mms[22m[39m
+ [32m✓[39m src/api/__tests__/morningstar.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 92[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/permissions.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 119[2mms[22m[39m
+ [32m✓[39m src/composables/__tests__/useActionSheet.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32m✓[39m src/stores/alerts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [32m✓[39m src/composables/__tests__/useAlertChecker.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32m✓[39m src/stores/__tests__/trade.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 79[2mms[22m[39m
+ [32m✓[39m src/utils/ocr.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/platform.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m src/api/astock.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m src/utils/format.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 30[2mms[22m[39m
+ [32m✓[39m src/api/fundFast.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/views/__tests__/Trades.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 34[2mms[22m[39m
+ [32m✓[39m src/views/__tests__/Alerts.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 38[2mms[22m[39m
+ [32m✓[39m src/api/commodity.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 5248[2mms[22m[39m
+   [33m[2m✓[22m[39m fetchCommodityQuote[2m > [22m应返回大宗商品行情数组（使用兜底数据） [33m5233[2mms[22m[39m
+ [32m✓[39m src/api/future.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 11383[2mms[22m[39m
+   [33m[2m✓[22m[39m fetchFutureBatch[2m > [22m应返回期货行情数组（使用兜底数据） [33m5218[2mms[22m[39m
+   [33m[2m✓[22m[39m fetchFutureRealtime[2m > [22m应返回期货行情数据（使用兜底数据） [33m5159[2mms[22m[39m
+   [33m[2m✓[22m[39m fetchFutureRanking[2m > [22m应返回涨幅榜数据（使用兜底数据） [33m465[2mms[22m[39m
+   [33m[2m✓[22m[39m fetchFutureRanking[2m > [22m应返回跌幅榜数据（使用兜底数据） [33m524[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m51 passed[39m[22m[90m (51)[39m
+[2m      Tests [22m [1m[32m546 passed[39m[22m[90m (546)[39m
+[2m   Start at [22m 22:53:48
+[2m   Duration [22m 21.77s[2m (transform 12.87s, setup 9.02s, collect 26.75s, tests 23.67s, environment 123.14s, prepare 26.17s)[22m
+

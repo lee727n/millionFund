@@ -5,42 +5,11 @@
 import { cache, CACHE_TTL } from './cache'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
+import { ConcurrencyController } from '@/api/fund/request'
 import type { USStockQuote } from '@/types/usstock'
 
-// ========== 并发控制（复用 astock.ts 模式） ==========
-const MAX_CONCURRENT = 5
-let activeRequests = 0
-const requestQueue: (() => void)[] = []
-
-function executeNext() {
-  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT) {
-    const next = requestQueue.shift()
-    if (next) next()
-  }
-}
-
-function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      activeRequests++
-      try {
-        const result = await fn()
-        resolve(result)
-      } catch (err) {
-        reject(err)
-      } finally {
-        activeRequests--
-        executeNext()
-      }
-    }
-
-    if (activeRequests < MAX_CONCURRENT) {
-      execute()
-    } else {
-      requestQueue.push(execute)
-    }
-  })
-}
+// ========== 并发控制 ==========
+const requestConcurrency = new ConcurrencyController(5)
 
 // ========== Yahoo Finance API 响应解析 ==========
 
@@ -139,7 +108,7 @@ export async function fetchUSStockQuote(symbols: string[]): Promise<USStockQuote
  * 内部函数：获取单只美股实时行情
  */
 async function fetchSingleUSStockInternal(symbol: string): Promise<USStockQuote | null> {
-  return withConcurrencyControl(async () => {
+  return requestConcurrency.execute(async () => {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`
 

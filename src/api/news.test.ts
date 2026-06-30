@@ -1,142 +1,356 @@
 // [WHY] 资讯聚合 API 单元测试
-// [WHAT] 测试 news.ts 统一入口的各项功能
+// [WHAT] 测试 news.ts 统一入口的各项功能，包括成功和错误路径
 // [DEPS] 依赖 vitest
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  fetchJin10Flash,
-  fetchJin10News,
-  fetchJin10Calendar,
-  fetchNews,
-} from '../api/news'
-import type { NewsSource } from '../types/news'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 // Mock 各个 API 模块
-vi.mock('../api/jin10', () => ({
+vi.mock('@/api/jin10', () => ({
   fetchNewsList: vi.fn(),
   fetchFlashNews: vi.fn(),
   fetchEconomicCalendar: vi.fn(),
 }))
 
-vi.mock('../api/cls', () => ({
+vi.mock('@/api/cls', () => ({
   fetchClsTelegram: vi.fn(),
   fetchClsHotTopics: vi.fn(),
   fetchClsPlateMovement: vi.fn(),
 }))
 
-vi.mock('../api/xueqiu', () => ({
+vi.mock('@/api/xueqiu', () => ({
   fetchHotDiscussions: vi.fn(),
   fetchStockSentimentList: vi.fn(),
   fetchUserViews: vi.fn(),
 }))
 
-vi.mock('../api/choice', () => ({
+vi.mock('@/api/choice', () => ({
   fetchNorthFlow: vi.fn(),
   fetchSectorFlows: vi.fn(),
   fetchMainForceFlow: vi.fn(),
 }))
 
-describe('news.ts - 资讯聚合 API', () => {
+import {
+  fetchJin10Flash,
+  fetchJin10News,
+  fetchJin10Calendar,
+  fetchCailianNews,
+  fetchCailianHotTopics,
+  fetchCailianPlate,
+  fetchXueqiuDiscussions,
+  fetchXueqiuSentiment,
+  fetchXueqiuViews,
+  fetchChoiceNorthFlow,
+  fetchChoiceSectorFlows,
+  fetchChoiceMainForce,
+  fetchNews,
+} from '@/api/news'
+
+import { fetchFlashNews, fetchNewsList, fetchEconomicCalendar } from '@/api/jin10'
+import { fetchClsTelegram, fetchClsHotTopics, fetchClsPlateMovement } from '@/api/cls'
+import { fetchHotDiscussions, fetchStockSentimentList, fetchUserViews } from '@/api/xueqiu'
+import { fetchNorthFlow, fetchSectorFlows, fetchMainForceFlow } from '@/api/choice'
+
+describe('news.ts', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
-  describe('金十数据 API', () => {
-    it('fetchJin10Flash - 应该成功获取快讯', async () => {
-      const mockData = [
-        { id: '1', content: '测试快讯', time: '10:00', type: 'normal' as const },
-      ]
+  // ─── 金十数据 API 封装 ──────────────────────────────────────
 
-      const { fetchFlashNews } = await import('../api/jin10')
-      ;(fetchFlashNews as any).mockResolvedValue(mockData)
-
+  describe('fetchJin10Flash', () => {
+    test('成功时返回快讯列表', async () => {
+      const data = [{ id: '1', title: '快讯', time: '10:00' }]
+      fetchFlashNews.mockResolvedValue(data as any)
       const result = await fetchJin10Flash()
-      expect(result).toEqual(mockData)
+      expect(result).toBe(data)
     })
 
-    it('fetchJin10News - 应该成功获取新闻列表', async () => {
-      const mockData = [
-        {
-          id: '1',
-          title: '测试新闻',
-          summary: '摘要',
-          url: 'https://example.com',
-          time: '10:00',
-          category: 'general',
-          tags: [],
-        },
-      ]
-
-      const { fetchNewsList } = await import('../api/jin10')
-      ;(fetchNewsList as any).mockResolvedValue(mockData)
-
-      const result = await fetchJin10News(1, 20, 'all')
-      expect(result).toEqual(mockData)
-    })
-
-    it('fetchJin10Calendar - 应该成功获取经济日历', async () => {
-      const mockData = [
-        {
-          id: '1',
-          title: 'GDP数据',
-          time: '10:00',
-          importance: 'high' as const,
-        },
-      ]
-
-      const { fetchEconomicCalendar } = await import('../api/jin10')
-      ;(fetchEconomicCalendar as any).mockResolvedValue(mockData)
-
-      const result = await fetchJin10Calendar('2026-06-20')
-      expect(result).toEqual(mockData)
-    })
-  })
-
-  describe('统一入口函数 fetchNews', () => {
-    it('应该根据数据源类型调用正确的 API (jin10)', async () => {
-      const { fetchFlashNews } = await import('../api/jin10')
-      ;(fetchFlashNews as any).mockResolvedValue([])
-
-      await fetchNews('jin10' as NewsSource, { type: 'flash' })
-      expect(fetchFlashNews).toHaveBeenCalled()
-    })
-
-    it('应该根据数据源类型调用正确的 API (cailian)', async () => {
-      const { fetchClsTelegram } = await import('../api/cls')
-      ;(fetchClsTelegram as any).mockResolvedValue([])
-
-      await fetchNews('cailian' as NewsSource, { type: 'telegram' })
-      expect(fetchClsTelegram).toHaveBeenCalled()
-    })
-
-    it('应该根据数据源类型调用正确的 API (xueqiu)', async () => {
-      const { fetchHotDiscussions } = await import('../api/xueqiu')
-      ;(fetchHotDiscussions as any).mockResolvedValue([])
-
-      await fetchNews('xueqiu' as NewsSource, { type: 'discussion' })
-      expect(fetchHotDiscussions).toHaveBeenCalled()
-    })
-
-    it('应该根据数据源类型调用正确的 API (eastmoney)', async () => {
-      const { fetchNorthFlow } = await import('../api/choice')
-      ;(fetchNorthFlow as any).mockResolvedValue(null)
-
-      await fetchNews('eastmoney' as NewsSource, { type: 'north' })
-      expect(fetchNorthFlow).toHaveBeenCalled()
-    })
-
-    it('未知数据源应该返回空数组', async () => {
-      const result = await fetchNews('unknown' as NewsSource)
+    test('失败时返回空数组', async () => {
+      fetchFlashNews.mockRejectedValue(new Error('network'))
+      const result = await fetchJin10Flash()
       expect(result).toEqual([])
     })
   })
 
-  describe('错误处理', () => {
-    it('API 失败时应该捕获错误并返回默认值', async () => {
-      const { fetchFlashNews } = await import('../api/jin10')
-      ;(fetchFlashNews as any).mockRejectedValue(new Error('Network error'))
+  describe('fetchJin10News', () => {
+    test('成功时返回新闻列表', async () => {
+      const data = [{ id: '1', title: '新闻', content: '内容' }]
+      fetchNewsList.mockResolvedValue(data as any)
+      const result = await fetchJin10News(1, 20, 'all')
+      expect(result).toBe(data)
+    })
 
-      const result = await fetchJin10Flash()
+    test('失败时返回空数组', async () => {
+      fetchNewsList.mockRejectedValue(new Error('network'))
+      const result = await fetchJin10News()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchJin10Calendar', () => {
+    test('成功时返回日历列表', async () => {
+      const data = [{ date: '2026-06-30', event: '数据发布' }]
+      fetchEconomicCalendar.mockResolvedValue(data as any)
+      const result = await fetchJin10Calendar('2026-06-30')
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchEconomicCalendar.mockRejectedValue(new Error('network'))
+      const result = await fetchJin10Calendar()
+      expect(result).toEqual([])
+    })
+  })
+
+  // ─── 财联社 API 封装 ────────────────────────────────────────
+
+  describe('fetchCailianNews', () => {
+    test('成功时返回电报列表', async () => {
+      const data = [{ id: '1', content: '电报内容', time: '10:00' }]
+      fetchClsTelegram.mockResolvedValue(data as any)
+      const result = await fetchCailianNews(20)
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchClsTelegram.mockRejectedValue(new Error('network'))
+      const result = await fetchCailianNews()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchCailianHotTopics', () => {
+    test('成功时返回热门主题', async () => {
+      const data = [{ name: '热门', count: 100 }]
+      fetchClsHotTopics.mockResolvedValue(data as any)
+      const result = await fetchCailianHotTopics()
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchClsHotTopics.mockRejectedValue(new Error('network'))
+      const result = await fetchCailianHotTopics()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchCailianPlate', () => {
+    test('成功时返回板块异动', async () => {
+      const data = [{ name: '板块', change: 5.2 }]
+      fetchClsPlateMovement.mockResolvedValue(data as any)
+      const result = await fetchCailianPlate()
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchClsPlateMovement.mockRejectedValue(new Error('network'))
+      const result = await fetchCailianPlate()
+      expect(result).toEqual([])
+    })
+  })
+
+  // ─── 雪球 API 封装 ──────────────────────────────────────────
+
+  describe('fetchXueqiuDiscussions', () => {
+    test('基金讨论成功', async () => {
+      const data = [{ title: '讨论', author: '用户' }]
+      fetchHotDiscussions.mockResolvedValue(data as any)
+      const result = await fetchXueqiuDiscussions('fund', 20)
+      expect(result).toBe(data)
+    })
+
+    test('股票讨论成功', async () => {
+      const data = [{ title: '股票讨论' }]
+      fetchHotDiscussions.mockResolvedValue(data as any)
+      const result = await fetchXueqiuDiscussions('stock', 10)
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchHotDiscussions.mockRejectedValue(new Error('network'))
+      const result = await fetchXueqiuDiscussions()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchXueqiuSentiment', () => {
+    test('成功时返回情绪列表', async () => {
+      const data = [{ name: '基金', sentiment: 'positive' }]
+      fetchStockSentimentList.mockResolvedValue(data as any)
+      const result = await fetchXueqiuSentiment('fund', 10)
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchStockSentimentList.mockRejectedValue(new Error('network'))
+      const result = await fetchXueqiuSentiment()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchXueqiuViews', () => {
+    test('成功时返回观点列表', async () => {
+      const data = [{ name: '大V', view: '看多' }]
+      fetchUserViews.mockResolvedValue(data as any)
+      const result = await fetchXueqiuViews(10)
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchUserViews.mockRejectedValue(new Error('network'))
+      const result = await fetchXueqiuViews()
+      expect(result).toEqual([])
+    })
+  })
+
+  // ─── 东方财富 Choice API 封装 ──────────────────────────────
+
+  describe('fetchChoiceNorthFlow', () => {
+    test('成功时返回北向资金', async () => {
+      const data = { northFlow: 100, date: '2026-06-30' }
+      fetchNorthFlow.mockResolvedValue(data as any)
+      const result = await fetchChoiceNorthFlow()
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回 null', async () => {
+      fetchNorthFlow.mockRejectedValue(new Error('network'))
+      const result = await fetchChoiceNorthFlow()
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('fetchChoiceSectorFlows', () => {
+    test('成功时返回板块资金', async () => {
+      const data = [{ name: '板块', flow: 50 }]
+      fetchSectorFlows.mockResolvedValue(data as any)
+      const result = await fetchChoiceSectorFlows(10)
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchSectorFlows.mockRejectedValue(new Error('network'))
+      const result = await fetchChoiceSectorFlows()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('fetchChoiceMainForce', () => {
+    test('成功时返回主力资金', async () => {
+      const data = [{ name: '股票', force: 80 }]
+      fetchMainForceFlow.mockResolvedValue(data as any)
+      const result = await fetchChoiceMainForce()
+      expect(result).toBe(data)
+    })
+
+    test('失败时返回空数组', async () => {
+      fetchMainForceFlow.mockRejectedValue(new Error('network'))
+      const result = await fetchChoiceMainForce()
+      expect(result).toEqual([])
+    })
+  })
+
+  // ─── fetchNews 统一入口 ────────────────────────────────────
+
+  describe('fetchNews', () => {
+    // jin10 分支
+    test('jin10 flash 类型', async () => {
+      fetchFlashNews.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('jin10', { type: 'flash' })
+      expect(fetchFlashNews).toHaveBeenCalled()
+      expect(result).toHaveLength(1)
+    })
+
+    test('jin10 calendar 类型', async () => {
+      fetchEconomicCalendar.mockResolvedValue([{ date: '2026-06-30' }] as any)
+      const result = await fetchNews('jin10', { type: 'calendar' })
+      expect(fetchEconomicCalendar).toHaveBeenCalled()
+    })
+
+    test('jin10 默认类型调用新闻列表', async () => {
+      fetchNewsList.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('jin10', { page: 1, pageSize: 20, category: 'all' })
+      expect(fetchNewsList).toHaveBeenCalledWith(1, 20, 'all')
+    })
+
+    // cailian 分支
+    test('cailian telegram 类型', async () => {
+      fetchClsTelegram.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('cailian', { type: 'telegram', limit: 20 })
+      expect(fetchClsTelegram).toHaveBeenCalledWith(20)
+    })
+
+    test('cailian hotTopics 类型', async () => {
+      fetchClsHotTopics.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('cailian', { type: 'hotTopics' })
+      expect(fetchClsHotTopics).toHaveBeenCalled()
+    })
+
+    test('cailian plate 类型', async () => {
+      fetchClsPlateMovement.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('cailian', { type: 'plate' })
+      expect(fetchClsPlateMovement).toHaveBeenCalled()
+    })
+
+    test('cailian 默认类型调用电报', async () => {
+      fetchClsTelegram.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('cailian')
+      expect(fetchClsTelegram).toHaveBeenCalledWith(20)
+    })
+
+    // xueqiu 分支
+    test('xueqiu discussion 类型', async () => {
+      fetchHotDiscussions.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('xueqiu', { type: 'discussion', category: 'fund', count: 20 })
+      expect(fetchHotDiscussions).toHaveBeenCalledWith('fund', 20)
+    })
+
+    test('xueqiu sentiment 类型', async () => {
+      fetchStockSentimentList.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('xueqiu', { type: 'sentiment', category: 'stock', count: 10 })
+      expect(fetchStockSentimentList).toHaveBeenCalledWith('stock', 10)
+    })
+
+    test('xueqiu views 类型', async () => {
+      fetchUserViews.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('xueqiu', { type: 'views', count: 10 })
+      expect(fetchUserViews).toHaveBeenCalledWith(10)
+    })
+
+    test('xueqiu 默认类型调用讨论', async () => {
+      fetchHotDiscussions.mockResolvedValue([{ id: '1' }] as any)
+      const result = await fetchNews('xueqiu')
+      expect(fetchHotDiscussions).toHaveBeenCalledWith('fund', 20)
+    })
+
+    // eastmoney 分支
+    test('eastmoney north 类型', async () => {
+      fetchNorthFlow.mockResolvedValue({ northFlow: 100 } as any)
+      const result = await fetchNews('eastmoney', { type: 'north' })
+      expect(fetchNorthFlow).toHaveBeenCalled()
+    })
+
+    test('eastmoney sector 类型', async () => {
+      fetchSectorFlows.mockResolvedValue([{ name: '板块' }] as any)
+      const result = await fetchNews('eastmoney', { type: 'sector', count: 10 })
+      expect(fetchSectorFlows).toHaveBeenCalledWith(10)
+    })
+
+    test('eastmoney mainforce 类型', async () => {
+      fetchMainForceFlow.mockResolvedValue([{ name: '股票' }] as any)
+      const result = await fetchNews('eastmoney', { type: 'mainforce' })
+      expect(fetchMainForceFlow).toHaveBeenCalled()
+    })
+
+    test('eastmoney 默认类型调用北向资金', async () => {
+      fetchNorthFlow.mockResolvedValue({ northFlow: 100 } as any)
+      const result = await fetchNews('eastmoney')
+      expect(fetchNorthFlow).toHaveBeenCalled()
+    })
+
+    // 未知数据源
+    test('未知数据源返回空数组', async () => {
+      const result = await fetchNews('unknown' as any)
       expect(result).toEqual([])
     })
   })

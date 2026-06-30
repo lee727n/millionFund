@@ -6,43 +6,64 @@ import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 
 /**
- * 并发控制配置
+ * 并发控制配置（fetchBatch 使用）
  */
 const MAX_CONCURRENT = 5
-let activeRequests = 0
-const requestQueue: (() => void)[] = []
 
-function executeNext() {
-  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT) {
-    const next = requestQueue.shift()
-    if (next) next()
+/**
+ * 并发控制器
+ * [WHAT] 限制同时进行的异步操作数量，避免过多请求触发 API 速率限制
+ * [HOW] 基于队列的令牌桶模式，超过并发上限的任务排队等待
+ */
+export class ConcurrencyController {
+  private activeCount = 0
+  private readonly queue: (() => void)[] = []
+
+  constructor(private readonly maxConcurrent: number) {}
+
+  /** 包装异步函数，使其不超过最大并发数 */
+  execute<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        this.activeCount++
+        try {
+          const result = await fn()
+          resolve(result)
+        } catch (err) {
+          reject(err)
+        } finally {
+          this.activeCount--
+          this.runNext()
+        }
+      }
+
+      if (this.activeCount < this.maxConcurrent) {
+        run()
+      } else {
+        this.queue.push(run)
+      }
+    })
+  }
+
+  private runNext() {
+    if (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
+      const next = this.queue.shift()
+      if (next) next()
+    }
   }
 }
 
 /**
- * 并发控制包装器
+ * 默认并发控制器实例（最大并发 5）
+ */
+export const defaultConcurrency = new ConcurrencyController(5)
+
+/**
+ * 并发控制包装器（使用默认实例）
+ * @deprecated 建议直接使用 ConcurrencyController 实例以获得更好的可测试性
  */
 export function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      activeRequests++
-      try {
-        const result = await fn()
-        resolve(result)
-      } catch (err) {
-        reject(err)
-      } finally {
-        activeRequests--
-        executeNext()
-      }
-    }
-
-    if (activeRequests < MAX_CONCURRENT) {
-      execute()
-    } else {
-      requestQueue.push(execute)
-    }
-  })
+  return defaultConcurrency.execute(fn)
 }
 
 /**

@@ -1,0 +1,25 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mE:/millionFund[39m
+
+ [31m❯[39m src/api/astock.test.ts [2m([22m[2m20 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 15[2mms[22m[39m
+[31m   [31m×[31m astock.ts[2m > [22mfetchAStockQuote[2m > [22m空响应返回空[90m 4[2mms[22m[31m[39m
+[31m     → 新浪财经 API 返回为空[39m
+ [31m❯[39m src/api/jisilu.test.ts [2m([22m[2m22 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[90m 30[2mms[22m[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchConvertibleBonds[2m > [22m缓存命中时直接返回[90m 11[2mms[22m[31m[39m
+[31m     → expected [ { code: '113050', …(10) }, …(4) ] to be [ { code: '113050', …(10) } ] // Object.is equality[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchConvertibleBonds[2m > [22m空 rows 时返回兜底数据[90m 1[2mms[22m[31m[39m
+[31m     → expected 0 to be greater than 0[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchConvertibleQuote[2m > [22m缓存命中时返回[90m 3[2mms[22m[31m[39m
+[31m     → expected [ { code: '113050', …(10) } ] to be [ { code: '113050', name: '南银转债' } ] // Object.is equality[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchLofPremiums[2m > [22m缓存命中时返回[90m 2[2mms[22m[31m[39m
+[31m     → expected [ { code: '161725', …(6) }, …(2) ] to be [ { code: '161725', name: '白酒基金' } ] // Object.is equality[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchReitsData[2m > [22m缓存命中时返回[90m 2[2mms[22m[31m[39m
+[31m     → expected [ { code: '508000', …(6) }, …(2) ] to be [ { code: '508000', name: '华夏REIT' } ] // Object.is equality[39m
+[31m   [31m×[31m jisilu.ts[2m > [22mfetchFundLadder[2m > [22m缓存命中时返回[90m 1[2mms[22m[31m[39m
+[31m     → expected [ { code: '001354', …(7) }, …(2) ] to be [ { code: '001354', name: '科技成长混合' } ] // Object.is equality[39m
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m7 failed[39m[22m[2m | [22m[1m[32m35 passed[39m[22m[90m (42)[39m
+[2m   Start at [22m 22:56:41
+[2m   Duration [22m 2.38s[2m (transform 183ms, setup 137ms, collect 192ms, tests 45ms, environment 1.41s, prepare 385ms)[22m
+

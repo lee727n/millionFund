@@ -1,0 +1,64 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mE:/millionFund[39m
+
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mget 未命中返回 null
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mset 后 get 能命中内存缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mhas 在存在时返回 true
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mhas 在不存在时返回 false
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mset 同时写入内存和持久化缓存（默认 persist=true）
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mset 可禁用持久化（persist=false）
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mget 带 prefix 拼接键名
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.get / set / has[2m > [22mset 自定义 memoryTTL
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getMemory / setMemory / getPersistent / setPersistent[2m > [22mgetMemory 只读内存缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getMemory / setMemory / getPersistent / setPersistent[2m > [22msetMemory 只写内存缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getMemory / setMemory / getPersistent / setPersistent[2m > [22mgetPersistent 只读持久化缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getMemory / setMemory / getPersistent / setPersistent[2m > [22msetPersistent 只写持久化缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.delete / clear / clearPrefix[2m > [22mdelete 同时清除内存和持久化缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.delete / clear / clearPrefix[2m > [22mclear 同时清除内存和持久化缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.delete / clear / clearPrefix[2m > [22mclearPrefix 清除指定前缀的内存键
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getOrSet[2m > [22m缓存命中时直接返回
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.getOrSet[2m > [22m缓存未命中时调用 fetcher 并缓存结果
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.setWithTradingTime / getWithTradingTime[2m > [22msetWithTradingTime 非交易时间使用 nonTradingTTL
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.setWithTradingTime / getWithTradingTime[2m > [22mgetWithTradingTime 非交易时间优先读持久化缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.setWithTradingTime / getWithTradingTime[2m > [22mgetWithTradingTime 交易时间优先读内存缓存
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22munifiedCache.setWithTradingTime / getWithTradingTime[2m > [22mgetOrSetWithTradingTime 缓存未命中时调用 fetcher
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22m导出常量[2m > [22mCACHE_KEYS 包含常用缓存键
+ [32m✓[39m src/api/__tests__/unifiedCache.test.ts[2m > [22m导出常量[2m > [22mUNIFIED_CACHE_TTL 包含交易时间常量
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22misTesseractSupported[2m > [22m始终返回 true
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m解析标准格式：代码 名称 金额
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m解析反向格式：名称 代码 金额
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m解析代码+金额格式（无名称）
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m解析支付宝格式：名称 持有金额 ¥10,000.00
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m去除名称中的噪音字符
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m解析带括号的格式：名称(000001)
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m处理中文间多余空格
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m空文本返回空数组
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m只有空白的文本返回空数组
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m不匹配任何格式的行返回空
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m小金额仍会被识别（parseSingleLine 不过滤金额大小）
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m识别多行持仓信息
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m提取日期作为买入日期
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m检测 YYYY-MM-DD 格式日期
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m检测 YYYY/MM/DD 格式日期
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m检测 YYYY年MM月DD日 格式日期
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m单行解析不过滤日期格式的6位数字（isValidFundCode 仅在 parseMultiLine 中使用）
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseHoldingText[2m > [22m合并份额类型行（C/A类）
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mrecognizeHoldings[2m > [22m成功识别持仓信息
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mrecognizeHoldings[2m > [22mTesseract 失败时抛出错误
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mrecognizeHoldings[2m > [22mOCR 超时时抛出友好提示
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseAmount（通过 parseHoldingText 间接测试）[2m > [22m解析带逗号的金额
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseAmount（通过 parseHoldingText 间接测试）[2m > [22m解析带货币符号的金额
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseAmount（通过 parseHoldingText 间接测试）[2m > [22m解析多个小数点的金额（取最后一个）
+ [32m✓[39m src/utils/__tests__/ocr.test.ts[2m > [22mOCR 工具函数[2m > [22mparseAmount（通过 parseHoldingText 间接测试）[2m > [22m无效金额返回 0
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Unhandled Errors [27m[22m⎯⎯⎯⎯⎯⎯[39m
+[31m[1m
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.[22m[39m
+[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m49 passed[39m[22m[90m (49)[39m
+[2m     Errors [22m [1m[31m1 error[39m[22m
+[2m   Start at [22m 22:44:01
+[2m   Duration [22m 2.43s[2m (transform 198ms, setup 177ms, collect 196ms, tests 37ms, environment 1.47s, prepare 415ms)[22m
+

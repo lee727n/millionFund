@@ -813,14 +813,40 @@ function calculateRSI(values: number[], period: number): number {
 }
 
 function calculateMACD(values: number[]): { macd: number; signal: number; histogram: number } {
-  const ema12 = calculateEMA(values, 12)
-  const ema26 = calculateEMA(values, 26)
-  
-  const macdLine = ema12 - ema26
-  const signal = macdLine * 0.2  // 简化的信号线
-  const histogram = macdLine - signal
-  
-  return { macd: macdLine, signal, histogram }
+  if (values.length < 26) {
+    // 数据不足，无法计算 MACD
+    return { macd: 0, signal: 0, histogram: 0 }
+  }
+
+  // 计算 EMA-12 和 EMA-26 的完整序列
+  const ema12Series = calculateEMASeries(values, 12)
+  const ema26Series = calculateEMASeries(values, 26)
+
+  // MACD 线 = EMA-12 - EMA-26
+  const macdLineSeries = ema12Series.map((v, i) => v - ema26Series[i]!)
+
+  // 信号线 = MACD 线的 9 日 EMA
+  const signal = calculateEMA(macdLineSeries, 9)
+  const histogram = macdLineSeries[macdLineSeries.length - 1]! - signal
+
+  return { macd: macdLineSeries[macdLineSeries.length - 1]!, signal, histogram }
+}
+
+/**
+ * 计算 EMA 完整序列
+ * @returns 每个时间点的 EMA 值数组
+ */
+function calculateEMASeries(values: number[], period: number): number[] {
+  if (values.length === 0) return []
+
+  const multiplier = 2 / (period + 1)
+  const series: number[] = [values[0]!]
+
+  for (let i = 1; i < values.length; i++) {
+    series.push((values[i]! - series[i - 1]!) * multiplier + series[i - 1]!)
+  }
+
+  return series
 }
 
 function calculateEMA(values: number[], period: number): number {

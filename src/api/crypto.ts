@@ -6,42 +6,11 @@ import type { CryptoQuote, CoinGeckoPriceResponse } from '@/types/crypto'
 import { SYMBOL_TO_COIN_ID, COIN_ID_TO_SYMBOL } from '@/types/crypto'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
+import { ConcurrencyController } from '@/api/fund/request'
 
 // ========== 并发控制 ==========
 // [WHY] CoinGecko 免费 API 有速率限制，需要控制并发
-const MAX_CONCURRENT = 3
-let activeRequests = 0
-const requestQueue: (() => void)[] = []
-
-function executeNext() {
-  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT) {
-    const next = requestQueue.shift()
-    if (next) next()
-  }
-}
-
-function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      activeRequests++
-      try {
-        const result = await fn()
-        resolve(result)
-      } catch (err) {
-        reject(err)
-      } finally {
-        activeRequests--
-        executeNext()
-      }
-    }
-
-    if (activeRequests < MAX_CONCURRENT) {
-      execute()
-    } else {
-      requestQueue.push(execute)
-    }
-  })
-}
+const requestConcurrency = new ConcurrencyController(3)
 
 // ========== CoinGecko API ==========
 
@@ -65,7 +34,7 @@ export async function fetchCryptoPrice(ids: string[]): Promise<Map<string, Crypt
   const idsParam = ids.join(',')
   const url = `${COINGECKO_BASE}/simple/price?ids=${idsParam}&vs_currencies=usd,cny&include_24hr_change=true&include_last_updated_at=true`
 
-  return withConcurrencyControl(async () => {
+  return requestConcurrency.execute(async () => {
     try {
       const data = await http.get<CoinGeckoPriceResponse>(url)
 
@@ -94,7 +63,7 @@ export async function fetchCryptoPrice(ids: string[]): Promise<Map<string, Crypt
       logger.error('[crypto] 批量查询加密货币价格失败', { ids, error: err })
       throw err // 直接抛出错误，不降级
     }
-  })
+  }, 3)
 }
 
 /**

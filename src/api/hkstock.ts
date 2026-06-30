@@ -5,42 +5,11 @@
 import { cache, CACHE_TTL } from './cache'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
+import { ConcurrencyController } from '@/api/fund/request'
 import type { HKStockQuote } from '@/types/hkstock'
 
-// ========== 并发控制（复用 astock.ts 模式） ==========
-const MAX_CONCURRENT = 5
-let activeRequests = 0
-const requestQueue: (() => void)[] = []
-
-function executeNext() {
-  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT) {
-    const next = requestQueue.shift()
-    if (next) next()
-  }
-}
-
-function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      activeRequests++
-      try {
-        const result = await fn()
-        resolve(result)
-      } catch (err) {
-        reject(err)
-      } finally {
-        activeRequests--
-        executeNext()
-      }
-    }
-
-    if (activeRequests < MAX_CONCURRENT) {
-      execute()
-    } else {
-      requestQueue.push(execute)
-    }
-  })
-}
+// ========== 并发控制 ==========
+const requestConcurrency = new ConcurrencyController(5)
 
 // ========== 新浪财经港股 API 响应解析 ==========
 
@@ -139,7 +108,7 @@ export async function fetchHKStockQuote(symbols: string[]): Promise<HKStockQuote
   const cached = cache.get<HKStockQuote[]>(cacheKey)
   if (cached) return cached
 
-  return withConcurrencyControl(async () => {
+  return requestConcurrency.execute(async () => {
     try {
       // 拼接股票代码（逗号分隔）
       const symbolStr = formattedSymbols.join(',')
