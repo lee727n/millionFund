@@ -48,16 +48,16 @@ jobs:
           VERSION=$(node -e "console.log(require('./package.json').version)")
           APK_PATH=$(find android/app/build/outputs -name "app-release.apk" | head -1)
           if [ -z "$APK_PATH" ]; then APK_PATH=$(find android/app/build -name "*.apk" | grep -i release | head -1); fi
-          mv "$APK_PATH" "AI百万实盘-v${VERSION}.apk"
+          mv "$APK_PATH" "AI百万资产-v${VERSION}.apk"
           echo "APK 路径: $APK_PATH"
           echo "APK 版本: v${VERSION}"
-          echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
+          echo "APK 大小: $(ls -lh AI百万资产-v${VERSION}.apk | awk '{print $5}')"
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-Android-v${{ github.sha }}
-          path: AI百万实盘-v*.apk
+          name: AI百万资产-Android-v${{ github.sha }}
+          path: AI百万资产-v*.apk
 
       - name: 删除旧的开发版 Release
         env:
@@ -72,7 +72,7 @@ jobs:
           tag_name: android-dev
           name: 🤖 Android 开发版 (v${{ github.sha }})
           body: |
-            📱 **AI百万实盘 - Android 开发版**
+            📱 **AI百万资产 - Android 开发版**
 
             - 版本: ${{ github.ref_name }}
             - 构建时间: ${{ github.event.head_commit.timestamp }}
@@ -80,6 +80,6 @@ jobs:
 
             💡 安装此 APK 即可测试最新功能
           prerelease: true
-          files: AI百万实盘-v*.apk
+          files: AI百万资产-v*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

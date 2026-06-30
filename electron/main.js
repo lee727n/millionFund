@@ -11,7 +11,7 @@ function createWindow() {
     height: 844,
     minWidth: 360,
     minHeight: 640,
-    title: 'AI百万实盘',
+    title: 'AI百万资产',
     icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

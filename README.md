@@ -1,6 +1,6 @@
-# AI百万实盘
+# AI百万资产
 
-一款功能丰富的开源基金管理系统，支持 **Web / Android / iOS / Windows / macOS / Linux** 全平台。提供自选基金实时估值、持仓盈亏管理、AI 调仓追踪、涨跌提醒、趋势分析、市场概览等功能。
+一款功能丰富的开源全品种资产管理工具，支持 **Web / Android / iOS / Windows / macOS / Linux** 全平台。提供基金/股票/加密货币/可转债实时估值、持仓盈亏管理、AI 调仓追踪、涨跌提醒、趋势分析、市场概览等功能。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)

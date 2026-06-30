@@ -2,7 +2,7 @@
   "name": "fund-app",
   "private": true,
   "version": "1.9.8",
-  "description": "AI百万实盘 - 全平台基金管理系统，支持实时估值、持仓管理、AI调仓追踪",
+  "description": "AI百万资产 - 全平台全品种资产管理工具，支持基金/股票/加密货币/可转债实时估值、持仓管理、AI调仓追踪",
   "author": {
     "name": "millionFund",
     "email": "fund@millionFund.app"
@@ -84,7 +84,7 @@
   },
   "build": {
     "appId": "com.fundapp.realtime",
-    "productName": "AI百万实盘",
+    "productName": "AI百万资产",
     "copyright": "MIT License",
     "directories": {
       "output": "release/desktop"

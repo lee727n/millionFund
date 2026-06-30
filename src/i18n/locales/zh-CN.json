@@ -11,8 +11,8 @@
     "about": "关于"
   },
   "home": {
-    "title": "AI 百万实盘",
-    "subtitle": "AI实盘参考",
+    "title": "AI百万资产",
+    "subtitle": "AI资产参考",
     "welcome": "欢迎使用基金管理",
     "description": "在这里管理你的自选和持仓基金",
     "add_fund": "添加自选基金",
@@ -30,8 +30,8 @@
     "holdings": "持仓",
     "no_holdings": "暂无持仓",
     "sorted_by_profit": "持仓列表（按盈亏排序）",
-    "app_title_full": "AI 百万实盘",
-    "app_title_short": "AI实盘",
+    "app_title_full": "AI百万资产",
+    "app_title_short": "AI资产",
     "reference_ma": "参考均线",
     "filter_all": "全部",
     "error_title": "页面加载出现问题",
@@ -597,9 +597,9 @@
   },
   "about": {
     "title": "关于",
-    "app_name": "AI 百万实盘",
+    "app_name": "AI百万资产",
     "app_version": "版本",
-    "app_desc": "AI 驱动的基金实盘追踪与调仓参考工具",
+    "app_desc": "AI 驱动的全品种资产追踪与调仓参考工具",
     "changelog": "更新记录",
     "view_full": "查看完整更新记录 →",
     "features": "功能特性",

@@ -32,7 +32,7 @@ describe('release.ts', () => {
   })
 
   test('APP_INFO 字段完整', () => {
-    expect(APP_INFO.name).toBe('AI百万实盘')
+    expect(APP_INFO.name).toBe('AI百万资产')
     expect(APP_INFO.version).toBeTruthy()
     expect(APP_INFO.license).toBe('MIT')
     expect(APP_INFO.github).toBe(GITHUB_URL)

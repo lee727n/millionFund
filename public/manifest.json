@@ -1,7 +1,7 @@
 {
-  "name": "AI百万实盘",
-  "short_name": "百万实盘",
-  "description": "全平台基金管理系统 - 实时估值 · AI调仓追踪 · 多源资讯",
+  "name": "AI百万资产",
+  "short_name": "百万资产",
+  "description": "全平台全品种资产管理工具 - 基金/股票/加密货币 · 实时估值 · AI调仓追踪",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0e11",

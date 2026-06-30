@@ -164,14 +164,14 @@ jobs:
       - name: 打包 zip
         run: |
           cd dist
-          zip -r ../AI百万实盘-Web.zip .
+          zip -r ../AI百万资产-Web.zip .
           cd ..
 
       - name: Upload Web 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-Web
-          path: AI百万实盘-Web.zip
+          name: AI百万资产-Web
+          path: AI百万资产-Web.zip
 
   # ─────────────────────────── Android ─────────────────────────────
   build-android:
@@ -210,14 +210,14 @@ jobs:
 
       - name: 重命名并上传 APK
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk AI百万实盘-Android-debug.apk
-          echo "APK 大小: $(ls -lh AI百万实盘-Android-debug.apk | awk '{print $5}')"
+          mv android/app/build/outputs/apk/debug/app-debug.apk AI百万资产-Android-debug.apk
+          echo "APK 大小: $(ls -lh AI百万资产-Android-debug.apk | awk '{print $5}')"
 
       - name: Upload Android 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-Android-debug
-          path: AI百万实盘-Android-debug.apk
+          name: AI百万资产-Android-debug
+          path: AI百万资产-Android-debug.apk
 
   # ─────────────────────────── Windows ───────────────────────────
   build-windows:
@@ -247,7 +247,7 @@ jobs:
       - name: Upload Windows 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-Windows
+          name: AI百万资产-Windows
           path: release/desktop/*.exe
 
   # ─────────────────────────── macOS ─────────────────────────────
@@ -278,7 +278,7 @@ jobs:
       - name: Upload macOS 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-macOS
+          name: AI百万资产-macOS
           path: release/desktop/*.dmg
 
   # ─────────────────────────── Linux ───────────────────────────────
@@ -309,7 +309,7 @@ jobs:
       - name: Upload Linux 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万实盘-Linux
+          name: AI百万资产-Linux
           path: |
             release/desktop/*.AppImage
             release/desktop/*.deb
@@ -332,7 +332,7 @@ jobs:
       - name: 创建 Release
         uses: softprops/action-gh-release@v3
         with:
-          name: AI百万实盘 ${{ github.ref_name }}
+          name: AI百万资产 ${{ github.ref_name }}
           generate_release_notes: true
           files: release-assets/**/*
         env:
@@ -365,7 +365,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: dev-${{ github.sha }}
-          name: AI百万实盘 开发版 (${{ github.sha }})
+          name: AI百万资产 开发版 (${{ github.sha }})
           body: |
             🔧 开发版本 - 基于最新代码构建！
 
