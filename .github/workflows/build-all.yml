@@ -210,14 +210,14 @@ jobs:
 
       - name: 重命名并上传 APK
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk AI百万资产-Android-debug.apk
-          echo "APK 大小: $(ls -lh AI百万资产-Android-debug.apk | awk '{print $5}')"
+          mv android/app/build/outputs/apk/debug/app-debug.apk millionasset-Android-debug.apk
+          echo "APK 大小: $(ls -lh millionasset-Android-debug.apk | awk '{print $5}')"
 
       - name: Upload Android 产物
         uses: actions/upload-artifact@v7
         with:
-          name: AI百万资产-Android-debug
-          path: AI百万资产-Android-debug.apk
+          name: millionasset-Android-debug
+          path: millionasset-Android-debug.apk
 
   # ─────────────────────────── Windows ───────────────────────────
   build-windows:

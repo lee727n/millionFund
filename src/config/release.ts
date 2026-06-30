@@ -33,8 +33,8 @@ export const APP_INFO = {
  */
 export const DOWNLOAD_URLS = {
   android: {
-    debug: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/AI百万资产-Android-debug.apk`,
-    release: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/AI百万资产-Android-release.apk`,
+    debug: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/millionasset-Android-debug.apk`,
+    release: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/millionasset-Android-release.apk`,
   },
   windows: {
     nsis: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/AI百万资产 Setup ${APP_VERSION}.exe`,
