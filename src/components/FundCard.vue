@@ -112,7 +112,7 @@ onUnmounted(() => {
       <!-- 左侧：基金信息 -->
       <div class="fund-info">
         <div class="fund-name" :data-test-id="'fund-name'">
-          {{ fund.name || '加载中...' }}
+          {{ fund.name || t('common.loading') }}
           <!-- 资产类别标签 -->
           <span 
             v-if="assetClassLabel" 
@@ -142,7 +142,7 @@ onUnmounted(() => {
       <van-button 
         square 
         type="danger" 
-        text="删除"
+        :text="t('common.delete')"
         class="delete-btn"
         @click.stop="emit('delete', fund.code)"
       />

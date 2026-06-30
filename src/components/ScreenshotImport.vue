@@ -58,8 +58,8 @@ async function handleFileChange(event: Event) {
     const status = await requestPermissions()
     if (!status.allGranted) {
       showDialog({
-        title: '权限不足',
-        message: '需要相机和存储权限才能使用截图导入功能，请在系统设置中授予权限',
+        title: t('ocr.permission_denied'),
+        message: t('ocr.permission_message'),
         confirmButtonText: '知道了',
       })
       return
@@ -70,7 +70,7 @@ async function handleFileChange(event: Event) {
 
   // [WHAT] 验证文件类型
   if (!file.type.startsWith('image/')) {
-    showToast('请选择图片文件')
+    showToast(t('ocr.select_image'))
     return
   }
   
@@ -87,18 +87,18 @@ async function handleFileChange(event: Event) {
 async function startRecognition(file: File) {
   step.value = 'recognizing'
   ocrProgress.value = 0
-  ocrStatus.value = '正在识别...'
+  ocrStatus.value = t('ocr.recognizing')
   
   try {
     const holdings = await recognizeHoldings(file, (progress, status) => {
       ocrProgress.value = Math.round(progress * 100)
-      ocrStatus.value = status || '正在识别...'
+      ocrStatus.value = status || t('ocr.recognizing')
     })
     
     recognizedHoldings.value = holdings
     
     if (holdings.length === 0) {
-      showToast('未识别到持仓信息，请确保截图清晰')
+      showToast(t('ocr.no_holdings_found'))
       step.value = 'upload'
       return
     }
@@ -110,11 +110,11 @@ async function startRecognition(file: File) {
   } catch (error: any) {
     logger.error('OCR识别失败', error)
     // [FIX] 显示更友好的错误信息
-    const errMsg = error?.message || '识别失败，请重试'
+    const errMsg = error?.message || t('ocr.recognize_failed_retry')
     showDialog({
-      title: '识别失败',
+      title: t('ocr.recognize_failed'),
       message: errMsg + '\n\n建议：\n1. 确保截图清晰\n2. 确保包含基金代码和金额\n3. 尝试重新拍照',
-      confirmButtonText: '重新选择',
+      confirmButtonText: 't("ocr.reselect")',
     }).then(() => {
       step.value = 'upload'
     })
@@ -215,17 +215,17 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
 function toggleSelect(index: number) {
   const holding = enhancedHoldings.value[index]!
   if (!holding.code) {
-    showToast('该项缺少基金代码')
+    showToast(t('ocr.missing_code'))
     return
   }
   if (holdingStore.hasHolding(holding.code)) {
-    showToast('该基金已在持仓中')
+    showToast(t('ocr.already_in_holdings'))
     return
   }
   holding.selected = !holding.selected
 }
 
-// [WHAT] 全选/取消全选
+// [WHAT] t("ocr.select_all")/取消t("ocr.select_all")
 function toggleSelectAll() {
   const validHoldings = enhancedHoldings.value.filter(
     h => h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)
@@ -245,17 +245,17 @@ function updateAmount(index: number, value: string) {
   }
 }
 
-// [WHAT] 确认导入
+// [WHAT] t("ocr.confirm_import")
 async function confirmImport() {
   const toImport = enhancedHoldings.value.filter(h => h.selected && h.code && h.amount > 0)
   
   if (toImport.length === 0) {
-    showToast('请选择要导入的持仓')
+    showToast(t('ocr.select_to_import'))
     return
   }
   
   step.value = 'importing'
-  showLoadingToast({ message: '导入中...', forbidClick: true })
+  showLoadingToast({ message: t('ocr.importing'), forbidClick: true })
   
   try {
     let imported = 0
@@ -308,7 +308,7 @@ async function confirmImport() {
   } catch (error) {
     closeToast()
     logger.error('导入失败', error)
-    showToast('导入失败，请重试')
+    showToast(t('ocr.import_failed'))
     step.value = 'preview'
   }
 }
@@ -404,7 +404,7 @@ function closeDialog() {
   }, 300)
 }
 
-// [WHAT] 重新选择图片
+// [WHAT] t("ocr.reselect")图片
 function reselectImage() {
   step.value = 'upload'
   selectedImage.value = ''
@@ -429,7 +429,7 @@ function getConfidenceColor(confidence: number): string {
     <div class="import-dialog">
       <!-- 标题栏 -->
       <div class="dialog-header">
-        <span>截图导入持仓</span>
+        <span>{{t("ocr.title")}}</span>
         <van-icon name="cross" @click="closeDialog" />
       </div>
 
@@ -437,7 +437,7 @@ function getConfidenceColor(confidence: number): string {
       <div v-if="step === 'upload'" class="upload-step">
         <div class="upload-tip">
           <van-icon name="photo-o" size="48" color="var(--color-primary)" />
-          <p class="tip-title">选择持仓截图</p>
+          <p class="tip-title">t("ocr.select_screenshot")</p>
           <p class="tip-desc">支持支付宝、天天基金、蛋卷基金等平台的持仓截图</p>
         </div>
         
@@ -455,10 +455,10 @@ function getConfidenceColor(confidence: number): string {
         </div>
         
         <div class="usage-tips">
-          <p class="tips-title">使用提示</p>
+          <p class="tips-title">t("ocr.tips_title")</p>
           <ul>
             <li>请确保截图清晰，包含基金代码和金额</li>
-            <li>支持一次导入多只基金</li>
+            <li>t("ocr.tip_multi")</li>
             <li>识别后可手动修改金额</li>
           </ul>
         </div>
@@ -480,7 +480,7 @@ function getConfidenceColor(confidence: number): string {
         <div class="preview-header">
           <span>识别到 {{ enhancedHoldings.length }} 条记录</span>
           <van-button size="small" plain @click="toggleSelectAll">
-            {{ selectedCount === enhancedHoldings.filter(h => h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)).length ? '取消全选' : '全选' }}
+            {{ selectedCount === enhancedHoldings.filter(h => h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)).length ? t('ocr.deselect_all') : t('ocr.select_all') }}
           </van-button>
         </div>
         
@@ -527,7 +527,7 @@ function getConfidenceColor(confidence: number): string {
         </div>
         
         <div class="preview-footer">
-          <van-button plain @click="reselectImage">重新选择</van-button>
+          <van-button plain @click="reselectImage">t("ocr.reselect")</van-button>
           <van-button type="primary" :disabled="selectedCount === 0" @click="confirmImport">
             导入 {{ selectedCount }} 只基金
           </van-button>
@@ -537,7 +537,7 @@ function getConfidenceColor(confidence: number): string {
       <!-- 导入中 -->
       <div v-if="step === 'importing'" class="importing-step">
         <van-loading size="48" />
-        <p>正在导入...</p>
+        <p>t("ocr.importing_status")</p>
       </div>
     </div>
   </van-popup>

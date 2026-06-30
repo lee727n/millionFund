@@ -2,6 +2,9 @@
 // [WHY] 快捷操作栏组件 - 包含自动刷新开关、刷新按钮、日志复制、设置入口
 // [WHAT] 网页端和移动端有不同的布局
 
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 defineProps<{
   autoRefreshEnabled: boolean
 }>()
@@ -23,7 +26,7 @@ function onSwitchChange(value: boolean) {
     <!-- 网页端：显示设置按钮 -->
     <div class="web-only">
       <div class="auto-refresh-label">
-        <span>{{ autoRefreshEnabled ? '自动刷新开' : '自动刷新关' }}</span>
+        <span>{{ autoRefreshEnabled ? t('settings.auto_refresh_on') : t('settings.auto_refresh_off') }}</span>
       </div>
       <van-switch 
         :model-value="autoRefreshEnabled" 
@@ -31,7 +34,7 @@ function onSwitchChange(value: boolean) {
         @update:model-value="onSwitchChange" 
       />
       <van-icon name="replay" size="22" @click="emit('refresh')" data-test-id="refresh-button" />
-      <van-icon name="description-o" size="22" @click="emit('copyLogs')" title="复制日志" />
+      <van-icon name="description-o" size="22" @click="emit('copyLogs')" :title="t('holding.copy_logs')" />
       <van-icon name="setting-o" size="22" @click="emit('goToSettings')" />
     </div>
     <!-- 移动端：只显示自动刷新开关和刷新按钮 -->
@@ -43,7 +46,7 @@ function onSwitchChange(value: boolean) {
       />
       <van-icon name="replay" size="22" @click="emit('refresh')" data-test-id="refresh-button" />
       <van-icon name="description-o" size="22" @click="emit('copyLogs')" />
-      <van-icon name="setting-o" size="22" @click="emit('goToSettings')" title="关于" />
+      <van-icon name="setting-o" size="22" @click="emit('goToSettings')" :title="t('about.title')" />
     </div>
   </div>
 </template>

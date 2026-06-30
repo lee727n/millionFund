@@ -58,7 +58,12 @@
     "day_7": "7天",
     "day_30": "30天",
     "day_90": "90天",
-    "chart_title": "资产总值"
+    "chart_title": "资产总值",
+    "asset_trend_chart": "资产趋势图",
+    "bar_chart": "柱状图",
+    "pie_chart": "饼图",
+    "total_assets_unit": "元",
+    "holdings_list": "持仓列表"
   },
   "holding": {
     "title": "我的持仓",
@@ -150,7 +155,8 @@
     "source_tx": "腾讯",
     "source_jd": "京东",
     "source_observe": "观察",
-    "fund_code_placeholder": "请输入基金代码"
+    "fund_code_placeholder": "请输入基金代码",
+    "import_failed_check_code": "导入失败，请检查基金代码"
   },
   "watchlist": {
     "title": "自选列表",
@@ -320,6 +326,7 @@
     "please_select": "请选择",
     "please_input": "请输入",
     "no_data": "暂无数据",
+    "not_set": "未设置",
     "loading_failed": "加载失败",
     "network_error": "网络错误",
     "unknown_error": "未知错误",
@@ -499,7 +506,17 @@
     "signal_hold": "持",
     "score_title": "综合评分",
     "level_suffix": "级",
-    "no_data": "暂无趋势数据"
+    "no_data": "暂无趋势数据",
+    "nav_label": "净值",
+    "estimate_label": "估值",
+    "support": "支撑",
+    "resistance": "阻力"
+  },
+  "fund_grid": {
+    "top_holdings": "前十大重仓股",
+    "intraday_chart": "当日分时图",
+    "intraday_estimate": "当日分时估值",
+    "added_gain": "添加后涨跌幅"
   },
   "trades": {
     "title": "交易记录",
@@ -539,7 +556,9 @@
     "remark_label": "备注",
     "fee_label": "手续费",
     "date_label": "日期",
-    "delete_btn": "删除"
+    "delete_btn": "删除",
+    "save": "保存",
+    "select_type": "请选择类型"
   },
   "finance_news": {
     "title": "金融资讯",
@@ -564,6 +583,8 @@
     "sina": "新浪",
     "auto_refresh": "自动刷新",
     "refresh_interval": "刷新间隔",
+    "auto_refresh_on": "自动刷新开",
+    "auto_refresh_off": "自动刷新关",
     "version": "版本"
   },
   "errors": {
@@ -736,5 +757,28 @@
     "refresh_failed": "刷新失败",
     "auto_refresh_on": "自动刷新已开启",
     "auto_refresh_off": "自动刷新已关闭"
-  }
-}
+  },
+
+    "ocr": {
+    "permission_denied": "权限不足",
+    "select_image": "请选择图片文件",
+    "recognizing": "正在识别...",
+    "recognize_failed": "识别失败",
+    "recognize_failed_retry": "识别失败，请重试",
+    "no_holdings_found": "未识别到持仓信息，请确保截图清晰",
+    "missing_code": "该项缺少基金代码",
+    "already_in_holdings": "该基金已在持仓中",
+    "select_to_import": "请选择要导入的持仓",
+    "importing": "导入中...",
+    "import_failed": "导入失败，请重试",
+    "title": "截图导入持仓",
+    "select_screenshot": "选择持仓截图",
+    "tips_title": "使用提示",
+    "tip_multi": "支持一次导入多只基金",
+    "reselect": "重新选择",
+    "select_all": "全选",
+    "deselect_all": "取消全选",
+    "confirm_import": "确认导入",
+    "importing_status": "正在导入...",
+    "permission_message": "需要相机和存储权限才能使用截图导入功能，请在系统设置中授予权限"
+  }}

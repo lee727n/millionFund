@@ -1204,20 +1204,20 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${costFormData.name} (${costFormData.code})`"
-            :label="t('基金')"
+            :label="t('detail.fund')"
             readonly
           />
           <van-field
             v-model="costFormData.amount"
             type="number"
-            :label="t('持仓金额')"
-            :placeholder="t('调整后的持仓金额（元）')"
+            :label="t('detail.holding_amount')"
+            :placeholder="t('detail.holding_amount_placeholder')"
           />
           <van-field
             v-model="costFormData.profit"
             type="number"
-            :label="t('持仓收益')"
-            :placeholder="t('调整后的持仓收益（元）')"
+            :label="t('detail.holding_profit')"
+            :placeholder="t('detail.holding_profit_placeholder')"
           />
           <div class="cost-tip">
             <van-icon name="info-o" />
@@ -1248,13 +1248,13 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            :label="t('基金')"
+            :label="t('detail.fund')"
             readonly
           />
           <van-field
             v-model="sectorFormData.sectors"
             type="textarea"
-            :label="t('行业板块')"
+            :label="t('detail.industry_sector')"
             placeholder="每行输入一个行业板块，例如：\n新能源\n半导体\n医药"
             :rows="5"
           />
@@ -1287,7 +1287,7 @@ function formatPercent(num: number): string {
         <div class="dialog-content">
           <van-field
             :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
-            :label="t('基金')"
+            :label="t('detail.fund')"
             readonly
           />
           <div class="form-item">

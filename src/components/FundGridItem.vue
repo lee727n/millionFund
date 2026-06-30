@@ -63,7 +63,7 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
     <div class="index-content web-only">
       <div class="index-left">
         <div class="fund-code">{{ fund.code }}</div>
-        <div class="fund-sectors">{{ fund.industrySectors || '未设置' }}</div>
+        <div class="fund-sectors">{{t('common.not_set')}}</div>
       </div>
       <div class="index-right">
         <div class="index-change">
@@ -77,13 +77,13 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
         <div class="trend-column trend-column-1">
           <div class="trend-item">
             <span class="trend-text" :class="fund.trendPrediction.trend === 'up' ? 'up' : fund.trendPrediction.trend === 'down' ? 'down' : ''">
-              {{ fund.trendPrediction.trend === 'up' ? '看涨' : fund.trendPrediction.trend === 'down' ? '看跌' : '震荡' }}
+              {{t('trend.up')}}
             </span>
           </div>
         </div>
         <div class="trend-column">
           <div class="trend-item">
-            <span class="trend-label">{{ fund.dataSource === 'nav' ? '净值' : '估值' }}</span>
+            <span class="trend-label">{{t('trend.nav_label')}}</span>
             <span class="trend-value" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
               {{ fund.currentValue?.toFixed(3) || '--' }}
             </span>
@@ -91,13 +91,13 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
         </div>
         <div class="trend-column">
           <div class="trend-item">
-            <span class="trend-label">支撑</span>
+            <span class="trend-label">{{t('trend.support')}}</span>
             <span class="trend-value down">{{ fund.trendPrediction.supportLevel?.toFixed(2) || '--' }}</span>
           </div>
         </div>
         <div class="trend-column">
           <div class="trend-item">
-            <span class="trend-label">阻力</span>
+            <span class="trend-label">{{t('trend.resistance')}}</span>
             <span class="trend-value up">{{ fund.trendPrediction.resistanceLevel?.toFixed(2) || '--' }}</span>
           </div>
         </div>
@@ -119,7 +119,7 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
       </div>
       <div class="mobile-item-row mobile-item-row-2">
         <div class="fund-code">{{ fund.code }}</div>
-        <div class="fund-sectors">{{ fund.industrySectors || '未设置' }}</div>
+        <div class="fund-sectors">{{t('common.not_set')}}</div>
       </div>
       <div class="mobile-item-row mobile-item-row-3 mobile-item-row-3-4-container">
         <!-- 左边：涨跌幅（无箭头，带背景色） -->
@@ -135,45 +135,45 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
         <div class="trend-prediction">
           <span class="trend-item trend-item-vertical">
             <span class="trend-text" :class="fund.trendPrediction.trend === 'up' ? 'up' : fund.trendPrediction.trend === 'down' ? 'down' : ''">
-              {{ fund.trendPrediction.trend === 'up' ? '看涨' : fund.trendPrediction.trend === 'down' ? '看跌' : '震荡' }}
+              {{t('trend.up')}}
             </span>
             <span class="trend-value" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
               {{ fund.currentValue?.toFixed(3) || '--' }}
             </span>
           </span>
           <span class="trend-item trend-item-vertical">
-            <span class="trend-label">支撑</span>
+            <span class="trend-label">{{t('trend.support')}}</span>
             <span class="trend-value down">{{ fund.trendPrediction.supportLevel?.toFixed(2) || '--' }}</span>
           </span>
           <span class="trend-item trend-item-vertical">
-            <span class="trend-label">阻力</span>
+            <span class="trend-label">{{t('trend.resistance')}}</span>
             <span class="trend-value up">{{ fund.trendPrediction.resistanceLevel?.toFixed(2) || '--' }}</span>
           </span>
         </div>
       </div>
       <div class="index-holdings mobile-only" v-if="uiMode === 'full'" @click.stop="emit('openTopHoldings', $event)">
-        <span class="top-holdings-label">前十大重仓股</span>
+        <span class="top-holdings-label">t('fund_grid.top_holdings')</span>
       </div>
       <div class="intraday-section mobile-only" v-if="uiMode === 'full'" @click.stop="emit('openIntradayModal', $event)">
         <span class="intraday-label-mobile">
           <van-icon name="chart-trending-o" size="12" />
-          当日分时图
+          t('fund_grid.intraday_chart')
         </span>
       </div>
     </div>
     <div class="index-holdings web-only" v-if="uiMode === 'full'" @click.stop="emit('openTopHoldings', $event)">
-      <span class="top-holdings-label">前10大重仓股 <span class="top-holdings-arrow">›</span></span>
+      <span class="top-holdings-label">t('fund_grid.top_holdings') + ' ›' <span class="top-holdings-arrow">›</span></span>
     </div>
     <div class="intraday-section web-only" v-if="uiMode === 'full'" @click.stop="emit('openIntradayModal', $event)">
       <span class="intraday-label">
         <van-icon name="chart-trending-o" size="12" />
-        当日分时估值
+        t('fund_grid.intraday_estimate')
       </span>
     </div>
     <div class="added-gain-section web-only" v-if="fund.addedGain !== undefined">
       <div class="added-gain-badge" :class="fund.addedGain >= 0 ? 'up' : 'down'">
         <van-icon :name="fund.addedGain >= 0 ? 'arrow-up' : 'arrow-down'" size="14" />
-        <span>添加后涨跌幅{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%</span>
+        <span>t('fund_grid.added_gain'){{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%</span>
       </div>
     </div>
   </div>
