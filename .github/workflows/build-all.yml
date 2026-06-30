@@ -85,13 +85,13 @@ jobs:
 
             const body = `## 📊 测试覆盖率报告
 
-| 维度 | 覆盖率 |
-|------|---------|
-| 行覆盖率 | **${pct}%** |
-| 分支覆盖率 | ${branch}% |
-| 函数覆盖率 | ${func}% |
+            | 维度 | 覆盖率 |
+            |------|---------|
+            | 行覆盖率 | **${pct}%** |
+            | 分支覆盖率 | ${branch}% |
+            | 函数覆盖率 | ${func}% |
 
-${status}`
+            ${status}`
 
             // Use pr comment instead of issue comment for PR context
             await github.rest.issues.createComment({
@@ -369,8 +369,8 @@ ${status}`
           body: |
             🔧 开发版本 - 基于最新代码构建！
 
-            构建时间: {{ github.event.head_commit.timestamp }}
-            提交信息: {{ github.event.head_commit.message }}
+            构建时间: ${{ github.event.head_commit.timestamp }}
+            提交信息: ${{ github.event.head_commit.message }}
 
             💡 建议使用正式版 (v* 标签) 用于日常使用
           prerelease: true
