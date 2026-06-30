@@ -68,37 +68,37 @@ jobs:
 
       - name: 📊 评论 PR（覆盖率变化）
         if: github.event_name == 'pull_request'
-        run: |
-          if [ ! -f coverage/coverage-summary.json ]; then exit 0; fi
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs')
+            if (!fs.existsSync('./coverage/coverage-summary.json')) return
 
-          COVERAGE=$(node -e "const d=require('./coverage/coverage-summary.json'); console.log(d.total.lines.pct)")
-          BRANCH=$(node -e "const d=require('./coverage/coverage-summary.json'); console.log(d.total.branches.pct)")
-          FUNC=$(node -e "const d=require('./coverage/coverage-summary.json'); console.log(d.total.functions.pct)")
+            const summary = require('./coverage/coverage-summary.json')
+            const pct = summary.total.lines.pct
+            const branch = summary.total.branches.pct
+            const func = summary.total.functions.pct
 
-          STATUS="✅ 覆盖率符合门禁要求（≥ 60%）"
-          BELOW=$(node -e "const c=+process.argv[1]; process.exit(c < 60 ? 0 : 1)" "$COVERAGE" && echo "1" || echo "0")
-          if [ "$BELOW" = "1" ]; then
-            STATUS="⚠️ **覆盖率低于 60% 门禁**，请添加更多测试！"
-          fi
+            const status = pct < 60
+              ? '⚠️ **覆盖率低于 60% 门禁**，请添加更多测试！'
+              : '✅ 覆盖率符合门禁要求（≥ 60%）'
 
-          BODY=$(cat <<EOF
-## 📊 测试覆盖率报告
+            const body = `## 📊 测试覆盖率报告
 
 | 维度 | 覆盖率 |
 |------|---------|
-| 行覆盖率 | **${COVERAGE}%** |
-| 分支覆盖率 | ${BRANCH}% |
-| 函数覆盖率 | ${FUNC}% |
+| 行覆盖率 | **${pct}%** |
+| 分支覆盖率 | ${branch}% |
+| 函数覆盖率 | ${func}% |
 
-${STATUS}
-EOF
-)
+${status}`
 
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body "$BODY" 2>/dev/null || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            // Use pr comment instead of issue comment for PR context
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body
+            })
 
   # ────────────────────────────── E2E 测试（新增）─────────────────────
   test-e2e:
