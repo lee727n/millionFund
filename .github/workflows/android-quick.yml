@@ -46,7 +46,10 @@ jobs:
       - name: 重命名 APK (含版本号)
         run: |
           VERSION=$(node -e "console.log(require('./package.json').version)")
-          mv android/app/build/outputs/apk/release/app-release.apk AI百万实盘-v${VERSION}.apk
+          APK_PATH=$(find android/app/build/outputs -name "app-release.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then APK_PATH=$(find android/app/build -name "*.apk" | grep -i release | head -1); fi
+          mv "$APK_PATH" "AI百万实盘-v${VERSION}.apk"
+          echo "APK 路径: $APK_PATH"
           echo "APK 版本: v${VERSION}"
           echo "APK 大小: $(ls -lh AI百万实盘-v${VERSION}.apk | awk '{print $5}')"
 
