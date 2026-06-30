@@ -40,21 +40,32 @@
 
 ## 更新记录
 
-### v1.9.8 (2026-06-27) - 代码质量提升 & 测试覆盖
+### v1.9.8 (2026-07-01) - 🆕 全品种资产平台
 
-**代码重构**
-- 拆分 `Detail.vue`：提取趋势预测、分红记录、基金公告 3 个独立组件，降低主文件复杂度
-- 存储层异步化：`storage.ts` 全面改为 async/await，修复加密数据读取的 await 语法错误
-- 清理未使用变量：15+ 文件中移除 34+ 处 unused imports/vars，ESLint 零警告
+**全品种资产支持**
+- 资产总览页面：饼图/条形图双视图切换，全品类资产配置一览
+- 统一资产数据模型：基金/股票/债券/加密货币/大宗商品/期货
+- 新增行情 API：A 股、美股（Yahoo Finance）、港股、加密货币（CoinGecko）、可转债（集思录）、黄金/大宗商品（新浪财经）、期货
+- 持仓卡片资产类别标签 + 首页全资产类别筛选
+- 资讯聚合 Tab（金十数据/财联社/雪球/资金流向）
+- APK 下载 + CSV 导出
 
-**测试增强**
-- 新增组件单元测试：`TrendPredictionSection`、`DividendRecordsSection`、`FundAnnouncementsSection`，共 29 个测试用例
-- 引入 `@vue/test-utils` 支持 Vue 组件测试，`vitest.config.ts` 增加 Vue 插件
-- 完善 E2E 测试：新增 Portfolio 页面 POM 和测试用例
+**涨跌提醒系统 🔔**
+- 设置涨跌幅阈值，定时检查，触发时应用内弹窗通知
+- 提醒规则持久化（Pinia store + localStorage）
 
-**安全修复**
-- 删除敏感数据文件 `holdings-calculation.json`
-- 清理 Git 历史中的敏感凭证痕迹
+**国际化 🌐**
+- 完整 i18n 中英文切换（15 View + 11 Component）
+- 版本号自动从 package.json 读取
+
+**质量提升**
+- 测试覆盖率 42% → **60.73%**（576+ 测试全过）
+- ESLint 零警告，TypeScript strict 全量通过
+- JSONP 清零：所有接口迁移为 fetch + 正则解析
+- P0 安全漏洞修复：移除 `new Function` + 强化 CSP
+- Electron 生产环境 404 修复
+- CI/CD 升级至 Node 24 兼容版本
+- 组件拆分、存储层异步化、代码清理
 
 ### v1.9.0 (2026-06-14) - 架构大重构
 
