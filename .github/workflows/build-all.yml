@@ -264,7 +264,7 @@ jobs:
 
   # ─────────────────────────── macOS ─────────────────────────────
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     name: 🍎 macOS (DMG)
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
