@@ -63,7 +63,10 @@
     "bar_chart": "柱状图",
     "pie_chart": "饼图",
     "total_assets_unit": "元",
-    "holdings_list": "持仓列表"
+    "holdings_list": "持仓列表",
+    "export": "导出 CSV",
+    "export_success": "导出成功",
+    "no_data_to_export": "暂无数据可导出"
   },
   "holding": {
     "title": "我的持仓",

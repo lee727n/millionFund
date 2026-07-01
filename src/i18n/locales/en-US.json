@@ -54,7 +54,10 @@
     "bar_chart": "Bar Chart",
     "pie_chart": "Pie Chart",
     "total_assets_unit": "CNY",
-    "holdings_list": "Holdings List"
+    "holdings_list": "Holdings List",
+    "export": "Export CSV",
+    "export_success": "Export successful",
+    "no_data_to_export": "No data to export"
   },
   "holding": {
     "title": "My Holdings",

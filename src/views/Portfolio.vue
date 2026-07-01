@@ -185,6 +185,63 @@ function setTrendDays(days: number) {
   trendDays.value = days
 }
 
+// 导出持仓数据为 CSV
+function exportToCSV() {
+  const holdings = holdingStore.holdings
+  if (holdings.length === 0) {
+    showToast(t('portfolio.no_data_to_export'))
+    return
+  }
+
+  // CSV 表头
+  const headers = [
+    t('holding.code'),
+    t('holding.name'),
+    t('holding.asset_class'),
+    t('holding.shares'),
+    t('holding.cost_price'),
+    t('holding.latest_price'),
+    t('holding.market_value'),
+    t('holding.profit'),
+    t('holding.profit_rate')
+  ]
+
+  // CSV 数据行
+  const rows = holdings.map(h => [
+    h.code,
+    h.name,
+    getAssetClassLabel(h.assetClass),
+    h.shares.toString(),
+    h.costPrice.toString(),
+    h.latestPrice?.toString() || '',
+    h.marketValue?.toString() || '',
+    h.profit?.toString() || '',
+    h.profitRate ? (h.profitRate * 100).toFixed(2) + '%' : ''
+  ])
+
+  // 生成 CSV 内容
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n')
+
+  // 添加 BOM（解决中文乱码）
+  const BOM = '\uFEFF'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+
+  // 创建下载链接
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.setAttribute('href', url)
+  link.setAttribute('download', `millionFund_${new Date().toISOString().slice(0, 10)}.csv`)
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  showToast(t('portfolio.export_success'))
+}
+
 // 计算饼图的 conic-gradient
 const pieChartGradient = computed(() => {
   if (!summary.value) return ''
@@ -290,6 +347,17 @@ onMounted(async () => {
           class="trend-tab"
         >
           {{ t('portfolio.day_90') }}</van-button>
+
+        <!-- 导出按钮 -->
+        <van-button
+          size="small"
+          plain
+          type="default"
+          @click="exportToCSV"
+          class="trend-tab export-btn"
+        >
+          📥 {{ t('portfolio.export') }}
+        </van-button>
       </div>
 
       <!-- 走势图 -->
@@ -704,5 +772,23 @@ onMounted(async () => {
 
 .loss {
   color: #5bde7d;
+}
+
+/* 导出按钮样式 */
+.export-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.export-btn:active {
+  transform: translateY(0);
 }
 </style>
