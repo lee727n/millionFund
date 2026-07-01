@@ -106,6 +106,12 @@ const router = createRouter({
       meta: { title: '我的' }
     },
     {
+      path: '/ai-settings',
+      name: 'ai-settings',
+      component: () => import('@/views/AISettings.vue'),
+      meta: { title: 'AI 配置' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/'
     }

@@ -42,10 +42,27 @@
         </van-cell>
       </van-cell-group>
 
-      <!-- 其他功能占位 -->
-      <div class="coming-soon">
-        <p class="text-gray-500">{{ t('mine.coming_soon') }}</p>
-      </div>
+      <!-- 其他功能 -->
+      <van-cell-group inset class="feature-group">
+        <van-cell 
+          title="AI 配置" 
+          is-link
+          @click="$router.push('/ai-settings')"
+        >
+          <template #icon>
+            <span class="text-xl mr-2">🤖</span>
+          </template>
+        </van-cell>
+        <van-cell 
+          title="关于" 
+          is-link
+          @click="$router.push('/about')"
+        >
+          <template #icon>
+            <span class="text-xl mr-2">ℹ️</span>
+          </template>
+        </van-cell>
+      </van-cell-group>
     </div>
   </div>
 </template>
