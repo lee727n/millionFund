@@ -171,7 +171,7 @@ describe('Home.vue - 首页', () => {
    */
   it('应显示应用标题', () => {
     const wrapper = mount(Home)
-    expect(wrapper.text()).toContain('AI 百万实盘')
+    expect(wrapper.text()).toContain('AI百万资产')
   })
 
   /**

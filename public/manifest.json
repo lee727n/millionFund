@@ -1,25 +1,30 @@
 {
-  "name": "AI百万资产",
-  "short_name": "百万资产",
-  "description": "全平台全品种资产管理工具 - 基金/股票/加密货币 · 实时估值 · AI调仓追踪",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#0b0e11",
-  "theme_color": "#1677ff",
-  "orientation": "portrait",
+  "name": "AI百万资产 - 全品种资产管理工具",
+  "short_name": "AI百万资产",
+  "description": "实时估值、持仓管理、AI调仓追踪 - 支持基金/股票/加密货币/可转债",
   "icons": [
     {
-      "src": "/src/assets/title.png",
-      "sizes": "192x192",
+      "src": "/icon.png",
+      "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/src/assets/title.png",
+      "src": "/icon512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ],
-  "categories": ["finance", "investment", "utilities"],
-  "lang": "zh-CN"
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#1976d6",
+  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "categories": ["finance", "productivity"],
+  "screenshots": [
+    {
+      "src": "/screenshot1.png",
+      "sizes": "1280x720",
+      "type": "image/png"
+    }
+  ]
 }
