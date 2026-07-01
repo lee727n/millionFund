@@ -41,6 +41,7 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
+    "@capacitor-community/http": "^1.4.1",
     "@capacitor/android": "^7.4.5",
     "@capacitor/app": "^7.1.1",
     "@capacitor/camera": "^7.0.5",
