@@ -203,17 +203,27 @@ jobs:
           npm run build
           npx cap sync android
 
-      - name: Build Debug APK
+      - name: 生成签名密钥
+        run: |
+          cd android
+          keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias key0 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=AI百万资产, OU=Dev, O=FundApp, L=Unknown, ST=Unknown, C=CN" || true
+          cd ..
+
+      - name: Build Release APK (Universal)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
           cd ..
 
       - name: 重命名并上传 APK
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk millionasset-Android-debug.apk
-          echo "APK 大小: $(ls -lh millionasset-Android-debug.apk | awk '{print $5}')"
+          mv android/app/build/outputs/apk/release/app-release.apk AI百万资产-Android.apk
+          echo "APK 大小: $(ls -lh AI百万资产-Android.apk | awk '{print $5}')"
 
       - name: Upload Android 产物
         uses: actions/upload-artifact@v7

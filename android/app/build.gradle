@@ -20,6 +20,31 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // APK 签名配置
+            signingConfigs {
+                release {
+                    storeFile file('../keystore.jks')
+                    storePassword 'android'
+                    keyAlias 'key0'
+                    keyPassword 'android'
+                }
+            }
+            
+            // 如果签名文件不存在，不签名（开发版）
+            if (new File('../keystore.jks').exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+    
+    // 构建 Universal APK（包含所有 ABI）
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            universalApk true
         }
     }
 }
