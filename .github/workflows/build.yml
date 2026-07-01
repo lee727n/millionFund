@@ -6,6 +6,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# 添加权限配置
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   web:
     name: Build Web
