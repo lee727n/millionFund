@@ -3,6 +3,17 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.fundapp.realtime"
     compileSdk rootProject.ext.compileSdkVersion
+    
+    // APK 签名配置（必须在 buildTypes 之前定义）
+    signingConfigs {
+        release {
+            storeFile file('../keystore.jks')
+            storePassword 'android'
+            keyAlias 'key0'
+            keyPassword 'android'
+        }
+    }
+    
     defaultConfig {
         applicationId "com.fundapp.realtime"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -21,17 +32,7 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             
-            // APK 签名配置
-            signingConfigs {
-                release {
-                    storeFile file('../keystore.jks')
-                    storePassword 'android'
-                    keyAlias 'key0'
-                    keyPassword 'android'
-                }
-            }
-            
-            // 如果签名文件不存在，不签名（开发版）
+            // 如果签名文件存在，使用签名
             if (new File('../keystore.jks').exists()) {
                 signingConfig signingConfigs.release
             }
