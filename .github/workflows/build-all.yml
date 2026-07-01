@@ -68,7 +68,7 @@ jobs:
 
       - name: 📊 评论 PR（覆盖率变化）
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs')
@@ -342,7 +342,7 @@ jobs:
         run: ls -lhR release-assets/
 
       - name: 创建 Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           name: AI百万资产 ${{ github.ref_name }}
           generate_release_notes: true
@@ -374,7 +374,7 @@ jobs:
           done
 
       - name: 创建开发版 Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: dev-${{ github.sha }}
           name: AI百万资产 开发版 (${{ github.sha }})
