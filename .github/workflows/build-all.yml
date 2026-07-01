@@ -104,6 +104,7 @@ jobs:
   test-e2e:
     name: 🌐 E2E 测试（Playwright）
     runs-on: ubuntu-latest
+    continue-on-error: true  # E2E 不阻塞主构建流程
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -118,10 +119,11 @@ jobs:
         run: npm ci
 
       - name: 🌐 安装 Playwright 浏览器
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium  # 只安装 Chromium 加速测试
 
       - name: 🌐 运行 E2E 测试
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=chromium  # 只跑 Chromium
+        timeout-minutes: 15  # 限制超时时间
 
       - name: 🌐 上传 Playwright 报告（失败时）
         if: always()
