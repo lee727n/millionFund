@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import eyeIcon from '@/assets/eye.png'
+import { ref } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   fund: any
   uiMode: 'simple' | 'full'
   tradingSession?: string
@@ -11,12 +12,113 @@ const emit = defineEmits<{
   click: []
   openTopHoldings: [event: Event]
   openIntradayModal: [event: Event]
+  longpress: [fund: any, position: { top: number; left: number; width: number; height: number }]
 }>()
+
+// 长按事件处理
+const longpressTimer = ref<number | null>(null)
+const isLongpressActive = ref(false)
+const isLongpressTriggered = ref(false)
+
+function startLongpressTimer(event: TouchEvent | MouseEvent) {
+  console.log('Longpress timer started for fund:', props.fund?.code)
+  // 重置状态
+  isLongpressTriggered.value = false
+  isLongpressActive.value = false
+
+  // 开始长按计时
+  longpressTimer.value = window.setTimeout(() => {
+    console.log('Longpress triggered for fund:', props.fund?.code)
+    isLongpressActive.value = true
+    isLongpressTriggered.value = true
+    // 触觉反馈
+    if (navigator.vibrate) {
+      navigator.vibrate(10)
+    }
+
+    // 获取卡片的位置信息（相对于viewport）
+    const target = event.target as HTMLElement
+    // 查找最近的.index-item元素，确保获取整个卡片的位置
+    const cardElement = target.closest('.index-item') as HTMLElement
+    if (!cardElement) {
+      console.warn('Cannot find index-item element')
+      return
+    }
+
+    const rect = cardElement.getBoundingClientRect()
+    const position = {
+      top: rect.bottom, // 卡片底部相对于viewport的位置
+      left: rect.left, // 卡片左边相对于viewport的位置
+      width: rect.width,
+      height: rect.height // 卡片高度
+    }
+
+    // 触发长按事件，传递基金信息和位置信息
+    emit('longpress', props.fund, position)
+  }, 500) // 500ms长按阈值
+}
+
+function endLongpressTimer() {
+  // 清除长按计时
+  if (longpressTimer.value) {
+    clearTimeout(longpressTimer.value)
+    longpressTimer.value = null
+  }
+  isLongpressActive.value = false
+}
+
+// 触摸事件处理
+function handleTouchStart(event: TouchEvent) {
+  startLongpressTimer(event)
+}
+
+function handleTouchEnd(event: TouchEvent) {
+  endLongpressTimer()
+  // 如果长按已触发，阻止click事件
+  if (isLongpressTriggered.value) {
+    event.preventDefault()
+  }
+}
+
+function handleTouchMove() {
+  // 移动时取消长按
+  endLongpressTimer()
+}
+
+// 鼠标事件处理（浏览器测试用）
+function handleMouseDown(event: MouseEvent) {
+  startLongpressTimer(event)
+}
+
+function handleMouseUp(event: MouseEvent) {
+  endLongpressTimer()
+  // 如果长按已触发，阻止click事件
+  if (isLongpressTriggered.value) {
+    event.preventDefault()
+  }
+}
+
+function handleMouseLeave() {
+  // 鼠标离开时取消长按
+  endLongpressTimer()
+}
+
+// 处理点击事件，如果长按已触发则阻止
+function handleClick(event: MouseEvent | TouchEvent) {
+  console.log('Click event for fund:', props.fund?.code, 'isLongpressTriggered:', isLongpressTriggered.value)
+  if (isLongpressTriggered.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    isLongpressTriggered.value = false
+    return
+  }
+  emit('click')
+}
 
 // 获取基金名称颜色类
 function getFundNameClass(fund: any, tradingSession?: string) {
   const isInTrading = tradingSession === 'morning' || tradingSession === 'afternoon'
-  
+
   if (isInTrading) {
     return 'fund-name-pending'  // 交易时间内显示灰色
   }
@@ -31,11 +133,11 @@ function getRatioStyle(ratio: number) {
   // 占占比越大，背景色越深
   // 统一使用蓝色背景，白色文字
   const intensity = Math.min(ratio / 30, 1) // 最大30%，超过30%也用最深色
-  
+
   // 使用蓝色渐变：rgba(33, 150, 243, intensity)
   // intensity从0到1，背景色从浅蓝到深蓝
   const alpha = 0.2 + intensity * 0.6 // alpha从0.2到0.8
-  
+
   return {
     backgroundColor: `rgba(33, 150, 243, ${alpha})`,
     color: '#fff' // 统一使用白色文字
@@ -46,8 +148,17 @@ function getRatioStyle(ratio: number) {
 <template>
   <div
     class="index-item"
-    :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down']"
-    @click="emit('click')"
+    :class="[
+      fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down',
+      { 'longpress-active': isLongpressActive }
+    ]"
+    @click="handleClick"
+    @touchstart="handleTouchStart"
+    @touchend="handleTouchEnd"
+    @touchmove="handleTouchMove"
+    @mousedown="handleMouseDown"
+    @mouseup="handleMouseUp"
+    @mouseleave="handleMouseLeave"
   >
     <div class="index-name web-only">
       <div class="fund-name-content">
@@ -207,10 +318,21 @@ function getRatioStyle(ratio: number) {
   position: relative;
   overflow: hidden;
   cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .index-item:active {
   transform: scale(0.98);
+}
+
+.index-item.longpress-active {
+  transform: scale(0.95);
+  opacity: 0.8;
+  box-shadow: 0 0 0 3px var(--primary-color);
+  background: linear-gradient(135deg, var(--primary-color) 0%, rgba(33, 150, 243, 0.2) 100%);
 }
 
 .index-item.up {

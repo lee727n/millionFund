@@ -6,9 +6,10 @@ import { ref, onMounted, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
-import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint } from '@/api/fundFast'
+import { useAITrackingStore } from '@/stores/aiTracking'
+import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchLatestNetValue } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
-import { showConfirmDialog, showToast } from 'vant'
+import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
 import riseW from '@/assets/riseW.jpg'
@@ -17,6 +18,7 @@ import downW from '@/assets/downW.jpg'
 const router = useRouter()
 const fundStore = useFundStore()
 const holdingStore = useHoldingStore()
+const aiTrackingStore = useAITrackingStore()
 
 const topHoldingsModal = ref<{ open: boolean; fund: any; stocks: HoldingStock[]; loading: boolean }>({
   open: false,
@@ -40,6 +42,387 @@ async function openTopHoldings(fund: any, event: Event) {
 
 function closeTopHoldings() {
   topHoldingsModal.value.open = false
+}
+
+// [WHAT] 长按事件处理
+function handleFundLongpress(fund: any, position: { top: number; left: number; width: number; height: number }) {
+  console.log('Home received longpress for fund:', fund?.code, fund?.name, 'position:', position)
+  selectedFundForAction.value = fund
+
+  // 调整横条位置，确保不超出屏幕边界
+  // 横条宽度约: 4个按钮(70px*4) = 280px
+  // 横条高度约: 36px
+  const actionBarWidth = 280
+  const actionBarHeight = 36
+  const gap = 8 // 与卡片的间隙
+
+  let adjustedLeft = position.left
+  let adjustedTop = position.top + gap
+
+  // 如果横条会超出屏幕右边，调整位置
+  if (adjustedLeft + actionBarWidth > window.innerWidth) {
+    adjustedLeft = window.innerWidth - actionBarWidth - 16
+  }
+
+  // 如果横条会超出屏幕左边，调整位置
+  if (adjustedLeft < 16) {
+    adjustedLeft = 16
+  }
+
+  // 如果横条会超出屏幕底部，调整位置到卡片上方
+  if (adjustedTop + actionBarHeight > window.innerHeight) {
+    // 显示在卡片上方
+    // 卡片顶部位置 = 卡片底部位置 - 卡片高度
+    adjustedTop = position.top - position.height - actionBarHeight - gap
+  }
+
+  actionBarPosition.value = {
+    top: adjustedTop,
+    left: adjustedLeft,
+    width: actionBarWidth
+  }
+
+  showFundActionBar.value = true
+}
+
+// [WHAT] 关闭操作横条
+function closeActionBar() {
+  showFundActionBar.value = false
+}
+
+// [WHAT] AI追踪添加相关函数
+function resetNewRecord() {
+  newRecord.value = {
+    date: '',
+    sellCode: '',
+    sellName: '',
+    buyCode: '',
+    buyName: ''
+  }
+}
+
+async function fetchFundInfo(type: 'sell' | 'buy') {
+  const code = type === 'sell' ? newRecord.value.sellCode : newRecord.value.buyCode
+  if (!code) return
+
+  try {
+    const fundInfo = await fetchFundAccurateData(code)
+    if (fundInfo) {
+      if (type === 'sell') {
+        newRecord.value.sellName = fundInfo.name
+      } else {
+        newRecord.value.buyName = fundInfo.name
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch fund info:', e)
+  }
+}
+
+async function confirmAddRecord() {
+  if (!newRecord.value.sellCode || !newRecord.value.buyCode) {
+    showToast({ message: '请填写基金代码', duration: 2000 })
+    return
+  }
+
+  showLoadingToast('添加中...')
+
+  try {
+    let sellName = newRecord.value.sellName
+    let buyName = newRecord.value.buyName
+    let sellNav = 0
+    let buyNav = 0
+    let sellNavEstimated = false
+    let buyNavEstimated = false
+    const targetDate = newRecord.value.date || new Date().toISOString().split('T')[0]
+
+    if (newRecord.value.date) {
+      const historyDays = Math.ceil((new Date().getTime() - new Date(newRecord.value.date).getTime()) / (1000 * 60 * 60 * 24)) + 10
+
+      const [sellHistory, buyHistory] = await Promise.all([
+        fetchNetValueHistoryFast(newRecord.value.sellCode, historyDays),
+        fetchNetValueHistoryFast(newRecord.value.buyCode, historyDays)
+      ])
+
+      const sellRecord = sellHistory.records?.find(r => r.date === newRecord.value.date)
+      const buyRecord = buyHistory.records?.find(r => r.date === newRecord.value.date)
+
+      if (sellRecord && buyRecord) {
+        sellName = sellName || newRecord.value.sellCode
+        buyName = buyName || newRecord.value.buyCode
+        sellNav = sellRecord.netValue
+        buyNav = buyRecord.netValue
+      } else {
+        sellNavEstimated = true
+        buyNavEstimated = true
+        const [sellInfo, buyInfo] = await Promise.all([
+          fetchFundAccurateData(newRecord.value.sellCode),
+          fetchFundAccurateData(newRecord.value.buyCode)
+        ])
+        if (sellInfo && sellInfo.currentValue > 0) {
+          sellName = sellInfo.name
+          sellNav = sellInfo.currentValue
+        } else {
+          showToast({ message: '获取卖出基金信息失败', duration: 2000 })
+          closeToast()
+          return
+        }
+        if (buyInfo && buyInfo.currentValue > 0) {
+          buyName = buyInfo.name
+          buyNav = buyInfo.currentValue
+        } else {
+          showToast({ message: '获取买入基金信息失败', duration: 2000 })
+          closeToast()
+          return
+        }
+      }
+    } else {
+      sellNavEstimated = true
+      buyNavEstimated = true
+      const [sellInfo, buyInfo] = await Promise.all([
+        fetchFundAccurateData(newRecord.value.sellCode),
+        fetchFundAccurateData(newRecord.value.buyCode)
+      ])
+      if (sellInfo && sellInfo.currentValue > 0) {
+        sellName = sellInfo.name
+        sellNav = sellInfo.currentValue
+      } else {
+        showToast({ message: '获取卖出基金信息失败或无估值数据', duration: 2000 })
+        closeToast()
+        return
+      }
+      if (buyInfo && buyInfo.currentValue > 0) {
+        buyName = buyInfo.name
+        buyNav = buyInfo.currentValue
+      } else {
+        showToast({ message: '获取买入基金信息失败或无估值数据', duration: 2000 })
+        closeToast()
+        return
+      }
+    }
+
+    aiTrackingStore.addRecord({
+      sellCode: newRecord.value.sellCode,
+      sellName: sellName,
+      sellNav: sellNav,
+      sellNavEstimated: sellNavEstimated,
+      buyCode: newRecord.value.buyCode,
+      buyName: buyName,
+      buyNav: buyNav,
+      buyNavEstimated: buyNavEstimated,
+      date: targetDate
+    })
+
+    showToast({ message: '添加成功', duration: 2000 })
+    resetNewRecord()
+    showAddModal.value = false
+  } catch (e) {
+    showToast({ message: '添加失败', duration: 2000 })
+    console.error(e)
+  }
+}
+
+// [WHAT] 调整成本相关函数
+function editHolding() {
+  const holding = selectedFundForAction.value
+  if (!holding) {
+    showToast('暂未持有该基金')
+    return
+  }
+
+  // 填充当前持仓数据（优先使用保存的市值和收益）
+  costFormData.value = {
+    code: holding.code,
+    name: holding.name,
+    amount: (holding.marketValue || holding.shares * holding.currentValue || 0).toString(),
+    profit: (holding.profit !== undefined ? holding.profit : (holding.currentValue && holding.buyNetValue ? (holding.currentValue - holding.buyNetValue) * holding.shares : 0)).toString()
+  }
+  showCostDialog.value = true
+}
+
+async function submitCostAdjust() {
+  const marketValue = parseFloat(costFormData.value.amount)
+  const profit = parseFloat(costFormData.value.profit)
+
+  console.log('[调整成本] 开始处理', { marketValue, profit })
+
+  if (!marketValue || marketValue <= 0) {
+    showToast('请输入有效的持仓市值')
+    return
+  }
+  if (isNaN(profit)) {
+    showToast('请输入有效的持仓收益')
+    return
+  }
+
+  const holding = selectedFundForAction.value
+  if (!holding) {
+    console.log('[调整成本] 未找到持仓记录')
+    return
+  }
+
+  console.log('[调整成本] 当前持仓', holding)
+  showLoadingToast('正在获取最新净值...')
+
+  try {
+    // 从网络获取最新净值
+    console.log('[调整成本] 开始获取最新净值，基金代码:', holding.code)
+    const latestNetValue = await fetchLatestNetValue(holding.code)
+    console.log('[调整成本] 获取到的最新净值:', latestNetValue ? `净值: ${latestNetValue.netValue}, 日期: ${latestNetValue.date}, 涨跌幅: ${latestNetValue.changeRate}%` : 'null')
+
+    if (!latestNetValue || latestNetValue.netValue <= 0) {
+      console.log('[调整成本] 获取净值失败', latestNetValue)
+      showToast('获取最新净值失败，请稍后重试')
+      return
+    }
+
+    const currentNetValue = latestNetValue.netValue
+
+    // 计算份额
+    const newShares = marketValue / currentNetValue
+
+    // 根据持仓市值和持仓收益反推成本净值
+    // 成本市值 = 持仓市值 - 持仓收益
+    // 成本净值 = 成本市值 / 份额 = (持仓市值 - 持仓收益) / (持仓市值 / 当前净值) = 当前净值 - 持仓收益 / 份额
+    const costMarketValue = marketValue - profit
+    const costNetValue = newShares > 0 ? costMarketValue / newShares : currentNetValue
+
+    // 累计涨幅 = (当前净值 - 成本净值) / 成本净值 * 100%
+    const addedGain = ((currentNetValue - costNetValue) / costNetValue) * 100
+
+    console.log('[调整成本] 计算结果:', {
+      用户输入市值: marketValue,
+      用户输入收益: profit,
+      当前净值: currentNetValue,
+      计算份额: newShares.toFixed(2),
+      成本市值: costMarketValue.toFixed(2),
+      成本净值: costNetValue.toFixed(4),
+      累计涨幅: addedGain.toFixed(2) + '%'
+    })
+
+    const record = {
+      code: holding.code,
+      name: holding.name,
+      buyNetValue: costNetValue,
+      shares: newShares,
+      buyDate: holding.buyDate,
+      holdingDays: holding.holdingDays,
+      industrySectors: holding.industrySectors,
+      source: holding.source,
+      isQDII: holding.isQDII,
+      createdAt: holding.createdAt,
+      currentValue: currentNetValue,
+      addedGain: addedGain,
+      marketValue: marketValue,
+      profit: profit
+    }
+
+    console.log('[调整成本] 更新持仓记录', {
+      code: record.code,
+      name: record.name,
+      buyNetValue: record.buyNetValue,
+      shares: record.shares,
+      currentValue: record.currentValue,
+      addedGain: record.addedGain.toFixed(2) + '%'
+    })
+    holdingStore.addOrUpdateHolding(record)
+    showToast('成本调整成功')
+  } catch (error) {
+    console.error('[调整成本] 成本调整失败:', error)
+    showToast('成本调整失败')
+  } finally {
+    closeToast()
+    showCostDialog.value = false
+  }
+}
+
+// [WHAT] 来源管理相关函数
+function getSourceLabel(value: string) {
+  const option = sourceOptions.find(opt => opt.value === value)
+  return option ? option.text : value
+}
+
+function manageSource() {
+  const holding = selectedFundForAction.value
+  if (!holding) {
+    showToast('暂未持有该基金')
+    return
+  }
+
+  // 填充当前来源数据
+  sourceFormData.value.source = holding.source || ''
+  sourceFormData.value.isQDII = holding.isQDII || false
+  showSourceDialog.value = true
+}
+
+async function submitSourceAdjust() {
+  const source = sourceFormData.value.source.trim()
+  const isQDII = sourceFormData.value.isQDII
+
+  const holding = selectedFundForAction.value
+  if (!holding) return
+
+  // 更新持仓记录
+  const record = {
+    ...holding,
+    source: source,
+    isQDII: isQDII
+  }
+
+  await holdingStore.addOrUpdateHolding(record)
+  showToast('来源更新成功')
+  showSourceDialog.value = false
+}
+
+// [WHAT] 操作横条按钮点击处理
+function handleActionConvert() {
+  // 转换：打开AI追踪添加弹窗，并自动填充卖出基金code和日期
+  closeActionBar()
+
+  // 重置表单
+  resetNewRecord()
+
+  // 自动填充卖出基金代码和名称
+  if (selectedFundForAction.value) {
+    newRecord.value.sellCode = selectedFundForAction.value.code
+    newRecord.value.sellName = selectedFundForAction.value.name
+    // 自动填充今日日期
+    newRecord.value.date = new Date().toISOString().split('T')[0]
+  }
+
+  // 打开弹窗
+  showAddModal.value = true
+}
+
+function handleActionAdjust() {
+  // 调仓：直接打开调整成本弹窗
+  closeActionBar()
+  editHolding()
+}
+
+function handleActionSource() {
+  // 来源：直接打开来源管理弹窗
+  closeActionBar()
+  manageSource()
+}
+
+function handleActionDelete() {
+  // 删除：调用删除持仓功能
+  closeActionBar()
+  if (selectedFundForAction.value) {
+    showConfirmDialog({
+      title: '确认删除',
+      message: `确认删除 ${selectedFundForAction.value.name} (${selectedFundForAction.value.code})？`,
+    })
+      .then(() => {
+        // 确认删除
+        holdingStore.removeHolding(selectedFundForAction.value.code)
+        showToast('已删除')
+      })
+      .catch(() => {
+        // 取消删除
+      })
+  }
 }
 
 // 分时估值弹窗管理
@@ -247,6 +630,54 @@ const tradingStatus = computed(() => {
 // [WHAT] 全球指数
 const globalIndices = ref<GlobalIndex[]>([])
 const showGlobalIndices = ref(false)
+
+// [WHAT] 长按操作横条状态
+const showFundActionBar = ref(false)
+const selectedFundForAction = ref<any>(null)
+const actionBarPosition = ref({ top: 0, left: 0, width: 0 })
+
+// [WHAT] AI追踪添加弹窗状态
+const showAddModal = ref(false)
+
+interface NewRecord {
+  date: string
+  sellCode: string
+  sellName: string
+  buyCode: string
+  buyName: string
+}
+
+const newRecord = ref<NewRecord>({
+  date: '',
+  sellCode: '',
+  sellName: '',
+  buyCode: '',
+  buyName: ''
+})
+
+// [WHAT] 调整成本弹窗状态
+const showCostDialog = ref(false)
+const costFormData = ref({
+  code: '',
+  name: '',
+  amount: '',
+  profit: ''
+})
+
+// [WHAT] 来源管理弹窗状态
+const showSourceDialog = ref(false)
+const sourceFormData = ref({
+  source: '',
+  isQDII: false
+})
+
+// [WHAT] 来源选项配置
+const sourceOptions = [
+  { text: '支付宝', value: 'ali' },
+  { text: '腾讯', value: 'TX' },
+  { text: '京东', value: 'JD' },
+  { text: '观察', value: 'observe' }
+]
 
 // [WHAT] 顶部展示指数（上证指数、创业板指、纳斯达克）
 const topIndices = computed(() => {
@@ -918,6 +1349,7 @@ function goToDetail(code: string) {
             @click="router.push(`/detail/${fund.code}`)"
             @open-top-holdings="openTopHoldings(fund, $event)"
             @open-intraday-modal="openIntradayModal(fund, $event)"
+            @longpress="handleFundLongpress"
           />
           <div v-if="observeHoldings.length > 0" class="observe-divider">
             <div class="observe-divider-line"></div>
@@ -940,6 +1372,7 @@ function goToDetail(code: string) {
             @click="router.push(`/detail/${fund.code}`)"
             @open-top-holdings="openTopHoldings(fund, $event)"
             @open-intraday-modal="openIntradayModal(fund, $event)"
+            @longpress="handleFundLongpress"
           />
         </div>
       </div>
@@ -1245,6 +1678,167 @@ function goToDetail(code: string) {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <button class="intraday-popup-close-btn" @click="closeIntradayModal">关闭</button>
+      </div>
+    </van-popup>
+
+    <!-- 长按操作横条 -->
+    <div
+      v-if="showFundActionBar"
+      class="fund-action-bar"
+      :style="{
+        top: actionBarPosition.top + 'px',
+        left: actionBarPosition.left + 'px'
+      }"
+      @click.stop
+    >
+      <button class="action-bar-btn" @click="handleActionConvert">转换</button>
+      <button class="action-bar-btn" @click="handleActionAdjust">调仓</button>
+      <button class="action-bar-btn" @click="handleActionSource">来源</button>
+      <button class="action-bar-btn delete" @click="handleActionDelete">删除</button>
+    </div>
+
+    <!-- 点击其他区域关闭横条 -->
+    <div
+      v-if="showFundActionBar"
+      class="action-bar-overlay"
+      @click="closeActionBar"
+    ></div>
+
+    <!-- AI追踪添加弹窗 -->
+    <van-dialog
+      v-model:show="showAddModal"
+      title="添加调仓记录"
+      show-cancel-button
+      @confirm="confirmAddRecord"
+    >
+      <div class="add-form">
+        <div class="form-item">
+          <label>调仓日期（可选）</label>
+          <van-field
+            v-model="newRecord.date"
+            type="date"
+            placeholder="不填则使用今日最新净值"
+          />
+        </div>
+        <div class="form-item">
+          <label>卖出基金代码</label>
+          <van-field
+            v-model="newRecord.sellCode"
+            placeholder="请输入基金代码"
+            @blur="fetchFundInfo('sell')"
+          />
+          <div class="fund-name-preview" v-if="newRecord.sellName">
+            {{ newRecord.sellName }}
+          </div>
+        </div>
+        <div class="form-item">
+          <label>买入基金代码</label>
+          <van-field
+            v-model="newRecord.buyCode"
+            placeholder="请输入基金代码"
+            @blur="fetchFundInfo('buy')"
+          />
+          <div class="fund-name-preview" v-if="newRecord.buyName">
+            {{ newRecord.buyName }}
+          </div>
+        </div>
+      </div>
+    </van-dialog>
+
+    <!-- 调整成本弹窗 -->
+    <van-popup
+      v-model:show="showCostDialog"
+      position="center"
+      round
+      :style="{ width: '85%', maxWidth: '360px' }"
+    >
+      <div class="cost-dialog">
+        <div class="dialog-header">
+          <span>调整持仓成本</span>
+          <van-icon name="cross" @click="showCostDialog = false" />
+        </div>
+
+        <div class="dialog-content">
+          <van-field
+            :model-value="`${costFormData.name} (${costFormData.code})`"
+            label="基金"
+            readonly
+          />
+          <van-field
+            v-model="costFormData.amount"
+            type="number"
+            inputmode="decimal"
+            label="持仓金额"
+            placeholder="调整后的持仓金额（元）"
+          />
+          <van-field
+            v-model="costFormData.profit"
+            type="number"
+            inputmode="decimal"
+            label="持仓收益"
+            placeholder="调整后的持仓收益（元）"
+          />
+          <div class="cost-tip">
+            <van-icon name="info-o" />
+            <span>用于分红再投、补仓摊薄等场景</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <van-button @click="showCostDialog = false">取消</van-button>
+          <van-button type="primary" @click="submitCostAdjust">确定</van-button>
+        </div>
+      </div>
+    </van-popup>
+
+    <!-- 来源管理弹窗 -->
+    <van-popup
+      v-model:show="showSourceDialog"
+      position="center"
+      round
+      :style="{ width: '85%', maxWidth: '360px' }"
+    >
+      <div class="cost-dialog">
+        <div class="dialog-header">
+          <span>管理来源</span>
+          <van-icon name="cross" @click="showSourceDialog = false" />
+        </div>
+
+        <div class="dialog-content">
+          <van-field
+            :model-value="`${selectedFundForAction?.name} (${selectedFundForAction?.code})`"
+            label="基金"
+            readonly
+          />
+          <div class="form-item">
+            <label class="form-label">来源</label>
+            <van-radio-group v-model="sourceFormData.source" class="source-radio-group">
+              <van-radio
+                v-for="option in sourceOptions"
+                :key="option.value"
+                :name="option.value"
+                class="source-radio"
+              >
+                {{ option.text }}
+              </van-radio>
+            </van-radio-group>
+          </div>
+          <div class="form-item">
+            <div class="qdii-toggle">
+              <span class="qdii-label">是否为QDII</span>
+              <van-switch v-model="sourceFormData.isQDII" size="24" />
+            </div>
+          </div>
+          <div class="cost-tip">
+            <van-icon name="info-o" />
+            <span>记录基金的购买渠道，便于管理</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <van-button @click="showSourceDialog = false">取消</van-button>
+          <van-button type="primary" @click="submitSourceAdjust">确定</van-button>
+        </div>
       </div>
     </van-popup>
   </div>
@@ -3638,10 +4232,166 @@ function goToDetail(code: string) {
   .added-gain-badge.down {
     background: transparent;
   }
-  
+
   .mobile-added-gain {
     font-size: 10px;
     gap: 0;
   }
+}
+
+/* ========== 长按操作横条 ========== */
+.fund-action-bar {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  animation: actionBarFadeIn 0.3s ease;
+}
+
+@keyframes actionBarFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.action-bar-btn {
+  min-width: 70px;
+  height: 36px;
+  border: 1px solid #999;
+  background: var(--primary-color);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.action-bar-btn:hover {
+  opacity: 0.9;
+}
+
+.action-bar-btn:active {
+  transform: scale(0.95);
+}
+
+.action-bar-btn.delete {
+  background: #ee0a24;
+}
+
+.action-bar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+  background: transparent;
+}
+
+/* ========== AI追踪添加弹窗 ========== */
+.add-form {
+  padding: 16px;
+}
+
+.form-item {
+  margin-bottom: 16px;
+}
+
+.form-item label {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.fund-name-preview {
+  font-size: 12px;
+  color: var(--color-primary);
+  margin-top: 4px;
+}
+
+/* ========== 调整成本弹窗 ========== */
+.cost-dialog {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.cost-dialog .dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cost-dialog .dialog-content {
+  padding: 8px 0 16px;
+}
+
+.cost-dialog .dialog-footer {
+  padding: 12px 16px 16px;
+}
+
+.cost-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  margin-top: 8px;
+}
+
+.form-item {
+  margin: 12px 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.source-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.source-radio {
+  flex: 1;
+  min-width: 80px;
+  padding: 8px 0;
+  font-size: 14px;
+  text-align: center;
+}
+
+.qdii-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.qdii-label {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 </style>

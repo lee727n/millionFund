@@ -155,7 +155,7 @@ export const useHoldingStore = defineStore('holding', () => {
 
     isRefreshing.value = true
     const holdingsList = [...holdings.value]
-    console.log('[refreshAllHoldings] 开始刷新，共', holdingsList.length, '只基金:', holdingsList.map(h => h.code))
+    // console.log('[refreshAllHoldings] 开始刷新，共', holdingsList.length, '只基金:', holdingsList.map(h => h.code))
 
     try {
       // [WHAT] 并发获取所有基金的准确数据
@@ -218,7 +218,7 @@ export const useHoldingStore = defineStore('holding', () => {
       console.log(`计算持有份额: holding.marketValue = ${rawMarketValue}, buyNav = ${buyNav}, shares = marketValue / buyNav = (${rawMarketValue || 0}) / (${denominator}) = ${computedShares}`)
       shares = computedShares
     } else {
-      console.log(`使用已有份额: holding.shares = ${shares}`)
+      // console.log(`使用已有份额: holding.shares = ${shares}`)
     }
 
     // 已移除买入净值流程的单行日志，避免重复输出
@@ -236,26 +236,26 @@ export const useHoldingStore = defineStore('holding', () => {
     const todayProfit = shares * currentValue * (data.dayChange / 100)
 
     // [DEBUG] 详细打印计算过程
-    console.log(`========== [收益计算-刷新] ${code} ==========`)
-    console.log(`买入净值 (buyNav): ${buyNav}`)
-    console.log(`持有份额 (shares): ${shares}`)
-    console.log(`--- 使用当前值计算 ---`)
-    console.log(`当前值 (currentValue): ${currentValue} (来源: ${data.dataSource}, 日期: ${data.navDate || data.estimateTime?.split(' ')[0]})`)
-    console.log(`持有收益: (currentValue - buyNav) × shares = (${currentValue} - ${buyNav}) × ${shares} = ${profit}`)
-    if (data.nav > 0) {
-      console.log(`--- 使用历史净值计算 ---`)
-      console.log(`历史净值 (nav): ${data.nav} (日期: ${data.navDate})`)
-      const profitByNav = (data.nav - buyNav) * shares
-      console.log(`持有收益: (nav - buyNav) × shares = (${data.nav} - ${buyNav}) × ${shares} = ${profitByNav}`)
-    }
-    if (data.estimate > 0) {
-      console.log(`--- 使用估值计算 ---`)
-      console.log(`估值 (estimate): ${data.estimate} (日期: ${data.estimateTime})`)
-      const profitByEstimate = (data.estimate - buyNav) * shares
-      console.log(`持有收益: (estimate - buyNav) × shares = (${data.estimate} - ${buyNav}) × ${shares} = ${profitByEstimate}`)
-    }
-    console.log(`今日涨幅: ${data.dayChange}%, 今日收益: todayProfit = shares × currentValue × dayChange = ${shares} × ${currentValue} × ${data.dayChange}% = ${todayProfit}`)
-    console.log(`=============================================`)
+    // console.log(`========== [收益计算-刷新] ${code} ==========`)
+    // console.log(`买入净值 (buyNav): ${buyNav}`)
+    // console.log(`持有份额 (shares): ${shares}`)
+    // console.log(`--- 使用当前值计算 ---`)
+    // console.log(`当前值 (currentValue): ${currentValue} (来源: ${data.dataSource}, 日期: ${data.navDate || data.estimateTime?.split(' ')[0]})`)
+    // console.log(`持有收益: (currentValue - buyNav) × shares = (${currentValue} - ${buyNav}) × ${shares} = ${profit}`)
+    // if (data.nav > 0) {
+    //   console.log(`--- 使用历史净值计算 ---`)
+    //   console.log(`历史净值 (nav): ${data.nav} (日期: ${data.navDate})`)
+    //   const profitByNav = (data.nav - buyNav) * shares
+    //   console.log(`持有收益: (nav - buyNav) × shares = (${data.nav} - ${buyNav}) × ${shares} = ${profitByNav}`)
+    // }
+    // if (data.estimate > 0) {
+    //   console.log(`--- 使用估值计算 ---`)
+    //   console.log(`估值 (estimate): ${data.estimate} (日期: ${data.estimateTime})`)
+    //   const profitByEstimate = (data.estimate - buyNav) * shares
+    //   console.log(`持有收益: (estimate - buyNav) × shares = (${data.estimate} - ${buyNav}) × ${shares} = ${profitByEstimate}`)
+    // }
+    // console.log(`今日涨幅: ${data.dayChange}%, 今日收益: todayProfit = shares × currentValue × dayChange = ${shares} × ${currentValue} × ${data.dayChange}% = ${todayProfit}`)
+    // console.log(`=============================================`)
 
     const profitRate = marketValue > 0 ? profit / marketValue * 100 : 0
 

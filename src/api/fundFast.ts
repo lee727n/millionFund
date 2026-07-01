@@ -866,25 +866,25 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'
-    console.log(`[currentValue选择] ${code}: 交易日+净值已更新 → 使用净值 nav=${result.nav}`)
+    // console.log(`[currentValue选择] ${code}: 交易日+净值已更新 → 使用净值 nav=${result.nav}`)
   } else if (isWeekday && result.estimate > 0) {
     // [WHAT] 交易日 + 净值未更新，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
-    console.log(`[currentValue选择] ${code}: 交易日+净值未更新 → 使用估值 estimate=${result.estimate}`)
+    // console.log(`[currentValue选择] ${code}: 交易日+净值未更新 → 使用估值 estimate=${result.estimate}`)
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'
-    console.log(`[currentValue选择] ${code}: 非交易日 → 使用净值 nav=${result.nav}`)
+    // console.log(`[currentValue选择] ${code}: 非交易日 → 使用净值 nav=${result.nav}`)
   } else if (result.estimate > 0) {
     // [EDGE] 无净值但有估值，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
-    console.log(`[currentValue选择] ${code}: 无净值 → 使用估值 estimate=${result.estimate}`)
+    // console.log(`[currentValue选择] ${code}: 无净值 → 使用估值 estimate=${result.estimate}`)
   } else {
     // [EDGE] 无数据可用，使用昨日净值
     const dwjz = parseFloat(estimateData?.dwjz || '0')

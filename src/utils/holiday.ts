@@ -49,7 +49,7 @@ function loadCacheFromStorage(): void {
         Object.entries(data).forEach(([key, value]) => {
           holidayCache.set(key, value as HolidayInfo)
         })
-        console.log('[节假日缓存] 从localStorage加载成功，共', holidayCache.size, '条数据')
+        // console.log('[节假日缓存] 从localStorage加载成功，共', holidayCache.size, '条数据')
       } else {
         // 缓存过期，清除
         localStorage.removeItem(CACHE_KEY)
@@ -111,7 +111,7 @@ function shouldUpdateHolidays(): boolean {
  */
 async function preloadHolidays(): Promise<void> {
   if (!shouldUpdateHolidays()) {
-    console.log('[节假日缓存] 今天已更新过，跳过预加载')
+    // console.log('[节假日缓存] 今天已更新过，跳过预加载')
     return
   }
 

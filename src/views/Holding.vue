@@ -602,6 +602,36 @@ function removeBatchItem(index: number) {
   }
 }
 
+// [WHAT] 获取基金名称（批量录入）
+async function fetchBatchFundInfo(index: number) {
+  const item = batchItems.value[index]
+  const code = item.code
+
+  if (!code || code.length < 6) {
+    item.name = ''
+    return
+  }
+
+  item.loading = true
+  item.error = ''
+
+  try {
+    const fundInfo = await fetchFundAccurateData(code)
+    if (fundInfo && fundInfo.name) {
+      item.name = fundInfo.name
+    } else {
+      item.name = ''
+      item.error = '未找到基金信息'
+    }
+  } catch (e) {
+    console.error('Failed to fetch fund info:', e)
+    item.name = ''
+    item.error = '获取基金信息失败'
+  } finally {
+    item.loading = false
+  }
+}
+
 // [WHAT] 批量导入基金
 async function batchImport() {
   // 验证输入
@@ -631,81 +661,91 @@ async function batchImport() {
       
       batchItems.value[index].loading = true
       batchItems.value[index].error = ''
-      
+
       try {
         console.log('开始处理基金:', item.code)
-        
+
         if (holdingStore.hasHolding(item.code)) {
           batchItems.value[index].error = '该基金已存在，无需重复添加'
           console.log('基金已存在:', item.code)
           results.push(null)
           continue
         }
-        
-        const searchResults = await searchFund(item.code, 1)
-        console.log('搜索结果:', searchResults)
-        if (searchResults.length === 0) {
-          batchItems.value[index].error = '基金不存在'
-          console.log('基金不存在:', item.code)
-          results.push(null)
-          continue
+
+        // [FIX] 直接使用item.code和item.name，不再调用searchFund
+        // 避免searchFund返回错误的基金信息
+        let fundCode = item.code
+        let fundName = item.name
+
+        // [FIX] 如果item.name不存在（用户没有等待blur事件），则重新获取基金信息
+        if (!fundName) {
+          const fundInfo = await fetchFundAccurateData(item.code, item.isQDII)
+          if (fundInfo && fundInfo.name) {
+            fundName = fundInfo.name
+            batchItems.value[index].name = fundName
+          } else {
+            batchItems.value[index].error = '基金不存在'
+            console.log('基金不存在:', item.code)
+            results.push(null)
+            continue
+          }
         }
-        
-        const fund = searchResults[0]
-        batchItems.value[index].name = fund.name
-        console.log('找到基金:', fund.name)
-        
-        let netValue = 1
+
+        console.log('找到基金:', fundName)
+
+        // [FIX] 批量导入时始终使用净值计算份额，不使用估值
+        let navValue = 1  // 最新净值（用于计算份额）
         let navDate = ''
+
         try {
           // [FIX] 使用 fetchFundAccurateData 获取净值，与刷新时保持一致
           // 避免估值和净值日期不一致导致计算错误
-          const accurateData = await fetchFundAccurateData(fund.code, item.isQDII)
-          if (accurateData && accurateData.currentValue > 0) {
-            netValue = accurateData.currentValue
+          const accurateData = await fetchFundAccurateData(fundCode, item.isQDII)
+          if (accurateData) {
+            navValue = accurateData.nav || 1  // 使用最新净值，不考虑是否有当天估值
             navDate = accurateData.navDate
-            console.log(`[批量导入-净值] ${fund.code}: ${netValue} (日期: ${navDate}, 来源: ${accurateData.dataSource})`)
+            console.log(`[批量导入] ${fundCode}: 获取净值 ${navValue} (净值日期: ${navDate})`)
           }
         } catch (error) {
           console.error('获取净值失败，使用默认值:', error)
         }
-        
+
         const marketValue = parseFloat(item.amount)  // 截图中的持仓市值
         const profit = parseFloat(item.profit) || 0   // 截图中的盈亏
-        
+
         // 计算份额和买入净值
-        const shares = marketValue / netValue
-        
+        const shares = marketValue / navValue
+
         // [FIX] 买入净值计算：(持仓市值 - 盈亏) / 份额
         // 盈亏是持仓市值相对于成本的变化，所以成本 = 持仓市值 - 盈亏
         // 买入净值 = 成本 / 份额
-        let buyNetValue = netValue
+        let buyNetValue = navValue
         if (profit !== 0 && shares > 0) {
           buyNetValue = (marketValue - profit) / shares
         }
-        
+
         // [DEBUG] 详细打印计算过程
-        console.log(`========== [批量导入-计算过程] ${fund.code} ==========`)
+        console.log(`========== [批量导入-计算过程] ${fundCode} ==========`)
         console.log(`持仓金额 (marketValue): ${marketValue}`)
         console.log(`持仓收益 (profit): ${profit}`)
-        console.log(`最新净值 (netValue): ${netValue} (日期: ${navDate})`)
+        console.log(`最新净值 (navValue): ${navValue} (净值日期: ${navDate})`)
         console.log(`--- 份额计算 ---`)
-        console.log(`  份额 (shares) = 持仓市值 / 最新净值 = ${marketValue} / ${netValue} = ${shares}`)
+        console.log(`  份额 (shares) = 持仓市值 / 最新净值 = ${marketValue} / ${navValue} = ${shares}`)
         console.log(`--- 买入净值计算 ---`)
         console.log(`  成本 = 持仓市值 - 持仓收益 = ${marketValue} - ${profit} = ${marketValue - profit}`)
         console.log(`  买入净值 (buyNetValue) = 成本 / 份额 = (${marketValue} - ${profit}) / ${shares} = ${buyNetValue}`)
         console.log(`=============================================`)
-        
+
         // [NOTE] 导入时不计算当前收益，保持买入净值不变
         // 当前收益会在持仓列表中根据最新净值自动计算
         // 持有收益 = (当前净值 - 买入净值) × 份额
-        
+
         const industrySectors = item.sectors?.trim() || undefined
-        
+
         // [FIX] 不保留小数，使用原始精度，保证后续计算精准
         const record: HoldingRecord = {
-          code: fund.code,
-          name: fund.name,
+          code: fundCode,
+          name: fundName,
           buyNetValue: buyNetValue,
           shares: shares,
           buyDate: new Date().toISOString().split('T')[0],
@@ -715,11 +755,11 @@ async function batchImport() {
           isQDII: item.isQDII,
           createdAt: Date.now()
         }
-        
+
         console.log('构建记录:', record)
         await holdingStore.addOrUpdateHolding(record)
-        console.log('[批量导入] 添加成功:', fund.code, '净值:', netValue, '份额:', shares.toFixed(4))
-        results.push(fund.code)
+        console.log('[批量导入] 添加成功:', fundCode, '净值:', navValue, '份额:', shares.toFixed(4))
+        results.push(fundCode)
       } catch (error) {
         batchItems.value[index].error = '导入失败'
         console.error('批量导入失败:', error)
@@ -1165,8 +1205,15 @@ async function refreshHoldings() {
                   label="基金代码"
                   placeholder="请输入基金代码"
                   :disabled="item.loading"
+                  @blur="fetchBatchFundInfo(index)"
                 />
-                
+                <div class="fund-name-preview" v-if="item.name">
+                  {{ item.name }}
+                </div>
+                <div class="fund-error-tip" v-if="item.error">
+                  {{ item.error }}
+                </div>
+
                 <van-field
                   v-model="item.amount"
                   type="number"
@@ -2293,6 +2340,20 @@ async function refreshHoldings() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.fund-name-preview {
+  font-size: 12px;
+  color: var(--color-primary);
+  margin-top: 4px;
+  padding-left: 16px;
+}
+
+.fund-error-tip {
+  font-size: 12px;
+  color: var(--color-down);
+  margin-top: 4px;
+  padding-left: 16px;
 }
 
 .fund-info {
