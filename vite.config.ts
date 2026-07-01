@@ -19,9 +19,10 @@ const APP_VERSION = getPackageVersion()
 
 // [WHY] 配置 Vite 构建工具，支持 Vue3 和 Vant 组件自动导入
 // [WHAT] 使用 unplugin-vue-components 自动导入 Vant 组件，无需手动 import
-// [WHY] 全平台打包（Electron + Capacitor）需要相对路径，file:// 协议下绝对路径会失效
+// [WHY] Capacitor Android/iOS 用绝对路径 (本地HTTP服务器)，Electron/Web 用相对路径 (file:// 协议)
+const isCapacitor = process.env.CAPACITOR === 'true'
 export default defineConfig({
-  base: './',
+  base: isCapacitor ? '/' : './',
   plugins: [
     vue(),
     Components({
