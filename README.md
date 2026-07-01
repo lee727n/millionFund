@@ -190,7 +190,16 @@ millionFund/
 ├── ios/                # iOS 原生项目（Capacitor）
 ├── electron/           # Electron 桌面端
 ├── scripts/            # 自动化脚本
-└── .github/workflows/  # CI/CD 工作流
+├── .github/workflows/  # CI/CD 工作流
+│
+├── docs/               # 架构与规划文档
+│   ├── ARCHITECTURE_v2.md       # v2.0 架构设计
+│   ├── RELEASE_ROADMAP.md       # 📌 版本发布路线图（汇总）
+│   ├── FUTURE_ROADMAP.md        # 未来架构与改进路线（OCR/资产/UI）
+│   ├── FUND_MODULE_ROADMAP.md   # 基金模块分析与路线图
+│   ├── NEWS_MODULE_ROADMAP.md   # 新闻资讯模块分析与路线图
+│   ├── ARCHITECTURE_EVOLUTION.md # 底层架构演进路线
+│   └── ...
 ```
 
 ## 免责声明

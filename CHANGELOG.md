@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **新增未来架构文档**：`docs/FUTURE_ROADMAP.md` — OCR 拍照识图优化路线、资产层扩展、UI 改进、性能与工程化规划
+- **新增基金模块路线图**：`docs/FUND_MODULE_ROADMAP.md` — 模块全景诊断、代码拆分计划、功能增强（对比/筛选/定投模拟）、版本规划
+- **新增新闻模块路线图**：`docs/NEWS_MODULE_ROADMAP.md` — 搜索功能缺失诊断、交叉验证算法缺陷、数据源真实化计划
+- **新增架构演进路线**：`docs/ARCHITECTURE_EVOLUTION.md` — 底层技术债画像、存储/测试/安全架构演进
+- **新增版本发布路线图**：`docs/RELEASE_ROADMAP.md` — 按 v1.10/v1.11/v2.0 组织，汇总所有模块的 P0-P3 任务，含工时和依赖关系
+
 ## [1.9.8] - 2026-07-01
 
 ### Added (🆕 全品种资产平台)
