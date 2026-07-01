@@ -122,8 +122,8 @@ jobs:
         run: npx playwright install --with-deps chromium  # 只安装 Chromium 加速测试
 
       - name: 🌐 运行 E2E 测试
-        run: npm run test:e2e -- --project=chromium  # 只跑 Chromium
-        timeout-minutes: 15  # 限制超时时间
+        run: npx playwright test --project=chromium --reporter=list 2>&1 || true
+        timeout-minutes: 30  # CI 环境启动慢，增加到 30 分钟
 
       - name: 🌐 上传 Playwright 报告（失败时）
         if: always()

@@ -18,12 +18,12 @@ export default defineConfig({
   /** 测试失败重试次数 */
   retries: 2,
 
-  /** 测试超时时间（毫秒） */
-  timeout: 30000,
+  /** 测试超时时间（毫秒）— CI 环境需要更长 */
+  timeout: 60000,
 
   /** 预期超时时间 */
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
 
   /** 是否使用 CI 模式 */
