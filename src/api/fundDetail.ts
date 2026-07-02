@@ -1,6 +1,6 @@
 // [WHAT] 基金详情相关 API
 // [DEPS] 天天基金 pingzhongdata 接口、东方财富接口
-// [NOTE] 包含缓存管理、全局脚本队列、重仓股、基金经理、评级等
+// [NOTE] 包含重仓股、基金经理、评级等
 
 import { cache, CACHE_TTL } from './cache'
 import { isTradingTime } from './tiantianApi'
@@ -8,7 +8,6 @@ import { persistCache } from '../utils/persistCache'
 import type { FundEstimate, FundInfo, NetValueRecord } from '@/types/fund'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
-import { parseJsVariable } from './fund/request'
 import type {
   IntradayPoint,
   HoldingStock,
@@ -24,99 +23,11 @@ import type {
 } from './fundTypes'
 import { fetchFundEstimateFast } from './fundEstimate'
 import { fetchNetValueHistoryFast, fetchHS300History } from './fundNetValue'
-
-// ========== 缓存管理 ==========
-
-// [WHAT] 清除指定基金的缓存数据
-export function clearFundCache(code: string): void {
-  const keys = ['estimate', 'netvalue', 'kline', 'period']
-  keys.forEach(prefix => {
-    ;[30, 60, 90, 180, 365, 400].forEach(days => {
-      cache.delete(`${prefix}_${code}_${days}`)
-    })
-    cache.delete(`${prefix}_${code}`)
-  })
-  // [WHY] 同时清除沪深300缓存，防止之前加载到错误数据
-  ;[30, 60, 90, 180, 365, 400].forEach(days => {
-    cache.delete(`hs300_history_${days}`)
-  })
-}
-
-// [WHAT] 清除所有缓存
-export function clearAllCache(): void {
-  cache.clear()
-}
-
-// ========== 全局变量型脚本请求串行化队列 ==========
-// [WHY] pingzhongdata/*.js 这类脚本会在 window 上设置固定名字的全局变量
-//       （如 Data_netWorthTrend / Data_currentFundManager / apidata 等）
-//       当并发请求不同基金时，后加载的脚本会覆盖先加载的变量，导致读错数据
-// [HOW] 所有这类请求都通过这个队列串行化执行
-
-const globalVarScriptQueue: (() => void)[] = []
-let globalVarScriptActive = false
-
-function runNextGlobalVarScript() {
-  if (globalVarScriptActive) return
-  const runner = globalVarScriptQueue.shift()
-  if (!runner) return
-  globalVarScriptActive = true
-  runner()
-}
-
-export function queueGlobalVarScript<T>(
-  url: string,
-  extract: () => T | Promise<T>,
-  cleanupVars: string[],
-  emptyResult: T,
-  timeoutMs = 15000
-): Promise<T> {
-  return new Promise<T>((resolve) => {
-    const runner = async () => {
-      // [M6] 迁移到 fetch + new Function（替代 JSONP）
-      // scriptId 已移除 - 不再需要动态脚本标签
-
-      // 请求前清零旧数据，防止读到上一个脚本残留
-      cleanupVars.forEach((v) => {
-        ;(window as any)[v] = null
-      })
-
-      const timeout = setTimeout(() => finish(emptyResult), timeoutMs)
-
-      async function finish(data: T) {
-        clearTimeout(timeout)
-        // 请求结束后清掉自己占的全局变量
-        cleanupVars.forEach((v) => {
-          try { delete (window as any)[v] } catch { /* */ }
-        })
-        resolve(data)
-        globalVarScriptActive = false
-        runNextGlobalVarScript()
-      }
-
-      try {
-        const text = await http.text(url)
-        // [FIX] 安全解析：用正则提取变量，避免 new Function
-        for (const varName of cleanupVars) {
-          const value = parseJsVariable<any>(text, varName)
-          if (value !== null) {
-            ;(window as any)[varName] = value
-          }
-        }
-        const result = await extract()
-        finish(result)
-      } catch (e) {
-        logger.warn('[fundDetail] queueGlobalVarScript failed', { url, error: e })
-        finish(emptyResult)
-      }
-    }
-
-    globalVarScriptQueue.push(runner)
-    runNextGlobalVarScript()
-  })
-}
+import { clearFundCache, clearAllCache, queueGlobalVarScript } from './fundUtils'
 
 // ========== 前十重仓股 ==========
+
+export { clearFundCache, clearAllCache }
 
 export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   const cacheKey = `topholdings_${code}`
@@ -200,7 +111,6 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
             const qtRes = await fetch(qtUrl)
             if (qtRes.ok) {
               const qtText = await qtRes.text()
-              // 解析 qt.gtimg.cn 返回格式：v_s_sh600000="1~贵州茅台~600519~1800.00~1.5%~..."
               const qtRegex = /v_s_(sh|sz|bj|hk|us)(\w+)="([^"]+)"/g
               let m: RegExpExecArray | null
               const qtData: Record<string, string> = {}
@@ -209,7 +119,6 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
                 const code = m[2]
                 const dataStr = m[3]
                 if (!dataStr) continue
-                // 统一 key 格式与下方查找一致
                 let key = ''
                 if (prefix === 'sh' || prefix === 'sz' || prefix === 'bj') key = `${prefix}${code}`
                 else if (prefix === 'hk') key = `hk${code}`
@@ -234,7 +143,6 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
                 }
               })
             } else {
-              // [M6] 已移除 JSONP 降级，fetch 失败时跳过股票行情获取
               logger.warn('[fundDetail] 获取股票行情失败，跳过', { url: qtUrl })
             }
           } catch {
@@ -255,13 +163,6 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 
 // ========== 基金基本信息 ==========
 
-/**
- * 获取基金基本信息（备用方案）
- * [WHY] 当天天基金API超时时，使用东方财富API获取基金名称和净值
- * [WHAT] 使用东方财富的基金详情接口
- * [M6] 已迁移到 fetch + new Function（移除 JSONP）
- * [DEPS] http.ts 统一发送请求
- */
 export async function fetchFundBasicInfo(code: string): Promise<{
   name: string
   netValue: number
@@ -272,12 +173,9 @@ export async function fetchFundBasicInfo(code: string): Promise<{
   const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
   if (cached) return cached
 
-  // [FIX] 安全解析 JSONP 响应，避免 new Function
   try {
     const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
     const text = await http.text(url)
-
-    // 直接解析 JSON 响应（该接口实际返回 JSON，不需要 JSONP）
     const data = JSON.parse(text)
     if (!data || !data.Datas) {
       logger.warn('[fundDetail] 基金详情数据格式错误', { code })
@@ -302,24 +200,16 @@ export async function fetchFundBasicInfo(code: string): Promise<{
 
 // ========== 综合数据获取（多源验证） ==========
 
-/**
- * 获取基金准确数据（多源验证）
- * [WHY] 同时从估值和净值接口获取，交叉验证确保准确
- * [WHAT] 优先使用公布净值（收盘后），交易时间内使用估值
- * [NOTE] 估值接口和净值接口是同一个 URL，只请求一次
- */
 export async function fetchFundAccurateData(code: string, isQDII: boolean = false): Promise<FundAccurateData> {
   const cacheKey = `accurate_${code}`
-  // [WHAT] QDII 基金不使用缓存，因为它们的交易时间与 A 股不同
   if (!isQDII) {
     const cached = cache.get<FundAccurateData>(cacheKey)
     if (cached) return cached
   }
 
-  // [WHAT] 获取估值数据和历史净值数据
   const [estimateData, historyResult] = await Promise.all([
     fetchFundEstimateFast(code).catch(() => null),
-    fetchNetValueHistoryFast(code, 2).catch(() => ({ records: [], fundName: '' }))  // 只获取最近 2 天的净值
+    fetchNetValueHistoryFast(code, 2).catch(() => ({ records: [], fundName: '' }))
   ])
 
   const now = new Date()
@@ -327,7 +217,6 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
 
-  // [WHAT] 判断是否在交易时间
   const isWeekday = now.getDay() >= 1 && now.getDay() <= 5
   const isTradingHours = (currentHour === 9 && currentMinute >= 30) ||
     (currentHour > 9 && currentHour < 11) ||
@@ -335,7 +224,6 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     (currentHour >= 13 && currentHour < 15)
   const inTradingTime = isWeekday && isTradingHours
 
-  // [WHAT] 从历史净值中提取最新净值（第一个点是最新的）
   const historyData = historyResult.records || []
   const latestNav = historyData.length > 0 ? historyData[0] : null
   const navData = latestNav ? {
@@ -344,7 +232,6 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     changeRate: latestNav.changeRate
   } : null
 
-  // [WHAT] 构建结果，优先使用历史净值中的基金名称
   const result: FundAccurateData = {
     code,
     name: estimateData?.name || historyResult.fundName || '',
@@ -360,46 +247,30 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     updateTime: now.toISOString()
   }
 
-  // [WHAT] 智能选择最准确的数据
-  // 场景1: 收盘后且有今日净值 -> 使用公布净值
-  // 场景2: 交易时间内 -> 使用估值
-  // 场景3: 非交易时间且无今日净值 -> 使用最新公布净值
-  // 场景4: QDII基金特殊处理 -> 非交易时间使用前一日净值，交易时间使用估值
-
   const isNavFromToday = navData?.date === today
   const isEstimateFromToday = estimateData?.gztime?.startsWith(today.replace(/-/g, '-'))
 
-  // [WHAT] QDII 基金特殊处理
   if (isQDII) {
-    // [WHAT] 判断净值日期是否是昨天或今天
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     const isNavFromYesterday = navData?.date === yesterday
-    const isNavFromToday = navData?.date === today
 
-    // [WHAT] QDII基金逻辑：昨日净值 > 今日净值 > 今日估值 > 昨日估值
-    // [WHY] 净值比估值准确，昨日的净值比今日的估值更有参考价值
     if (isNavFromYesterday && result.nav > 0) {
-      // [WHAT] 昨日净值已公布（最常用场景），优先使用
       result.currentValue = result.nav
       result.dayChange = result.navChange
       result.dataSource = 'nav'
     } else if (isNavFromToday && result.nav > 0) {
-      // [WHAT] 今日净值已公布（特殊情况），使用今日净值
       result.currentValue = result.nav
       result.dayChange = result.navChange
       result.dataSource = 'nav'
     } else if (result.estimate > 0 && isEstimateFromToday) {
-      // [WHAT] 没有昨日/今日净值，使用今日估值
       result.currentValue = result.estimate
       result.dayChange = result.estimateChange
       result.dataSource = 'estimate'
     } else if (result.estimate > 0) {
-      // [WHAT] 没有今日估值，使用最近的估值（可能是昨天的）
       result.currentValue = result.estimate
       result.dayChange = result.estimateChange
       result.dataSource = 'estimate'
     } else {
-      // [EDGE] 没有任何数据，使用接口返回的昨日净值
       const dwjz = parseFloat(estimateData?.dwjz || '0')
       if (dwjz > 0) {
         result.currentValue = dwjz
@@ -408,34 +279,27 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
       }
     }
   } else {
-    // [WHAT] 非QDII基金正常处理
     if (isNavFromToday && result.nav > 0) {
-      // [WHAT] 今日净值已公布（收盘后），最准确
       result.currentValue = result.nav
       result.dayChange = result.navChange
       result.dataSource = 'nav'
     } else if (inTradingTime && result.estimate > 0) {
-      // [WHAT] 交易时间内，使用估值
       result.currentValue = result.estimate
       result.dayChange = result.estimateChange
       result.dataSource = 'estimate'
     } else if (result.estimate > 0 && isEstimateFromToday) {
-      // [WHAT] 非交易时间但有今日估值（午休或收盘后净值未公布）
       result.currentValue = result.estimate
       result.dayChange = result.estimateChange
       result.dataSource = 'estimate'
     } else if (result.nav > 0) {
-      // [WHAT] 使用最新公布净值（可能是昨天的）
       result.currentValue = result.nav
       result.dayChange = result.navChange
       result.dataSource = 'nav'
     } else if (result.estimate > 0) {
-      // [WHAT] 只有估值可用
       result.currentValue = result.estimate
       result.dayChange = result.estimateChange
       result.dataSource = 'estimate'
     } else {
-      // [EDGE] 无数据可用，使用昨日净值
       const dwjz = parseFloat(estimateData?.dwjz || '0')
       if (dwjz > 0) {
         result.currentValue = dwjz
@@ -445,17 +309,12 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     }
   }
 
-  // [WHAT] 缓存30秒（交易时间内）或5分钟（非交易时间）
-  // [WHAT] QDII基金缓存时间更短，因为它们的净值可能会在不同时间更新
   const ttl = isQDII ? 10000 : (inTradingTime ? 30000 : 300000)
   cache.set(cacheKey, result, ttl)
 
   return result
 }
 
-/**
- * 批量获取准确数据
- */
 export async function fetchFundAccurateBatch(codes: string[]): Promise<Map<string, FundAccurateData>> {
   const results = new Map<string, FundAccurateData>()
 
@@ -473,17 +332,12 @@ export async function fetchFundAccurateBatch(codes: string[]): Promise<Map<strin
 
 // ========== 大盘指数 ==========
 
-/**
- * 获取大盘指数
- * [WHAT] 上证指数、深证成指、创业板指、沪深300
- */
 export async function fetchMarketIndicesFast(): Promise<MarketIndexSimple[]> {
   const cacheKey = 'market_indices'
   const cached = cache.get<MarketIndexSimple[]>(cacheKey)
   if (cached) return cached
 
   try {
-    // [WHAT] 添加沪深300指数 (1.000300)
     const url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001,0.399001,0.399006,1.000300&fields=f2,f3,f4,f12,f14'
     const data = await http.get<{ data?: { diff?: any[] } }>(url)
 
@@ -505,10 +359,6 @@ export async function fetchMarketIndicesFast(): Promise<MarketIndexSimple[]> {
   }
 }
 
-/**
- * 大盘指数兜底数据
- * [WHY] API 失败时使用，避免首页指标区域空白
- */
 function getFallbackMarketIndices(): MarketIndexSimple[] {
   return [
     { code: '000001', name: '上证指数', current: 3150, change: 12.5, changePercent: 0.40 },
@@ -520,11 +370,6 @@ function getFallbackMarketIndices(): MarketIndexSimple[] {
 
 // ========== 基金排行榜 ==========
 
-/**
- * 获取基金排行榜（使用push2接口）
- * @param order 排序方向：1（降序/涨幅榜）、0（升序/跌幅榜）
- * @param pageSize 返回数量
- */
 export async function fetchFundRankingFast(
   order: 1 | 0 = 1,
   pageSize = 30
@@ -534,7 +379,6 @@ export async function fetchFundRankingFast(
   if (cached) return cached
 
   try {
-    // [WHY] 使用push2接口获取场内基金排行（ETF/LOF等）
     const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=${pageSize}&po=${order}&np=1&fltt=2&invt=2&fid=f3&fs=b:MK0021&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
 
     const data = await http.get<{ data?: { diff?: any[] } }>(url)
@@ -548,7 +392,7 @@ export async function fetchFundRankingFast(
       dayChange: item.f3 || 0
     }))
 
-    cache.set(cacheKey, items, 30000)  // 30秒缓存
+    cache.set(cacheKey, items, 30000)
     return items
   } catch (err) {
     logger.error('获取基金排行失败', err)
@@ -558,10 +402,6 @@ export async function fetchFundRankingFast(
 
 // ========== 基金经理信息 ==========
 
-/**
- * 获取基金经理信息
- * [WHY] 从天天基金 pingzhongdata 提取经理数据
- */
 export async function fetchFundManagerInfo(fundCode: string): Promise<FundManagerInfo | null> {
   const cacheKey = `manager_${fundCode}`
   const cached = cache.get<FundManagerInfo>(cacheKey)
@@ -609,11 +449,6 @@ export async function fetchFundManagerInfo(fundCode: string): Promise<FundManage
 
 // ========== 经理业绩走势 ==========
 
-/**
- * 获取经理任职期间业绩走势
- * [WHY] 展示经理管理该基金的累计收益曲线
- * [HOW] 从 pingzhongdata.js 获取 Data_grandTotal（累计收益走势）
- */
 export async function fetchManagerProfit(fundCode: string): Promise<ManagerProfitPoint[]> {
   const cacheKey = `manager_profit_${fundCode}`
   const cached = cache.get<ManagerProfitPoint[]>(cacheKey)
@@ -660,19 +495,11 @@ export async function fetchManagerProfit(fundCode: string): Promise<ManagerProfi
 
 // ========== 全球指数 ==========
 
-/**
- * 获取全球主要指数行情
- * [WHY] 帮助投资者了解全球市场走势
- * [DEPS] 使用东方财富 push2 接口（直接返回 JSON）
- * [M6] 已迁移到 http.get()（移除 JSONP）
- */
 export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
   const cacheKey = 'global_indices'
   const cached = cache.get<GlobalIndex[]>(cacheKey)
   if (cached) return cached
 
-  // [WHAT] 东方财富全球指数代码
-  // 格式：市场代码.指数代码
   const indices = [
     { code: '1.000001', name: '上证指数', region: 'cn' as const },
     { code: '0.399001', name: '深证成指', region: 'cn' as const },
@@ -687,7 +514,6 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
   try {
     const codes = indices.map(i => i.code).join(',')
 
-    // [M6] 直接使用 http.get()，不再使用 JSONP
     const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
     const data = await http.get<{ data?: { diff?: any[] } }>(url)
 
@@ -731,17 +557,11 @@ function getDefaultGlobalIndices(): GlobalIndex[] {
 
 // ========== 行业配置 ==========
 
-// [WHAT] 饼图颜色列表
 const CHART_COLORS = [
   '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
 
-/**
- * 获取基金行业配置
- * [WHY] 展示基金持仓的行业分布
- * [DEPS] pingzhongdata 接口返回 Data_IndustryAllocation
- */
 export async function fetchIndustryAllocation(code: string): Promise<IndustryAllocation[]> {
   const cacheKey = `industry_${code}`
   const cached = cache.get<IndustryAllocation[]>(cacheKey)
@@ -770,10 +590,6 @@ export async function fetchIndustryAllocation(code: string): Promise<IndustryAll
   return result
 }
 
-/**
- * 获取基金资产配置
- * [WHY] 展示股票/债券/现金比例
- */
 export async function fetchAssetAllocation(code: string): Promise<AssetAllocation | null> {
   const cacheKey = `asset_${code}`
   const cached = cache.get<AssetAllocation>(cacheKey)
@@ -806,10 +622,6 @@ export async function fetchAssetAllocation(code: string): Promise<AssetAllocatio
   return result
 }
 
-/**
- * 获取基金评级和风险指标
- * [WHY] 帮助用户评估基金质量和风险
- */
 export async function fetchFundRating(code: string): Promise<FundRating | null> {
   const cacheKey = `rating_${code}`
   const cached = cache.get<FundRating>(cacheKey)
