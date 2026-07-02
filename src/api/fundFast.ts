@@ -10,12 +10,62 @@
 //   - fundMarket.ts     市场指数API
 //   - fundRating.ts     基金评级API
 
-// 统一导出所有模块
-export * from './fundTypes'
-export * from './fundUtils'
-export * from './fundEstimate'
-export * from './fundNetValue'
-export * from './fundSearch'
-export * from './fundDetail'
-export * from './fundMarket'
-export * from './fundRating'
+// ========== fundTypes.ts - 类型定义 ==========
+export type {
+  IntradayPoint,
+  HoldingStock,
+  FundAccurateData,
+  SimpleKLineData,
+  PeriodReturn,
+  MarketIndexSimple,
+  FundRankItemSimple,
+  FundManagerInfo,
+  ManagerProfitPoint,
+  GlobalIndex,
+  IndustryAllocation,
+  AssetAllocation,
+  FundRating
+} from './fundTypes'
+
+// ========== fundUtils.ts - 共享工具函数 ==========
+export { clearFundCache, clearAllCache, queueGlobalVarScript } from './fundUtils'
+
+// ========== fundEstimate.ts - 估值API ==========
+export {
+  fetchFundEstimateFast,
+  fetchFundEstimatesBatch,
+  fetchFundEstimate
+} from './fundEstimate'
+
+// ========== fundNetValue.ts - 净值API ==========
+export {
+  fetchNetValueHistoryFast,
+  fetchIntradayData,
+  fetchLatestNetValue,
+  fetchHS300History,
+  fetchSimpleKLineData,
+  calculatePeriodReturns
+} from './fundNetValue'
+
+// ========== fundSearch.ts - 搜索API ==========
+export { fetchFundList, searchFund } from './fundSearch'
+
+// ========== fundDetail.ts - 详情API ==========
+export {
+  fetchTopHoldings,
+  fetchFundBasicInfo,
+  fetchFundAccurateData,
+  fetchFundAccurateBatch,
+  fetchFundRankingFast,
+  fetchFundManagerInfo,
+  fetchManagerProfit,
+  fetchIndustryAllocation,
+  fetchAssetAllocation,
+  fetchFundRating
+} from './fundDetail'
+
+// ========== fundMarket.ts - 市场指数API ==========
+export {
+  fetchMarketIndicesFast,
+  fetchGlobalIndices
+} from './fundMarket'

@@ -5,7 +5,7 @@
 
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from 'vue/i18n'
+import { useI18n } from 'vue-i18n'
 import { useDCASimulation, type DCASimulationInput, type DCAFrequency } from '@/composables/useDCASimulation'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
 import { showToast } from 'vant'

@@ -5,7 +5,7 @@
 
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from 'vue/i18n'
+import { useI18n } from 'vue-i18n'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
 import { fetchPeriodReturnExt } from '@/api/tiantianApi'
 import { showToast } from 'vant'
