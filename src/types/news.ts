@@ -6,10 +6,19 @@
  * 数据源类型
  * - jin10: 金十数据
  * - cailian: 财联社
+ * - toutiao: 今日头条
+ * - sina: 新浪财经
+ * - netease: 网易财经
+ * - tencent: 腾讯财经
  * - xueqiu: 雪球
  * - eastmoney: 东方财富
+ * - 10jqka: 同花顺
+ * - stcn: 证券时报
+ * - csnews: 中国证券报
+ * - yicai: 第一财经
  */
-export type NewsSource = 'jin10' | 'cailian' | 'xueqiu' | 'eastmoney'
+export type NewsSource = 'jin10' | 'cailian' | 'toutiao' | 'sina' | 'netease' 
+  | 'tencent' | 'xueqiu' | 'eastmoney' | '10jqka' | 'stcn' | 'csnews' | 'yicai'
 
 /**
  * 资讯分类
@@ -29,6 +38,27 @@ export type NewsCategory = 'flash' | 'market' | 'macro' | 'industry' | 'crypto' 
  * - low: 低
  */
 export type Importance = 'high' | 'medium' | 'low'
+
+/**
+ * 统一资讯项接口（API 响应格式）
+ * 所有数据源 API 应返回此格式
+ */
+export interface ApiNewsItem {
+  /** 唯一标识 */
+  id: string
+  /** 标题 */
+  title: string
+  /** 摘要 */
+  summary: string
+  /** 原文链接 */
+  url: string
+  /** 发布时间 */
+  publishedAt: string
+  /** 数据源名称 */
+  source: string
+  /** 缩略图（可选） */
+  image?: string
+}
 
 /**
  * 统一资讯项接口
