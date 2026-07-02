@@ -2,7 +2,7 @@
 // [WHAT] 集中管理大盘指数、全球指数、交易状态等数据的获取和缓存
 // [USAGE] const { indices, globalIndices, tradingSession, refreshAll, loadIndices, loadGlobalIndices } = useHomeData()
 
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { logger } from '@/utils/logger'
@@ -22,6 +22,68 @@ export function useHomeData() {
   
   // 刷新状态
   const isRefreshing = ref(false)
+  
+  // ========== 计算属性 ==========
+  // 是否为周末
+  const isWeekend = computed(() => {
+    const day = currentTime.value.getDay()
+    return day === 0 || day === 6
+  })
+  
+  // 沪深300实时涨跌幅
+  const hs300ChangePercent = computed(() => {
+    const hs300 = indices.value.find(idx => idx.code === '000300')
+    return hs300 ? hs300.changePercent : 0
+  })
+  
+  // 顶部展示指数
+  const topIndices = computed(() => {
+    const result: MarketIndexSimple[] = []
+    const shIndex = indices.value.find(idx => idx.code === '000001')
+    const cyIndex = indices.value.find(idx => idx.code === '399006')
+    const nasdaqIndex = globalIndices.value.find(idx => idx.name.includes('纳斯达克'))
+    
+    if (shIndex) result.push(shIndex)
+    if (cyIndex) result.push(cyIndex)
+    if (nasdaqIndex) {
+      result.push({
+        code: nasdaqIndex.code,
+        name: '纳斯达克',
+        current: nasdaqIndex.price,
+        change: nasdaqIndex.price * nasdaqIndex.changePercent / 100,
+        changePercent: nasdaqIndex.changePercent
+      })
+    }
+    
+    return result
+  })
+  
+  // 合并后的指数列表
+  const combinedIndices = computed(() => {
+    const addedIndexNames = new Set(indices.value.map(idx => idx.name))
+    const result: MarketIndexSimple[] = [...indices.value]
+    
+    globalIndices.value.forEach(gidx => {
+      if (!addedIndexNames.has(gidx.name)) {
+        addedIndexNames.add(gidx.name)
+        result.push({
+          code: gidx.code,
+          name: gidx.name,
+          current: gidx.price,
+          change: gidx.price * gidx.changePercent / 100,
+          changePercent: gidx.changePercent
+        })
+      }
+    })
+    
+    return result
+  })
+  
+  // 移动端专用指数列表
+  const mobileIndices = computed(() => {
+    const targetIndices = ['上证指数', '恒生指数', '日经225', '道琼斯', '标普500', '纳斯达克']
+    return targetIndices.map(name => combinedIndices.value.find(idx => idx.name === name)).filter(Boolean) as MarketIndexSimple[]
+  })
   
   // 交易状态定时器
   let tradingSessionInterval: number | undefined
