@@ -6,29 +6,96 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 
 /**
- * 抓取今日头条财经新闻
- * TODO: 今日头条有反爬，需找替代方案
- * 可尝试：
- * 1. 使用 RSSHub 路由：https://docs.rsshub.app/routes/new-media#jin-ri-tou-tiao
- * 2. 使用第三方 API 或爬虫
- * 3. 联系今日头条开放平台获取 API
+ * RSSHub 路由列表（多个备份）
+ */
+const TOUTIAO_RSS_URLS = [
+  'https://rsshub.app/jin-ri-tou-tiao/recommend',  // 推荐
+  'https://rsshub.app/jin-ri-tou-tiao/category/finance',  // 财经分类
+  'https://rsshub.app/jin-ri-tou-tiao/category/news',  // 新闻分类
+]
+
+/**
+ * 抓取今日头条财经新闻（通过 RSSHub）
  */
 export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNewsItem[]> {
-  try {
-    // TODO: 实现真实 API 调用
-    // 当前使用 RSSHub 路由（需确认是否可用）
-    // const response = await Http.get({
-    //   url: 'https://rsshub.app/jin-ri-tou-tiao',
-    //   headers: { 'User-Agent': 'Mozilla/5.0' }
-    // })
-    
-    console.warn('[今日头条] 使用模拟数据（需找替代数据源）')
-  } catch (e) {
-    console.warn('[今日头条] 抓取失败，使用模拟数据', e)
+  // 尝试所有 RSS URL
+  for (const url of TOUTIAO_RSS_URLS) {
+    try {
+      console.log(`[今日头条] 尝试 RSS: ${url}`)
+      
+      const response = await Http.get({
+        url,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      })
+      
+      if (response.status === 200 && response.data) {
+        const items = parseRSSItems(response.data)
+        if (items.length > 0) {
+          console.log(`[今日头条] ✓ RSS 抓取成功: ${items.length} 条`)
+          return items.slice((page - 1) * pageSize, page * pageSize)
+        }
+      }
+    } catch (e) {
+      console.warn(`[今日头条] RSS 抓取失败: ${url}`, e)
+    }
   }
   
-  // 模拟数据
+  // 所有 RSS 都失败，使用模拟数据
+  console.warn('[今日头条] 所有 RSS 源失败，使用模拟数据')
   return generateMockToutiaoNews(page, pageSize)
+}
+
+/**
+ * 解析 RSS XML 数据
+ */
+function parseRSSItems(xmlData: string): ApiNewsItem[] {
+  try {
+    const items: ApiNewsItem[] = []
+    
+    // 匹配 <item> 或 <entry> 标签
+    const itemRegex = /<item>([\s\S]*?)<\/item>|<entry>([\s\S]*?)<\/entry>/g
+    let match
+    
+    while ((match = itemRegex.exec(xmlData)) !== null) {
+      const itemContent = match[1] || match[2]
+      
+      // 提取标题
+      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
+      const title = titleMatch ? titleMatch[1].trim() : ''
+      
+      // 提取链接
+      const linkMatch = /<link>(.*?)<\/link>|<guid>(.*?)<\/guid>/.exec(itemContent)
+      const url = linkMatch ? (linkMatch[1] || linkMatch[2]).trim() : ''
+      
+      // 提取描述
+      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>|<summary>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/summary>/.exec(itemContent)
+      const summary = descMatch ? (descMatch[1] || descMatch[2]).trim() : ''
+      
+      // 提取发布时间
+      const dateMatch = /<pubDate>(.*?)<\/pubDate>|<published>(.*?)<\/published>|<updated>(.*?)<\/updated>/.exec(itemContent)
+      const dateStr = dateMatch ? (dateMatch[1] || dateMatch[2] || dateMatch[3]).trim() : ''
+      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
+      
+      if (title) {
+        items.push({
+          id: `toutiao_${Date.now()}_${items.length}`,
+          title,
+          summary: summary || title,
+          source: '今日头条',
+          publishedAt,
+          url: url || 'https://www.toutiao.com/',
+          image: undefined
+        })
+      }
+    }
+    
+    return items
+  } catch (e) {
+    console.error('[今日头条] RSS 解析失败', e)
+    return []
+  }
 }
 
 function generateMockToutiaoNews(page: number, pageSize: number): ApiNewsItem[] {
