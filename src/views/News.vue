@@ -16,6 +16,52 @@ import { useI18n } from 'vue-i18n'
 const router = useRouter()
 const { t } = useI18n()
 
+// ========== 搜索功能（Task #9 P0） ==========
+const searchKeyword = ref('')
+
+// ========== 搜索功能（Task #9 P0） ==========
+const searchKeyword = ref('')
+
+// 过滤新闻列表（金十）
+const filteredNewsList = computed(() => {
+  if (!searchKeyword.value.trim()) return newsList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return newsList.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.summary.toLowerCase().includes(kw) ||
+    item.source.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤快讯列表（金十）
+const filteredFlashList = computed(() => {
+  if (!searchKeyword.value.trim()) return flashList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return flashList.value.filter(item =>
+    item.content.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤电报列表（财联社）
+const filteredTtelegramList = computed(() => {
+  if (!searchKeyword.value.trim()) return telegramList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return telegramList.value.filter(item =>
+    item.content.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤讨论列表（雪球）
+const filteredDiscussionList = computed(() => {
+  if (!searchKeyword.value.trim()) return discussionList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return discussionList.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.content.toLowerCase().includes(kw) ||
+    item.userName.toLowerCase().includes(kw)
+  )
+})
+
 // ========== 数据源选择 ==========
 type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice'
 const activeSource = ref<DataSource>('jin10')
@@ -306,6 +352,18 @@ onMounted(() => {
       >{{ t('news.capital_flow') }}</div>
     </div>
 
+    <!-- 搜索框（Task #9 P0） -->
+    <div class="search-bar">
+      <van-search
+        v-model="searchKeyword"
+        :placeholder="t('news.search_placeholder')"
+        shape="round"
+        background="transparent"
+        clearable
+        class="news-search"
+      />
+    </div>
+
     <!-- ==================== {{ t('news.jin10') }} ==================== -->
     <template v-if="activeSource === 'jin10'">
       <div class="sub-tabs">
@@ -324,8 +382,8 @@ onMounted(() => {
           </div>
         </div>
         <div class="scroll-list">
-          <template v-if="newsList.length > 0">
-            <div v-for="news in newsList" :key="news.id" class="news-card" @click="router.push(news.url)">
+          <template v-if="filteredNewsList.length > 0">
+            <div v-for="news in filteredNewsList" :key="news.id" class="news-card" @click="router.push(news.url)">
               <div class="news-time">{{ news.time }}</div>
               <div class="news-category-tag">{{ news.category }}</div>
               <div class="news-title">{{ news.title }}</div>
@@ -346,8 +404,8 @@ onMounted(() => {
       <!-- 快讯 -->
       <div v-else-if="jin10Tab === 'flash'" class="content-area">
         <div class="scroll-list">
-          <template v-if="flashList.length > 0">
-            <div v-for="flash in flashList" :key="flash.id" class="flash-card" :class="'flash-' + flash.type">
+          <template v-if="filteredFlashList.length > 0">
+            <div v-for="flash in filteredFlashList" :key="flash.id" class="flash-card" :class="'flash-' + flash.type">
               <div class="flash-header">
                 <span class="flash-type-badge" :class="'flash-' + flash.type">
                   {{ flash.type === 'important' ? t('news.important') : flash.type === 'warning' ? t('news.warning') : t('news.flash_type') }}
@@ -395,8 +453,8 @@ onMounted(() => {
       <!-- 电报 -->
       <div v-if="clsTab === 'telegram'" class="content-area">
         <div class="scroll-list">
-          <template v-if="telegramList.length > 0">
-            <div v-for="item in telegramList" :key="item.id" class="flash-card" :class="'flash-' + item.type">
+          <template v-if="filteredTtelegramList.length > 0">
+            <div v-for="item in filteredTtelegramList" :key="item.id" class="flash-card" :class="'flash-' + item.type">
               <div class="flash-header">
                 <span class="flash-type-badge" :class="'flash-' + item.type">
                   {{ item.type === 'urgent' ? t('news.urgent') : item.type === 'important' ? t('news.important') : t('news.flash_type') }}
@@ -465,8 +523,8 @@ onMounted(() => {
       <!-- 热帖 -->
       <div v-if="xueqiuTab === 'discussion'" class="content-area">
         <div class="scroll-list">
-          <template v-if="discussionList.length > 0">
-            <div v-for="item in discussionList" :key="item.id" class="discuss-card">
+          <template v-if="filteredDiscussionList.length > 0">
+            <div v-for="item in filteredDiscussionList" :key="item.id" class="discuss-card">
               <div class="discuss-header">
                 <span class="discuss-user">{{ item.userName }}</span>
                 <span class="discuss-time">{{ item.createTime }}</span>
