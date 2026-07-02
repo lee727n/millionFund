@@ -104,6 +104,12 @@ const router = createRouter({
       meta: { title: '基金对比' }
     },
     {
+      path: '/fund-screener',
+      name: 'fund-screener',
+      component: () => import('@/views/FundScreener.vue'),
+      meta: { title: '基金筛选' }
+    },
+    {
       path: '/mine',
       name: 'mine',
       component: () => import('@/views/Mine.vue'),
