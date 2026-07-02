@@ -9,6 +9,17 @@ import { fetchClsTelegram, fetchClsHotTopics, fetchClsPlateMovement, type Telegr
 import { fetchHotDiscussions, fetchStockSentimentList, fetchUserViews, type HotDiscussion, type StockSentiment, type UserView } from '@/api/xueqiu'
 // 东方财富 Choice
 import { fetchNorthFlow, fetchSectorFlows, fetchMainForceFlow, type NorthFlowData, type SectorFlow, type MainForceFlow } from '@/api/choice'
+// 新增数据源 (Task #10: 合并 FinanceNews.vue)
+import { fetchToutiaoNews, type NewsItem as ToutiaoNewsItem } from '@/api/toutiao'
+import { fetchSinaNews, type NewsItem as SinaNewsItem } from '@/api/sina'
+import { fetchNeteaseNews, type NewsItem as NeteaseNewsItem } from '@/api/netease'
+import { fetchTencentNews, type NewsItem as TencentNewsItem } from '@/api/tencent'
+import { fetchXueqiuNews, type NewsItem as XueqiuNewsItem } from '@/api/xueqiu'
+import { fetchEastmoneyNews, type NewsItem as EastmoneyNewsItem } from '@/api/eastmoney'
+import { fetch10jqkaNews, type NewsItem as JqkaNewsItem } from '@/api/10jqka'
+import { fetchSTCNNews, type NewsItem as STCNNewsItem } from '@/api/stcn'
+import { fetchCSNews, type NewsItem as CSNewsItem } from '@/api/csnews'
+import { fetchYicaiNews, type NewsItem as YicaiNewsItem } from '@/api/yicai'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { logger, copyLogsToClipboard } from '@/utils/logger'
 import { useI18n } from 'vue-i18n'
@@ -19,8 +30,16 @@ const { t } = useI18n()
 // ========== 搜索功能（Task #9 P0） ==========
 const searchKeyword = ref('')
 
-// ========== 搜索功能（Task #9 P0） ==========
-const searchKeyword = ref('')
+// 过滤交叉验证新闻列表
+const filteredCrossValidationNews = computed(() => {
+  if (!searchKeyword.value.trim()) return crossValidationNews.value
+  const kw = searchKeyword.value.toLowerCase()
+  return crossValidationNews.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.summary.toLowerCase().includes(kw) ||
+    item.source.toLowerCase().includes(kw)
+  )
+})
 
 // 过滤新闻列表（金十）
 const filteredNewsList = computed(() => {
@@ -63,8 +82,44 @@ const filteredDiscussionList = computed(() => {
 })
 
 // ========== 数据源选择 ==========
-type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice'
+type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice' | 'toutiao' | 'sina' | 'netease' | 'tencent' | 'eastmoney' | '10jqka' | 'stcn' | 'csnews' | 'yicai' | 'all'
 const activeSource = ref<DataSource>('jin10')
+
+// 数据源下拉选项 (Task #10: 合并 FinanceNews.vue)
+const sourceOptions = [
+  { text: '金十数据', value: 'jin10' },
+  { text: '财联社', value: 'cls' },
+  { text: '雪球', value: 'xueqiu' },
+  { text: '东方财富', value: 'choice' },
+  { text: '今日头条', value: 'toutiao' },
+  { text: '新浪财经', value: 'sina' },
+  { text: '网易财经', value: 'netease' },
+  { text: '腾讯财经', value: 'tencent' },
+  { text: '同花顺', value: '10jqka' },
+  { text: '证券时报', value: 'stcn' },
+  { text: '中国证券报', value: 'csnews' },
+  { text: '第一财经', value: 'yicai' },
+  { text: '全部来源 (交叉验证)', value: 'all' }
+]
+
+// ========== 交叉验证状态 (Task #11: Jaccard 相似度) ==========
+const crossValidation = ref({
+  enabled: false,
+  newsMap: new Map<string, Set<string>>()
+})
+
+// 交叉验证新闻列表
+const crossValidationNews = ref<Array<{
+  id: string,
+  title: string,
+  summary: string,
+  source: string,
+  time: string,
+  url: string,
+  crossCount: number,
+  crossSources: string[]
+}>>([])
+const isCrossLoading = ref(false)
 
 // ========== 各个数据源的 tab 状态 ==========
 // 金十数据
@@ -95,6 +150,28 @@ const choiceTab = ref<'north' | 'sector' | 'mainforce'>('north')
 const northFlow = ref<NorthFlowData | null>(null)
 const sectorFlows = ref<SectorFlow[]>([])
 const mainForceFlows = ref<MainForceFlow[]>([])
+
+// ========== 新增数据源状态 (Task #10) ==========
+// 今日头条
+const toutiaoNewsList = ref<ToutiaoNewsItem[]>([])
+// 新浪财经
+const sinaNewsList = ref<SinaNewsItem[]>([])
+// 网易财经
+const neteaseNewsList = ref<NeteaseNewsItem[]>([])
+// 腾讯财经
+const tencentNewsList = ref<TencentNewsItem[]>([])
+// 雪球新闻
+const xueqiuNewsList = ref<XueqiuNewsItem[]>([])
+// 东方财富新闻
+const eastmoneyNewsList = ref<EastmoneyNewsItem[]>([])
+// 同花顺
+const jqkaNewsList = ref<JqkaNewsItem[]>([])
+// 证券时报
+const stcnNewsList = ref<STCNNewsItem[]>([])
+// 中国证券报
+const csNewsList = ref<CSNewsItem[]>([])
+// 第一财经
+const yicaiNewsList = ref<YicaiNewsItem[]>([])
 
 // 通用
 const isLoading = ref(false)
@@ -266,13 +343,266 @@ function onChoiceTabChange(tab: 'north' | 'sector' | 'mainforce') {
   else if (tab === 'mainforce' && mainForceFlows.value.length === 0) loadChoiceMainForce()
 }
 
+// ========== 新增数据源加载函数 (Task #10) ==========
+
+async function loadToutiaoNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { toutiaoNewsList.value = await fetchToutiaoNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadSinaNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { sinaNewsList.value = await fetchSinaNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadNeteaseNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { neteaseNewsList.value = await fetchNeteaseNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadTencentNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { tencentNewsList.value = await fetchTencentNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadXueqiuNewsList() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { xueqiuNewsList.value = await fetchXueqiuNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadEastmoneyNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { eastmoneyNewsList.value = await fetchEastmoneyNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function load10jqkaNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { jqkaNewsList.value = await fetch10jqkaNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadSTCNNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { stcnNewsList.value = await fetchSTCNNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadCSNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { csNewsList.value = await fetchCSNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+async function loadYicaiNews() {
+  if (isLoading.value) return
+  isLoading.value = true
+  showLoadingToast({ message: t('common.loading'), forbidClick: true })
+  try { yicaiNewsList.value = await fetchYicaiNews(1, 20) }
+  catch { showToast(t('common.load_failed')) }
+  finally { isLoading.value = false; closeToast() }
+}
+
+// ========== Jaccard 相似度交叉验证 (Task #11) ==========
+
+/**
+ * 计算两个字符串的 Jaccard 相似度
+ * J(A,B) = |A ∩ B| / |A ∪ B|
+ * @param strA 字符串A
+ * @param strB 字符串B
+ * @returns 相似度 (0-1之间)
+ */
+function jaccardSimilarity(strA: string, strB: string): number {
+  // 将字符串转换为词集合 (按空格和标点分割)
+  const tokenize = (str: string): Set<string> => {
+    const tokens = str
+      .toLowerCase()
+      .replace(/[，。！？、；：""''《》（）【】\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2)
+    return new Set(tokens)
+  }
+  
+  const setA = tokenize(strA)
+  const setB = tokenize(strB)
+  
+  // 计算交集
+  const intersection = new Set([...setA].filter(x => setB.has(x)))
+  
+  // 计算并集
+  const union = new Set([...setA, ...setB])
+  
+  // Jaccard 相似度
+  return union.size === 0 ? 0 : intersection.size / union.size
+}
+
+/**
+ * 加载所有数据源并进行交叉验证
+ */
+async function loadAllSourcesWithCrossValidation() {
+  console.log('[News] 🚀 开始加载所有数据源，启用交叉验证...')
+  isCrossLoading.value = true
+  crossValidation.value.enabled = true
+  
+  const allNews: Array<{
+    id: string,
+    title: string,
+    summary: string,
+    source: string,
+    time: string,
+    url: string,
+    crossCount: number,
+    crossSources: string[]
+  }> = []
+  
+  // 定义所有数据源
+  const allSources = [
+    { name: '金十数据', fetch: async () => await fetchNewsList(1, 20, 'all') },
+    { name: '财联社', fetch: async () => await fetchClsTelegram(20) },
+    { name: '今日头条', fetch: async () => await fetchToutiaoNews(1, 20) },
+    { name: '新浪财经', fetch: async () => await fetchSinaNews(1, 20) },
+    { name: '网易财经', fetch: async () => await fetchNeteaseNews(1, 20) },
+    { name: '腾讯财经', fetch: async () => await fetchTencentNews(1, 20) },
+    { name: '雪球', fetch: async () => await fetchXueqiuNews(1, 20) },
+    { name: '东方财富', fetch: async () => await fetchEastmoneyNews(1, 20) },
+    { name: '同花顺', fetch: async () => await fetch10jqkaNews(1, 20) },
+    { name: '证券时报', fetch: async () => await fetchSTCNNews(1, 20) },
+    { name: '中国证券报', fetch: async () => await fetchCSNews(1, 20) },
+    { name: '第一财经', fetch: async () => await fetchYicaiNews(1, 20) }
+  ]
+  
+  // 并行加载所有数据源
+  const results = await Promise.allSettled(
+    allSources.map(async (source) => {
+      try {
+        const news = await source.fetch()
+        return { source: source.name, news }
+      } catch (err) {
+        console.warn(`[News] ⚠️ ${source.name} 加载失败:`, err)
+        return { source: source.name, news: [] }
+      }
+    })
+  )
+  
+  // 处理结果并标准化
+  results.forEach(result => {
+    if (result.status === 'fulfilled' && result.value.news.length > 0) {
+      const { source, news } = result.value
+      
+      news.forEach((item: any) => {
+        allNews.push({
+          id: item.id || `${source}_${Math.random()}`,
+          title: item.title || '',
+          summary: item.summary || item.content || '',
+          source: item.source || source,
+          time: item.time || new Date().toLocaleString(),
+          url: item.url || '#',
+          crossCount: 1,
+          crossSources: [source]
+        })
+      })
+    }
+  })
+  
+  // 使用 Jaccard 相似度进行交叉验证
+  console.log(`[News] 📊 开始交叉验证，共 ${allNews.length} 条新闻...`)
+  
+  const SIMILARITY_THRESHOLD = 0.5  // 相似度阈值
+  
+  for (let i = 0; i < allNews.length; i++) {
+    for (let j = i + 1; j < allNews.length; j++) {
+      const similarity = jaccardSimilarity(allNews[i].title, allNews[j].title)
+      
+      if (similarity > SIMILARITY_THRESHOLD) {
+        // 认为是同一新闻，合并来源
+        if (!allNews[i].crossSources.includes(allNews[j].source)) {
+          allNews[i].crossSources.push(allNews[j].source)
+          allNews[i].crossCount = allNews[i].crossSources.length
+        }
+        if (!allNews[j].crossSources.includes(allNews[i].source)) {
+          allNews[j].crossSources.push(allNews[i].source)
+          allNews[j].crossCount = allNews[j].crossSources.length
+        }
+      }
+    }
+  }
+  
+  // 按交叉验证次数排序（出现次数越多越靠前）
+  allNews.sort((a, b) => b.crossCount - a.crossCount)
+  
+  // 去重（保留交叉验证次数最多的）
+  const uniqueNews: typeof allNews = []
+  const seenTitles = new Set<string>()
+  
+  allNews.forEach(news => {
+    const normalizedTitle = news.title.substring(0, 30) // 取前30个字符作为标识
+    if (!seenTitles.has(normalizedTitle)) {
+      seenTitles.add(normalizedTitle)
+      uniqueNews.push(news)
+    }
+  })
+  
+  crossValidationNews.value = uniqueNews.slice(0, 50) // 最多显示50条
+  
+  console.log(`[News] ✅ 交叉验证完成，共 ${crossValidationNews.value.length} 条新闻`)
+  console.log(`[News] 📊 交叉验证统计:`, {
+    总新闻数: allNews.length,
+    去重后: crossValidationNews.value.length,
+    多来源新闻: crossValidationNews.value.filter(n => n.crossCount > 1).length
+  })
+  
+  isCrossLoading.value = false
+}
+
 // ========== 数据源切换 ==========
 
 function onSourceChange(source: DataSource) {
   activeSource.value = source
 
+  // 如果选择全部来源，启用交叉验证
+  if (source === 'all') {
+    loadAllSourcesWithCrossValidation()
+    return
+  }
+
   // 首次进入加载
-  if (source === 'cls') {
+  if (source === 'jin10') {
+    if (jin10Tab.value === 'news' && newsList.value.length === 0) loadJin10News()
+    else if (jin10Tab.value === 'flash' && flashList.value.length === 0) loadJin10Flash()
+    else if (jin10Tab.value === 'calendar' && calendarList.value.length === 0) loadJin10Calendar()
+  } else if (source === 'cls') {
     if (clsTab.value === 'telegram' && telegramList.value.length === 0) loadClsTelegram()
     else if (clsTab.value === 'hotTopics' && hotTopicsList.value.length === 0) loadClsHotTopics()
     else if (clsTab.value === 'plate' && plateList.value.length === 0) loadClsPlate()
@@ -284,6 +614,26 @@ function onSourceChange(source: DataSource) {
     if (choiceTab.value === 'north' && !northFlow.value) loadChoiceNorth()
     else if (choiceTab.value === 'sector' && sectorFlows.value.length === 0) loadChoiceSector()
     else if (choiceTab.value === 'mainforce' && mainForceFlows.value.length === 0) loadChoiceMainForce()
+  }
+  // 新增数据源
+  else if (source === 'toutiao' && toutiaoNewsList.value.length === 0) {
+    loadToutiaoNews()
+  } else if (source === 'sina' && sinaNewsList.value.length === 0) {
+    loadSinaNews()
+  } else if (source === 'netease' && neteaseNewsList.value.length === 0) {
+    loadNeteaseNews()
+  } else if (source === 'tencent' && tencentNewsList.value.length === 0) {
+    loadTencentNews()
+  } else if (source === 'eastmoney' && eastmoneyNewsList.value.length === 0) {
+    loadEastmoneyNews()
+  } else if (source === '10jqka' && jqkaNewsList.value.length === 0) {
+    load10jqkaNews()
+  } else if (source === 'stcn' && stcnNewsList.value.length === 0) {
+    loadSTCNNews()
+  } else if (source === 'csnews' && csNewsList.value.length === 0) {
+    loadCSNews()
+  } else if (source === 'yicai' && yicaiNewsList.value.length === 0) {
+    loadYicaiNews()
   }
 }
 
@@ -309,7 +659,55 @@ function refreshCurrentSource() {
       northFlow.value = null
       loadChoiceNorth()
       break
+    // 新增数据源
+    case 'toutiao':
+      toutiaoNewsList.value = []
+      loadToutiaoNews()
+      break
+    case 'sina':
+      sinaNewsList.value = []
+      loadSinaNews()
+      break
+    case 'netease':
+      neteaseNewsList.value = []
+      loadNeteaseNews()
+      break
+    case 'tencent':
+      tencentNewsList.value = []
+      loadTencentNews()
+      break
+    case 'eastmoney':
+      eastmoneyNewsList.value = []
+      loadEastmoneyNews()
+      break
+    case '10jqka':
+      jqkaNewsList.value = []
+      load10jqkaNews()
+      break
+    case 'stcn':
+      stcnNewsList.value = []
+      loadSTCNNews()
+      break
+    case 'csnews':
+      csNewsList.value = []
+      loadCSNews()
+      break
+    case 'yicai':
+      yicaiNewsList.value = []
+      loadYicaiNews()
+      break
+    // 交叉验证
+    case 'all':
+      crossValidationNews.value = []
+      loadAllSourcesWithCrossValidation()
+      break
   }
+}
+
+// 获取当前数据源名称
+function getCurrentSourceName(): string {
+  const option = sourceOptions.find(opt => opt.value === activeSource.value)
+  return option ? option.text : '金十数据'
 }
 
 onMounted(() => {
@@ -328,28 +726,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 数据源切换 -->
-    <div class="source-tabs">
-      <div
-        class="source-item"
-        :class="{ active: activeSource === 'jin10' }"
-        @click="onSourceChange('jin10')"
-      >{{ t('news.jin10') }}</div>
-      <div
-        class="source-item"
-        :class="{ active: activeSource === 'cls' }"
-        @click="onSourceChange('cls')"
-      >{{ t('news.cls') }}</div>
-      <div
-        class="source-item"
-        :class="{ active: activeSource === 'xueqiu' }"
-        @click="onSourceChange('xueqiu')"
-      >{{ t('news.xueqiu') }}</div>
-      <div
-        class="source-item"
-        :class="{ active: activeSource === 'choice' }"
-        @click="onSourceChange('choice')"
-      >{{ t('news.capital_flow') }}</div>
+    <!-- 数据源切换 (Task #10: 改为下拉选择) -->
+    <div class="source-selector-bar">
+      <van-dropdown-menu active-color="#1677ff">
+        <van-dropdown-item v-model="activeSource" :options="sourceOptions" :title="getCurrentSourceName()" />
+      </van-dropdown-menu>
+    </div>
+
+    <!-- 交叉验证统计 -->
+    <div v-if="activeSource === 'all' && crossValidationNews.length > 0" class="cross-validation-stats">
+      <span class="stat-item">📊 共 {{ crossValidationNews.length }} 条新闻</span>
+      <span class="stat-item">✅ {{ crossValidationNews.filter(n => n.crossCount > 1).length }} 条经过交叉验证</span>
     </div>
 
     <!-- 搜索框（Task #9 P0） -->
