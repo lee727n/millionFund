@@ -12,11 +12,10 @@ import { showConfirmDialog, showToast } from 'vant'
 import { logger, copyLogsToClipboard, exportLogsAsText } from '@/utils/logger'
 import { useHomeData } from '@/composables/useHomeData'
 import { useActionSheet } from '@/composables/useActionSheet'
-import type { HoldingWithProfit } from '@/stores/holding'
+import { useHoldingsLogic } from '@/composables/useHoldingsLogic'
+import { useHomePopups } from '@/composables/useHomePopups'
 import type { MarketIndexSimple } from '@/api/fundFast'
 import type { AssetClass } from '@/types/holding'
-import { getSourceLabel } from '@/config/sources'
-import { ASSET_CLASS_CONFIG } from '@/types/holding'
 
 // 子组件导入
 import DashboardSummary from '@/components/home/DashboardSummary.vue'
@@ -41,6 +40,33 @@ const { indices, globalIndices, tradingSession, currentTime, isRefreshing, loadI
 
 // ActionSheet composable
 const actionSheet = useActionSheet()
+
+// 持仓逻辑 composable
+const {
+  sortDirection,
+  uiMode,
+  currentAssetClassFilter,
+  currentSourceFilter,
+  normalHoldings,
+  observeHoldings,
+  totalTodayProfit,
+  totalTodayProfitPercent,
+  observeTodayProfit,
+  observeTodayProfitPercent,
+  handleSort,
+  filterBySource,
+  filterByAssetClass,
+} = useHoldingsLogic()
+
+// 弹窗状态 composable
+const {
+  showTopHoldingsPopup,
+  topHoldingsFund,
+  openTopHoldings,
+  showIntradayPopup,
+  intradayFund,
+  openIntradayModal,
+} = useHomePopups()
 
 // 自动刷新开关状态
 const autoRefreshEnabled = ref(true)

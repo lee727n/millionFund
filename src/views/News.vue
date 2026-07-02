@@ -28,6 +28,20 @@ import type { ApiNewsItem } from '@/types/news'
 const router = useRouter()
 const { t } = useI18n()
 
+// ========== 时间格式化助手 ==========
+function formatTime(isoString: string): string {
+  const date = new Date(isoString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins}分钟前`
+  if (diffHours < 24) return `${diffHours}小时前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 // ========== 搜索功能（Task #9 P0） ==========
 const searchKeyword = ref('')
 
@@ -64,7 +78,7 @@ const crossValidationNews = ref<Array<{
   title: string,
   summary: string,
   source: string,
-  time: string,
+  publishedAt: string,
   url: string,
   crossCount: number,
   crossSources: string[]
@@ -103,25 +117,25 @@ const mainForceFlows = ref<MainForceFlow[]>([])
 
 // ========== 新增数据源状态 (Task #10) ==========
 // 今日头条
-const toutiaoNewsList = ref<ToutiaoNewsItem[]>([])
+const toutiaoNewsList = ref<ApiNewsItem[]>([])
 // 新浪财经
-const sinaNewsList = ref<SinaNewsItem[]>([])
+const sinaNewsList = ref<ApiNewsItem[]>([])
 // 网易财经
-const neteaseNewsList = ref<NeteaseNewsItem[]>([])
+const neteaseNewsList = ref<ApiNewsItem[]>([])
 // 腾讯财经
-const tencentNewsList = ref<TencentNewsItem[]>([])
+const tencentNewsList = ref<ApiNewsItem[]>([])
 // 雪球新闻
-const xueqiuNewsList = ref<XueqiuNewsItem[]>([])
+const xueqiuNewsList = ref<ApiNewsItem[]>([])
 // 东方财富新闻
-const eastmoneyNewsList = ref<EastmoneyNewsItem[]>([])
+const eastmoneyNewsList = ref<ApiNewsItem[]>([])
 // 同花顺
-const jqkaNewsList = ref<JqkaNewsItem[]>([])
+const jqkaNewsList = ref<ApiNewsItem[]>([])
 // 证券时报
-const stcnNewsList = ref<STCNNewsItem[]>([])
+const stcnNewsList = ref<ApiNewsItem[]>([])
 // 中国证券报
-const csNewsList = ref<CSNewsItem[]>([])
+const csNewsList = ref<ApiNewsItem[]>([])
 // 第一财经
-const yicaiNewsList = ref<YicaiNewsItem[]>([])
+const yicaiNewsList = ref<ApiNewsItem[]>([])
 
 // 通用
 const isLoading = ref(false)
@@ -483,7 +497,7 @@ async function loadAllSourcesWithCrossValidation() {
     title: string,
     summary: string,
     source: string,
-    time: string,
+    publishedAt: string,
     url: string,
     crossCount: number,
     crossSources: string[]
@@ -529,7 +543,7 @@ async function loadAllSourcesWithCrossValidation() {
           title: item.title || '',
           summary: item.summary || item.content || '',
           source: item.source || source,
-          time: item.time || new Date().toLocaleString(),
+          publishedAt: item.publishedAt || new Date().toISOString(),
           url: item.url || '#',
           crossCount: 1,
           crossSources: [source]
@@ -564,12 +578,13 @@ async function loadAllSourcesWithCrossValidation() {
   // 按交叉验证次数排序（出现次数越多越靠前）
   allNews.sort((a, b) => b.crossCount - a.crossCount)
   
-  // 去重（保留交叉验证次数最多的）
+  // 去重（保留交叉验证次数最多的，使用完整标题进行去重）
   const uniqueNews: typeof allNews = []
   const seenTitles = new Set<string>()
   
   allNews.forEach(news => {
-    const normalizedTitle = news.title.substring(0, 30) // 取前30个字符作为标识
+    // 使用完整标题进行去重（不再截断前30个字符）
+    const normalizedTitle = news.title.trim().toLowerCase()
     if (!seenTitles.has(normalizedTitle)) {
       seenTitles.add(normalizedTitle)
       uniqueNews.push(news)
@@ -1115,7 +1130,7 @@ onMounted(() => {
         <div v-else-if="toutiaoNewsList.length > 0" class="scroll-list">
           <div v-for="item in toutiaoNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">今日头条</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1133,7 +1148,7 @@ onMounted(() => {
         <div v-else-if="sinaNewsList.length > 0" class="scroll-list">
           <div v-for="item in sinaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">新浪财经</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1151,7 +1166,7 @@ onMounted(() => {
         <div v-else-if="neteaseNewsList.length > 0" class="scroll-list">
           <div v-for="item in neteaseNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">网易财经</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1169,7 +1184,7 @@ onMounted(() => {
         <div v-else-if="tencentNewsList.length > 0" class="scroll-list">
           <div v-for="item in tencentNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">腾讯财经</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1192,7 +1207,7 @@ onMounted(() => {
         <div v-else-if="eastmoneyNewsList.length > 0" class="scroll-list">
           <div v-for="item in eastmoneyNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">东方财富</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1210,7 +1225,7 @@ onMounted(() => {
         <div v-else-if="jqkaNewsList.length > 0" class="scroll-list">
           <div v-for="item in jqkaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">同花顺</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1228,7 +1243,7 @@ onMounted(() => {
         <div v-else-if="stcnNewsList.length > 0" class="scroll-list">
           <div v-for="item in stcnNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">证券时报</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1246,7 +1261,7 @@ onMounted(() => {
         <div v-else-if="csNewsList.length > 0" class="scroll-list">
           <div v-for="item in csNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">中国证券报</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
@@ -1264,7 +1279,7 @@ onMounted(() => {
         <div v-else-if="yicaiNewsList.length > 0" class="scroll-list">
           <div v-for="item in yicaiNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
             <div class="news-source-tag">第一财经</div>
-            <div class="news-time">{{ item.time }}</div>
+            <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
           </div>
