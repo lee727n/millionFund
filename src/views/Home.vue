@@ -23,7 +23,20 @@ const networkStore = useNetworkStore()
 const { t, locale } = useI18n()
 
 // 使用首页数据 hook
-const { indices, globalIndices, tradingSession, currentTime, isRefreshing, loadIndices, loadGlobalIndices } = useHomeData()
+const { 
+  indices, 
+  globalIndices, 
+  tradingSession, 
+  currentTime, 
+  isRefreshing, 
+  isWeekend,
+  hs300ChangePercent,
+  topIndices,
+  combinedIndices,
+  mobileIndices,
+  loadIndices, 
+  loadGlobalIndices 
+} = useHomeData()
 
 // ActionSheet composable
 const actionSheet = useActionSheet()
@@ -85,67 +98,6 @@ watch(autoRefreshEnabled, (newValue) => {
     }
     showToast('自动刷新已关闭')
   }
-})
-
-// ========== 计算属性 ==========
-const isWeekend = computed(() => {
-  const day = currentTime.value.getDay()
-  return day === 0 || day === 6
-})
-
-// 沪深300实时涨跌幅
-const hs300ChangePercent = computed(() => {
-  const hs300 = indices.value.find(idx => idx.code === '000300')
-  return hs300 ? hs300.changePercent : 0
-})
-
-// 顶部展示指数
-const topIndices = computed(() => {
-  const result: MarketIndexSimple[] = []
-  const shIndex = indices.value.find(idx => idx.code === '000001')
-  const cyIndex = indices.value.find(idx => idx.code === '399006')
-  const nasdaqIndex = globalIndices.value.find(idx => idx.name.includes('纳斯达克'))
-  
-  if (shIndex) result.push(shIndex)
-  if (cyIndex) result.push(cyIndex)
-  if (nasdaqIndex) {
-    result.push({
-      code: nasdaqIndex.code,
-      name: '纳斯达克',
-      current: nasdaqIndex.price,
-      change: nasdaqIndex.price * nasdaqIndex.changePercent / 100,
-      changePercent: nasdaqIndex.changePercent
-    })
-  }
-  
-  return result
-})
-
-// 合并后的指数列表
-const combinedIndices = computed(() => {
-  const addedIndexNames = new Set(indices.value.map(idx => idx.name))
-  const result: MarketIndexSimple[] = [...indices.value]
-  
-  globalIndices.value.forEach(gidx => {
-    if (!addedIndexNames.has(gidx.name)) {
-      addedIndexNames.add(gidx.name)
-      result.push({
-        code: gidx.code,
-        name: gidx.name,
-        current: gidx.price,
-        change: gidx.price * gidx.changePercent / 100,
-        changePercent: gidx.changePercent
-      })
-    }
-  })
-  
-  return result
-})
-
-// 移动端专用指数列表
-const mobileIndices = computed(() => {
-  const targetIndices = ['上证指数', '恒生指数', '日经225', '道琼斯', '标普500', '纳斯达克']
-  return targetIndices.map(name => combinedIndices.value.find(idx => idx.name === name)).filter(Boolean) as MarketIndexSimple[]
 })
 
 // ========== 操作方法 ==========
