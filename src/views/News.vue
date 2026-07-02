@@ -30,57 +30,6 @@ const { t } = useI18n()
 // ========== 搜索功能（Task #9 P0） ==========
 const searchKeyword = ref('')
 
-// 过滤交叉验证新闻列表
-const filteredCrossValidationNews = computed(() => {
-  if (!searchKeyword.value.trim()) return crossValidationNews.value
-  const kw = searchKeyword.value.toLowerCase()
-  return crossValidationNews.value.filter(item =>
-    item.title.toLowerCase().includes(kw) ||
-    item.summary.toLowerCase().includes(kw) ||
-    item.source.toLowerCase().includes(kw)
-  )
-})
-
-// 过滤新闻列表（金十）
-const filteredNewsList = computed(() => {
-  if (!searchKeyword.value.trim()) return newsList.value
-  const kw = searchKeyword.value.toLowerCase()
-  return newsList.value.filter(item =>
-    item.title.toLowerCase().includes(kw) ||
-    item.summary.toLowerCase().includes(kw) ||
-    item.source.toLowerCase().includes(kw)
-  )
-})
-
-// 过滤快讯列表（金十）
-const filteredFlashList = computed(() => {
-  if (!searchKeyword.value.trim()) return flashList.value
-  const kw = searchKeyword.value.toLowerCase()
-  return flashList.value.filter(item =>
-    item.content.toLowerCase().includes(kw)
-  )
-})
-
-// 过滤电报列表（财联社）
-const filteredTtelegramList = computed(() => {
-  if (!searchKeyword.value.trim()) return telegramList.value
-  const kw = searchKeyword.value.toLowerCase()
-  return telegramList.value.filter(item =>
-    item.content.toLowerCase().includes(kw)
-  )
-})
-
-// 过滤讨论列表（雪球）
-const filteredDiscussionList = computed(() => {
-  if (!searchKeyword.value.trim()) return discussionList.value
-  const kw = searchKeyword.value.toLowerCase()
-  return discussionList.value.filter(item =>
-    item.title.toLowerCase().includes(kw) ||
-    item.content.toLowerCase().includes(kw) ||
-    item.userName.toLowerCase().includes(kw)
-  )
-})
-
 // ========== 数据源选择 ==========
 type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice' | 'toutiao' | 'sina' | 'netease' | 'tencent' | 'eastmoney' | '10jqka' | 'stcn' | 'csnews' | 'yicai' | 'all'
 const activeSource = ref<DataSource>('jin10')
@@ -175,6 +124,58 @@ const yicaiNewsList = ref<YicaiNewsItem[]>([])
 
 // 通用
 const isLoading = ref(false)
+
+// ========== 过滤新闻列表 ==========
+// 过滤新闻列表（金十）
+const filteredNewsList = computed(() => {
+  if (!searchKeyword.value.trim()) return newsList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return newsList.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.summary.toLowerCase().includes(kw) ||
+    item.source.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤快讯列表（金十）
+const filteredFlashList = computed(() => {
+  if (!searchKeyword.value.trim()) return flashList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return flashList.value.filter(item =>
+    item.content.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤电报列表（财联社）
+const filteredTelegramList = computed(() => {
+  if (!searchKeyword.value.trim()) return telegramList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return telegramList.value.filter(item =>
+    item.content.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤讨论列表（雪球）
+const filteredDiscussionList = computed(() => {
+  if (!searchKeyword.value.trim()) return discussionList.value
+  const kw = searchKeyword.value.toLowerCase()
+  return discussionList.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.content.toLowerCase().includes(kw) ||
+    item.userName.toLowerCase().includes(kw)
+  )
+})
+
+// 过滤交叉验证新闻列表
+const filteredCrossValidationNews = computed(() => {
+  if (!searchKeyword.value.trim()) return crossValidationNews.value
+  const kw = searchKeyword.value.toLowerCase()
+  return crossValidationNews.value.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.summary.toLowerCase().includes(kw) ||
+    item.source.toLowerCase().includes(kw)
+  )
+})
 
 // ========== 金十数据 ==========
 
@@ -711,7 +712,7 @@ function getCurrentSourceName(): string {
 }
 
 onMounted(() => {
-  loadJin10News()
+  // 不再自动加载，等待用户选择数据源
 })
 </script>
 
@@ -751,8 +752,32 @@ onMounted(() => {
       />
     </div>
 
-    <!-- ==================== {{ t('news.jin10') }} ==================== -->
-    <template v-if="activeSource === 'jin10'">
+    <!-- ==================== 交叉验证视图 (Task #10 & #11) ==================== -->
+    <template v-if="activeSource === 'all'">
+      <div class="content-area">
+        <div v-if="isCrossLoading" class="loading-container">
+          <van-loading size="24px">正在加载并交叉验证...</van-loading>
+        </div>
+        <div v-else-if="filteredCrossValidationNews.length > 0" class="scroll-list">
+          <div v-for="news in filteredCrossValidationNews" :key="news.id" class="news-card" @click="router.push(news.url)">
+            <div class="news-source-tag" :class="{ 'cross-validated': news.crossCount > 1 }">{{ news.source }}</div>
+            <div class="news-time">{{ news.time }}</div>
+            <div class="news-title">{{ news.title }}</div>
+            <div class="news-summary">{{ news.summary }}</div>
+            <div v-if="news.crossCount > 1" class="news-cross-validation">
+              <span class="cross-badge">🔄 在{{ news.crossCount }}个来源中出现</span>
+              <div class="cross-sources">
+                <span v-for="source in news.crossSources" :key="source" class="cross-source-tag">{{ source }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 金十数据 ==================== -->
+    <template v-else-if="activeSource === 'jin10'">
       <div class="sub-tabs">
         <div class="sub-tab" :class="{ active: jin10Tab === 'news' }" @click="onJin10TabChange('news')">{{ t('news.tab_news') }}</div>
         <div class="sub-tab" :class="{ active: jin10Tab === 'flash' }" @click="onJin10TabChange('flash')">{{ t('news.tab_flash') }}</div>
@@ -829,8 +854,8 @@ onMounted(() => {
       </div>
     </template>
 
-    <!-- ==================== {{ t('news.cls') }} ==================== -->
-    <template v-if="activeSource === 'cls'">
+    <!-- ==================== 财联社 ==================== -->
+    <template v-else-if="activeSource === 'cls'">
       <div class="sub-tabs">
         <div class="sub-tab" :class="{ active: clsTab === 'telegram' }" @click="onClsTabChange('telegram')">{{ t('news.tab_telegram') }}</div>
         <div class="sub-tab" :class="{ active: clsTab === 'hotTopics' }" @click="onClsTabChange('hotTopics')">{{ t('news.tab_hot') }}</div>
@@ -840,8 +865,8 @@ onMounted(() => {
       <!-- 电报 -->
       <div v-if="clsTab === 'telegram'" class="content-area">
         <div class="scroll-list">
-          <template v-if="filteredTtelegramList.length > 0">
-            <div v-for="item in filteredTtelegramList" :key="item.id" class="flash-card" :class="'flash-' + item.type">
+          <template v-if="filteredTelegramList.length > 0">
+            <div v-for="item in filteredTelegramList" :key="item.id" class="flash-card" :class="'flash-' + item.type">
               <div class="flash-header">
                 <span class="flash-type-badge" :class="'flash-' + item.type">
                   {{ item.type === 'urgent' ? t('news.urgent') : item.type === 'important' ? t('news.important') : t('news.flash_type') }}
@@ -866,7 +891,7 @@ onMounted(() => {
               <div class="topic-rank">{{ idx + 1 }}</div>
               <div class="topic-info">
                 <div class="topic-name">{{ topic.name }}</div>
-                <div class="topic-heat">热度 {{ topic.热度 >= 10000 ? (topic.热度 / 10000).toFixed(0) + '万' : topic.热度 }}</div>
+                <div class="topic-heat">热度 {{ topic.heat >= 10000 ? (topic.heat / 10000).toFixed(0) + '万' : topic.heat }}</div>
               </div>
               <div class="topic-change" :class="topic.change >= 0 ? 'up' : 'down'">
                 {{ topic.change >= 0 ? '+' : '' }}{{ topic.change }}%
@@ -893,8 +918,8 @@ onMounted(() => {
       </div>
     </template>
 
-    <!-- ==================== {{ t('news.xueqiu') }} ==================== -->
-    <template v-if="activeSource === 'xueqiu'">
+    <!-- ==================== 雪球 ==================== -->
+    <template v-else-if="activeSource === 'xueqiu'">
       <div class="sub-tabs">
         <div class="sub-tab" :class="{ active: xueqiuTab === 'discussion' }" @click="onXueqiuTabChange('discussion')">{{ t('news.tab_discussion') }}</div>
         <div class="sub-tab" :class="{ active: xueqiuTab === 'sentiment' }" @click="onXueqiuTabChange('sentiment')">{{ t('news.tab_sentiment') }}</div>
@@ -980,8 +1005,8 @@ onMounted(() => {
       </div>
     </template>
 
-    <!-- ==================== 东方财富 {{ t('news.capital_flow') }} ==================== -->
-    <template v-if="activeSource === 'choice'">
+    <!-- ==================== 东方财富 ==================== -->
+    <template v-else-if="activeSource === 'choice'">
       <div class="sub-tabs">
         <div class="sub-tab" :class="{ active: choiceTab === 'north' }" @click="onChoiceTabChange('north')">{{ t('news.tab_north') }}</div>
         <div class="sub-tab" :class="{ active: choiceTab === 'sector' }" @click="onChoiceTabChange('sector')">{{ t('news.tab_sector') }}</div>
@@ -1079,6 +1104,173 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <!-- ==================== 今日头条 ==================== -->
+    <template v-else-if="activeSource === 'toutiao'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="toutiaoNewsList.length > 0" class="scroll-list">
+          <div v-for="item in toutiaoNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">今日头条</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 新浪财经 ==================== -->
+    <template v-else-if="activeSource === 'sina'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="sinaNewsList.length > 0" class="scroll-list">
+          <div v-for="item in sinaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">新浪财经</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 网易财经 ==================== -->
+    <template v-else-if="activeSource === 'netease'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="neteaseNewsList.length > 0" class="scroll-list">
+          <div v-for="item in neteaseNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">网易财经</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 腾讯财经 ==================== -->
+    <template v-else-if="activeSource === 'tencent'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="tencentNewsList.length > 0" class="scroll-list">
+          <div v-for="item in tencentNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">腾讯财经</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 雪球新闻 ==================== -->
+    <template v-else-if="activeSource === 'xueqiu'">
+      <!-- 已有雪球视图，这里添加新闻视图 -->
+    </template>
+
+    <!-- ==================== 东方财富新闻 ==================== -->
+    <template v-else-if="activeSource === 'eastmoney'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="eastmoneyNewsList.length > 0" class="scroll-list">
+          <div v-for="item in eastmoneyNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">东方财富</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 同花顺 ==================== -->
+    <template v-else-if="activeSource === '10jqka'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="jqkaNewsList.length > 0" class="scroll-list">
+          <div v-for="item in jqkaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">同花顺</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 证券时报 ==================== -->
+    <template v-else-if="activeSource === 'stcn'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="stcnNewsList.length > 0" class="scroll-list">
+          <div v-for="item in stcnNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">证券时报</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 中国证券报 ==================== -->
+    <template v-else-if="activeSource === 'csnews'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="csNewsList.length > 0" class="scroll-list">
+          <div v-for="item in csNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">中国证券报</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
+
+    <!-- ==================== 第一财经 ==================== -->
+    <template v-else-if="activeSource === 'yicai'">
+      <div class="content-area">
+        <div v-if="isLoading" class="loading-container">
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <div v-else-if="yicaiNewsList.length > 0" class="scroll-list">
+          <div v-for="item in yicaiNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">第一财经</div>
+            <div class="news-time">{{ item.time }}</div>
+            <div class="news-title">{{ item.title }}</div>
+            <div class="news-summary">{{ item.summary }}</div>
+          </div>
+        </div>
+        <van-empty v-else description="暂无新闻，请尝试刷新" />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -1104,32 +1296,46 @@ onMounted(() => {
 .nav-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
 .nav-actions { display: flex; align-items: center; gap: 8px; }
 
-/* 数据源切换 */
-.source-tabs {
-  display: flex;
+/* 数据源选择器 */
+.source-selector-bar {
   background: var(--bg-secondary);
-  padding: 8px 12px;
-  gap: 6px;
   border-bottom: 1px solid var(--border-color);
 }
-.source-item {
-  flex: 1;
-  text-align: center;
-  padding: 8px 0;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
+
+/* 交叉验证统计 */
+.cross-validation-stats {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
   color: var(--text-secondary);
-  background: var(--bg-primary);
-  transition: all 0.2s;
-  cursor: pointer;
-}
-.source-item.active {
-  color: #fff;
-  background: #1677ff;
-  font-weight: 600;
 }
 
+.stat-item {
+  display: inline-block;
+}
+
+/* 搜索栏 */
+.search-bar {
+  padding: 8px 12px;
+  background: var(--bg-primary);
+}
+
+/* 加载容器 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+/* 内容区 */
+.content-area { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.scroll-list { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+
+/* 子标签 */
 .sub-tabs {
   display: flex;
   background: var(--bg-primary);
@@ -1175,10 +1381,7 @@ onMounted(() => {
   color: #fff;
 }
 
-/* 内容区 */
-.content-area { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-.scroll-list { flex: 1; overflow-y: auto; padding-bottom: 20px; }
-
+/* 分类滚动 */
 .category-scroll-x {
   overflow-x: auto;
   white-space: nowrap;
@@ -1211,6 +1414,7 @@ onMounted(() => {
   padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  cursor: pointer;
 }
 .news-time { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
 .news-category-tag {
@@ -1226,6 +1430,50 @@ onMounted(() => {
 .news-summary { font-size: 14px; color: var(--text-secondary); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .news-tags { display: flex; gap: 6px; margin-top: 10px; }
 .news-tag { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: rgba(0,0,0,0.05); color: var(--text-secondary); }
+
+/* 新闻来源标签 */
+.news-source-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 8px;
+  background: #1989fa;
+  color: white;
+  font-size: 10px;
+  border-radius: 4px;
+}
+.news-source-tag.cross-validated {
+  background: #07c160;
+}
+
+/* 交叉验证 */
+.news-cross-validation {
+  margin-top: 10px;
+  padding: 8px;
+  background: #f7f8fa;
+  border-radius: 8px;
+}
+.cross-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #07c160;
+  background: #e8f8ef;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+.cross-sources {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cross-source-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(7, 193, 96, 0.1);
+  color: #07c160;
+}
 
 /* 快讯/电报卡片 */
 .flash-card { margin: 8px 12px; padding: 14px; border-radius: 10px; border-left: 4px solid; }
