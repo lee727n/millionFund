@@ -33,6 +33,174 @@ export async function isTesseractSupported(): Promise<boolean> {
 }
 
 /**
+ * OCR 图像预处理管道
+ * [WHY] 原始截图常有噪声、低对比度、彩色背景，直接 OCR 识别率低
+ * [WHAT] 灰度化 → 自适应二值化 → 去噪，返回增强后的图像（Base64）
+ * @param imageSource 原始图片（File 或 Base64 URL）
+ * @returns 预处理后的图像（Base64 PNG）
+ */
+async function preprocessImageForOcr(imageSource: File | string): Promise<string> {
+  // [WHAT] Step 1: 将输入统一为 HTMLImageElement
+  const img = await loadImage(imageSource)
+
+  // [WHAT] Step 2: 创建 Canvas 并绘制图像
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  canvas.width = img.width
+  canvas.height = img.height
+  ctx.drawImage(img, 0, 0)
+
+  // [WHAT] Step 3: 读取像素数据
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+
+  // [WHAT] Step 4: 灰度化（加权平均法，符合人眼感知）
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]!
+    const g = data[i + 1]!
+    const b = data[i + 2]!
+    // 加权灰度：0.299*R + 0.587*G + 0.114*B
+    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+    data[i] = gray
+    data[i + 1] = gray
+    data[i + 2] = gray
+    // Alpha 通道保持不变
+  }
+
+  // [WHAT] Step 5: 自适应二值化（局部阈值，处理光照不均）
+  // 使用 5x5 窗口的局部平均值作为阈值
+  const thresholdMap = adaptiveThreshold(data, canvas.width, canvas.height)
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i]!
+    const threshold = thresholdMap[i / 4]!
+    // 灰度 < 阈值 → 黑色（文字），否则白色（背景）
+    const value = gray < threshold ? 0 : 255
+    data[i] = value
+    data[i + 1] = value
+    data[i + 2] = value
+  }
+
+  // [WHAT] Step 6: 去噪（3x3 中值滤波，去除椒盐噪声）
+  const denoised = medianFilter(data, canvas.width, canvas.height)
+  imageData.data.set(denoised)
+  
+  // [WHAT] Step 7: 将处理后的图像写回 Canvas
+  ctx.putImageData(imageData, 0, 0)
+
+  // [WHAT] Step 8: 返回 Base64（PNG 格式，无损）
+  return canvas.toDataURL('image/png')
+}
+
+/**
+ * 加载图片为 HTMLImageElement
+ */
+function loadImage(imageSource: File | string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('图片加载失败'))
+    
+    if (imageSource instanceof File) {
+      const reader = new FileReader()
+      reader.onload = () => { img.src = reader.result as string }
+      reader.onerror = () => reject(new Error('文件读取失败'))
+      reader.readAsDataURL(imageSource)
+    } else {
+      img.src = imageSource
+    }
+  })
+}
+
+/**
+ * 自适应阈值计算
+ * [WHY] 全局阈值对光照不均的截图效果差，自适应阈值能更好地处理
+ * [HOW] 对每个像素，计算其周围 5x5 窗口的平均灰度，乘以系数 k 作为阈值
+ */
+function adaptiveThreshold(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  blockSize: number = 5,
+  k: number = 0.85
+): number[] {
+  const grayData: number[] = []
+  for (let i = 0; i < data.length; i += 4) {
+    grayData.push(data[i]!)
+  }
+
+  const thresholdMap: number[] = new Array(grayData.length)
+  const halfBlock = Math.floor(blockSize / 2)
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x
+      
+      // 计算局部窗口的平均值
+      let sum = 0
+      let count = 0
+      for (let dy = -halfBlock; dy <= halfBlock; dy++) {
+        for (let dx = -halfBlock; dx <= halfBlock; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            sum += grayData[ny * width + nx]!
+            count++
+          }
+        }
+      }
+      
+      const avg = sum / count
+      thresholdMap[idx] = avg * k  // 乘以系数，调整阈值灵敏度
+    }
+  }
+
+  return thresholdMap
+}
+
+/**
+ * 3x3 中值滤波去噪
+ * [WHY] 椒盐噪声会干扰 OCR 识别，中值滤波能有效去除
+ */
+function medianFilter(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number
+): Uint8ClampedArray {
+  const result = new Uint8ClampedArray(data.length)
+  const halfKernel = 1  // 3x3 核
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4
+      
+      // 收集 3x3 窗口内的灰度值
+      const values: number[] = []
+      for (let dy = -halfKernel; dy <= halfKernel; dy++) {
+        for (let dx = -halfKernel; dx <= halfKernel; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const nIdx = (ny * width + nx) * 4
+            values.push(data[nIdx]!)
+          }
+        }
+      }
+      
+      // 取中值
+      values.sort((a, b) => a - b)
+      const median = values[Math.floor(values.length / 2)]!
+      
+      result[idx] = median
+      result[idx + 1] = median
+      result[idx + 2] = median
+      result[idx + 3] = data[idx + 3]!  // Alpha 不变
+    }
+  }
+
+  return result
+}
+
+/**
  * 识别结果中的持仓项
  */
 export interface RecognizedHolding {
@@ -82,8 +250,12 @@ export async function recognizeText(
   }
 
   try {
+    // [IMPROVE] 图像预处理：增强 OCR 识别率（灰度 + 自适应阈值 + 去噪）
+    const processedImage = await preprocessImageForOcr(imageSource)
+
     // [FIX] 添加超时保护，避免移动端卡死
-    const ocrPromise = (Tesseract as any).recognize(imageSource, 'eng', { logger: makeLogger() })
+    // [IMPROVE] 语言包从 eng 切换为 chi_sim+eng，支持中英文混合识别（支付宝/天天基金截图优化）
+    const ocrPromise = (Tesseract as any).recognize(processedImage, 'chi_sim+eng', { logger: makeLogger() })
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('OCR 识别超时（30秒）')), 30000)
     )
