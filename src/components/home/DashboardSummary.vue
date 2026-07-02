@@ -104,7 +104,7 @@ function filterByAssetClass(assetClass: AssetClass | '') {
 </script>
 
 <template>
-  <div class="market-overview">
+  <div class="market-overview" data-testid="dashboard-summary">
     <div class="overview-title">
       <div class="title-left">
         <span class="live-dot" :class="tradingStatus.class"></span>

@@ -201,7 +201,7 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
 </script>
 
 <template>
-  <div class="fund-compare-page">
+  <div class="fund-compare-page" data-testid="fund-compare-page">
     <!-- 导航栏 -->
     <van-nav-bar
       title="基金对比"
@@ -231,12 +231,13 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
     </div>
 
     <!-- 添加基金区域 -->
-    <div class="add-section">
+    <div class="add-section" data-testid="add-fund-section">
       <div class="added-funds">
         <div
           v-for="fund in comparisonList"
           :key="fund.code"
           class="fund-tag"
+          data-testid="fund-tag"
         >
           <span class="fund-tag-name">{{ fund.name }}</span>
           <van-icon
@@ -247,14 +248,15 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
           />
         </div>
 
-        <van-button
-          v-if="!isMaxReached"
-          type="primary"
-          plain
-          size="small"
-          class="add-btn"
-          @click="showAddPanel = true"
-        >
+      <van-button
+        v-if="!isMaxReached"
+        type="primary"
+        plain
+        size="small"
+        class="add-btn"
+        data-testid="add-fund-button"
+        @click="showAddPanel = true"
+      >
           <van-icon name="plus" /> 添加基金
         </van-button>
       </div>
