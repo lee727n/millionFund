@@ -53,9 +53,7 @@ const router = createRouter({
     },
     {
       path: '/finance-news',
-      name: 'finance-news',
-      component: () => import('@/views/FinanceNews.vue'),
-      meta: { title: '金融资讯' }
+      redirect: '/news'
     },
     {
       path: '/market',
