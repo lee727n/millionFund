@@ -6,6 +6,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundMarket'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { logger } from '@/utils/logger'
+import { useDefaultWebSocket, type IndexUpdateData } from './useWebSocket'
 
 export function useHomeData() {
   // 大盘指数
@@ -22,6 +23,9 @@ export function useHomeData() {
   
   // 刷新状态
   const isRefreshing = ref(false)
+  
+  // WebSocket 连接（用于实时更新）
+  const { connectionStatus, connect, on, off } = useWebSocket()
   
   // 沪深300实时涨跌幅
   const hs300ChangePercent = computed(() => {
@@ -81,6 +85,32 @@ export function useHomeData() {
   // 交易状态定时器
   let tradingSessionInterval: number | undefined
   
+  // [WHAT] 处理指数更新（WebSocket 推送）
+  function handleIndexUpdate(updateData: IndexUpdateData): void {
+    logger.debug('收到指数更新', updateData)
+    
+    // 更新大盘指数
+    const indexIdx = indices.value.findIndex(idx => idx.code === updateData.code)
+    if (indexIdx !== -1) {
+      indices.value[indexIdx] = {
+        ...indices.value[indexIdx],
+        current: updateData.current,
+        change: updateData.change,
+        changePercent: updateData.changePercent
+      }
+    }
+    
+    // 更新全球指数
+    const globalIdx = globalIndices.value.findIndex(idx => idx.code === updateData.code)
+    if (globalIdx !== -1) {
+      globalIndices.value[globalIdx] = {
+        ...globalIndices.value[globalIdx],
+        price: updateData.current,
+        changePercent: updateData.changePercent
+      }
+    }
+  }
+  
   // [WHAT] 加载大盘指数
   async function loadIndices() {
     try {
@@ -135,6 +165,17 @@ export function useHomeData() {
     updateTradingSession()
     // 每秒更新交易状态，确保秒钟显示准确
     tradingSessionInterval = window.setInterval(updateTradingSession, 1000)
+    
+    // 连接 WebSocket（如果有配置 URL）
+    const wsUrl = import.meta.env.VITE_WS_URL as string | undefined
+    if (wsUrl) {
+      // 注册指数更新监听器
+      on('index_update', handleIndexUpdate)
+      
+      // 连接 WebSocket
+      connect(wsUrl)
+      logger.info('WebSocket 连接中...', { url: wsUrl })
+    }
   }
   
   // [WHAT] 清理定时器
@@ -143,6 +184,10 @@ export function useHomeData() {
       clearInterval(tradingSessionInterval)
       tradingSessionInterval = undefined
     }
+    
+    // 清理 WebSocket
+    off('index_update', handleIndexUpdate)
+    // Note: 不主动断开 WebSocket，因为它可能被多个组件共享
   }
   
   onMounted(init)
@@ -155,6 +200,8 @@ export function useHomeData() {
     tradingSession,
     currentTime,
     isRefreshing,
+    // WebSocket 连接状态
+    connectionStatus,
     // 计算属性
     hs300ChangePercent,
     topIndices,

@@ -5,27 +5,43 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 
 /**
+ * 新浪财经 RSS Feed URLs（多个备用）
+ */
+const SINA_RSS_URLS = [
+  'https://finance.sina.com.cn/roll/index.d.html?col=financenews&rss=1',
+  'https://rss.sina.com.cn/finance/forex.xml',
+  'https://rss.sina.com.cn/news/china.xml'
+]
+
+/**
  * 抓取新浪财经新闻
  */
 export async function fetchSinaNews(page = 1, pageSize = 20): Promise<ApiNewsItem[]> {
-  try {
-    // 新浪财经RSS feed
-    const response = await Http.get({
-      url: 'https://finance.sina.com.cn/roll/index.d.html?col=financenews&rss=1',
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
+  // 尝试所有 RSS URL
+  for (const rssUrl of SINA_RSS_URLS) {
+    try {
+      console.log(`[新浪财经] 尝试 RSS: ${rssUrl}`)
+      const response = await Http.get({
+        url: rssUrl,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      })
+      
+      if (response.status === 200 && response.data) {
+        console.log(`[新浪财经] ✓ RSS 抓取成功: ${rssUrl}`)
+        const items = parseRSS(response.data)
+        if (items.length > 0) {
+          return items.slice((page - 1) * pageSize, page * pageSize)
+        }
       }
-    })
-    
-    if (response.status === 200 && response.data) {
-      // 解析RSS XML
-      const items = parseRSS(response.data)
-      return items.slice((page - 1) * pageSize, page * pageSize)
+    } catch (e) {
+      console.warn(`[新浪财经] RSS 抓取失败: ${rssUrl}`, e)
     }
-  } catch (e) {
-    console.warn('[新浪财经] 抓取失败，使用模拟数据', e)
   }
   
+  // 所有 RSS 都失败，使用模拟数据
+  console.warn('[新浪财经] 所有 RSS 抓取失败，使用模拟数据')
   return generateMockSinaNews(page, pageSize)
 }
 

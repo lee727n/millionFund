@@ -5,26 +5,43 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 
 /**
+ * 网易财经 RSS Feed URLs（多个备用）
+ */
+const NETEASE_RSS_URLS = [
+  'https://money.163.com/special/002557S6/rss.html',
+  'https://rss.163.com/news/finance.xml',
+  'https://www.163.com/rss/'
+]
+
+/**
  * 抓取网易财经新闻
  */
 export async function fetchNeteaseNews(page = 1, pageSize = 20): Promise<ApiNewsItem[]> {
-  try {
-    // 网易财经RSS
-    const response = await Http.get({
-      url: 'https://money.163.com/special/002557S6/rss.html',
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
+  // 尝试所有 RSS URL
+  for (const rssUrl of NETEASE_RSS_URLS) {
+    try {
+      console.log(`[网易财经] 尝试 RSS: ${rssUrl}`)
+      const response = await Http.get({
+        url: rssUrl,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      })
+      
+      if (response.status === 200 && response.data) {
+        console.log(`[网易财经] ✓ RSS 抓取成功: ${rssUrl}`)
+        const items = parseRSS(response.data)
+        if (items.length > 0) {
+          return items.slice((page - 1) * pageSize, page * pageSize)
+        }
       }
-    })
-    
-    if (response.status === 200 && response.data) {
-      const items = parseRSS(response.data)
-      return items.slice((page - 1) * pageSize, page * pageSize)
+    } catch (e) {
+      console.warn(`[网易财经] RSS 抓取失败: ${rssUrl}`, e)
     }
-  } catch (e) {
-    console.warn('[网易财经] 抓取失败，使用模拟数据', e)
   }
   
+  // 所有 RSS 都失败，使用模拟数据
+  console.warn('[网易财经] 所有 RSS 抓取失败，使用模拟数据')
   return generateMockNeteaseNews(page, pageSize)
 }
 
