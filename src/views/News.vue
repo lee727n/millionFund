@@ -10,19 +10,20 @@ import { fetchHotDiscussions, fetchStockSentimentList, fetchUserViews, type HotD
 // 东方财富 Choice
 import { fetchNorthFlow, fetchSectorFlows, fetchMainForceFlow, type NorthFlowData, type SectorFlow, type MainForceFlow } from '@/api/choice'
 // 新增数据源 (Task #10: 合并 FinanceNews.vue)
-import { fetchToutiaoNews, type NewsItem as ToutiaoNewsItem } from '@/api/toutiao'
-import { fetchSinaNews, type NewsItem as SinaNewsItem } from '@/api/sina'
-import { fetchNeteaseNews, type NewsItem as NeteaseNewsItem } from '@/api/netease'
-import { fetchTencentNews, type NewsItem as TencentNewsItem } from '@/api/tencent'
-import { fetchXueqiuNews, type NewsItem as XueqiuNewsItem } from '@/api/xueqiu'
-import { fetchEastmoneyNews, type NewsItem as EastmoneyNewsItem } from '@/api/eastmoney'
-import { fetch10jqkaNews, type NewsItem as JqkaNewsItem } from '@/api/10jqka'
-import { fetchSTCNNews, type NewsItem as STCNNewsItem } from '@/api/stcn'
-import { fetchCSNews, type NewsItem as CSNewsItem } from '@/api/csnews'
-import { fetchYicaiNews, type NewsItem as YicaiNewsItem } from '@/api/yicai'
+import { fetchToutiaoNews } from '@/api/toutiao'
+import { fetchSinaNews } from '@/api/sina'
+import { fetchNeteaseNews } from '@/api/netease'
+import { fetchTencentNews } from '@/api/tencent'
+import { fetchXueqiuNews } from '@/api/xueqiu'
+import { fetchEastmoneyNews } from '@/api/eastmoney'
+import { fetch10jqkaNews } from '@/api/10jqka'
+import { fetchSTCNNews } from '@/api/stcn'
+import { fetchCSNews } from '@/api/csnews'
+import { fetchYicaiNews } from '@/api/yicai'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { logger, copyLogsToClipboard } from '@/utils/logger'
 import { useI18n } from 'vue-i18n'
+import type { ApiNewsItem } from '@/types/news'
 
 const router = useRouter()
 const { t } = useI18n()

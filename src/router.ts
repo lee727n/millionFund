@@ -98,6 +98,12 @@ const router = createRouter({
       meta: { title: '自选列表' }
     },
     {
+      path: '/fund-compare',
+      name: 'fund-compare',
+      component: () => import('@/views/FundCompare.vue'),
+      meta: { title: '基金对比' }
+    },
+    {
       path: '/mine',
       name: 'mine',
       component: () => import('@/views/Mine.vue'),

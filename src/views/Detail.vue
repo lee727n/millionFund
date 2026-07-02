@@ -600,6 +600,14 @@ function goToSimilarFund(code: string) {
   router.push(`/detail/${code}`)
 }
 
+// [WHAT] 跳转到基金对比页面，带入当前基金代码
+function goToCompare() {
+  router.push({
+    path: '/fund-compare',
+    query: { codes: fundCode.value }
+  })
+}
+
 // [WHAT] 搜索同类基金
 function searchSimilarFunds() {
   // 已移除，不再使用
@@ -1178,6 +1186,10 @@ function formatPercent(num: number): string {
       <div class="bar-item" @click="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()">
         <van-icon :name="fundStore.isFundInWatchlist(fundCode) ? 'star' : 'star-o'" size="20" />
         <span>{{ fundStore.isFundInWatchlist(fundCode) ? '删自选' : '加自选' }}</span>
+      </div>
+      <div class="bar-item" @click="goToCompare">
+        <van-icon name="bars" size="20" />
+        <span>对比</span>
       </div>
       <div class="bar-item" @click="manageSectors">
         <van-icon name="cluster-o" size="20" />

@@ -8,14 +8,20 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AssetAllocationChart: typeof import('./src/components/home/AssetAllocationChart.vue')['default']
+    AssetClassFilter: typeof import('./src/components/AssetClassFilter.vue')['default']
     DashboardSummary: typeof import('./src/components/home/DashboardSummary.vue')['default']
     DividendRecordsSection: typeof import('./src/components/DividendRecordsSection.vue')['default']
     FundAnnouncementsSection: typeof import('./src/components/FundAnnouncementsSection.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
+    HoldingsGrid: typeof import('./src/components/home/HoldingsGrid.vue')['default']
+    HoldingsSection: typeof import('./src/components/HoldingsSection.vue')['default']
     IntradayChartPopup: typeof import('./src/components/IntradayChartPopup.vue')['default']
     LangSwitcher: typeof import('./src/components/LangSwitcher.vue')['default']
+    MarketIndicesSection: typeof import('./src/components/MarketIndicesSection.vue')['default']
     MarketOverview: typeof import('./src/components/home/MarketOverview.vue')['default']
+    NewsFlashSection: typeof import('./src/components/home/NewsFlashSection.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']
     QuickActionsBar: typeof import('./src/components/QuickActionsBar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
@@ -55,5 +61,6 @@ declare module 'vue' {
     VanTabbar: typeof import('vant/es')['Tabbar']
     VanTabbarItem: typeof import('vant/es')['TabbarItem']
     VanTag: typeof import('vant/es')['Tag']
+    WatchlistSection: typeof import('./src/components/home/WatchlistSection.vue')['default']
   }
 }
