@@ -3,7 +3,7 @@
 // [USAGE] const { indices, globalIndices, tradingSession, refreshAll, loadIndices, loadGlobalIndices } = useHomeData()
 
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundMarket'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { logger } from '@/utils/logger'
 
@@ -22,13 +22,6 @@ export function useHomeData() {
   
   // 刷新状态
   const isRefreshing = ref(false)
-  
-  // ========== 计算属性 ==========
-  // 是否为周末
-  const isWeekend = computed(() => {
-    const day = currentTime.value.getDay()
-    return day === 0 || day === 6
-  })
   
   // 沪深300实时涨跌幅
   const hs300ChangePercent = computed(() => {
@@ -163,7 +156,6 @@ export function useHomeData() {
     currentTime,
     isRefreshing,
     // 计算属性
-    isWeekend,
     hs300ChangePercent,
     topIndices,
     combinedIndices,

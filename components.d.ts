@@ -8,6 +8,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AnnouncementTimeline: typeof import('./src/components/AnnouncementTimeline.vue')['default']
     AssetAllocationChart: typeof import('./src/components/home/AssetAllocationChart.vue')['default']
     AssetClassFilter: typeof import('./src/components/AssetClassFilter.vue')['default']
     DashboardSummary: typeof import('./src/components/home/DashboardSummary.vue')['default']
@@ -30,6 +31,7 @@ declare module 'vue' {
     TopHoldingsPopup: typeof import('./src/components/TopHoldingsPopup.vue')['default']
     TrendPredictionSection: typeof import('./src/components/TrendPredictionSection.vue')['default']
     VanActionSheet: typeof import('vant/es')['ActionSheet']
+    VanBadge: typeof import('vant/es')['Badge']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']
     VanCellGroup: typeof import('vant/es')['CellGroup']
@@ -58,8 +60,10 @@ declare module 'vue' {
     VanSlider: typeof import('vant/es')['Slider']
     VanSwipeCell: typeof import('vant/es')['SwipeCell']
     VanSwitch: typeof import('vant/es')['Switch']
+    VanTab: typeof import('vant/es')['Tab']
     VanTabbar: typeof import('vant/es')['Tabbar']
     VanTabbarItem: typeof import('vant/es')['TabbarItem']
+    VanTabs: typeof import('vant/es')['Tabs']
     VanTag: typeof import('vant/es')['Tag']
     WatchlistSection: typeof import('./src/components/home/WatchlistSection.vue')['default']
   }

@@ -29,7 +29,6 @@ const {
   tradingSession, 
   currentTime, 
   isRefreshing, 
-  isWeekend,
   hs300ChangePercent,
   topIndices,
   combinedIndices,
@@ -37,6 +36,12 @@ const {
   loadIndices, 
   loadGlobalIndices 
 } = useHomeData()
+
+// ========== 本地计算属性 ==========
+const isWeekend = computed(() => {
+  const day = currentTime.value.getDay()
+  return day === 0 || day === 6
+})
 
 // ActionSheet composable
 const actionSheet = useActionSheet()

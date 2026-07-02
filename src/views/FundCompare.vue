@@ -5,7 +5,7 @@
 
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useI18n } from 'vue/i18n'
+import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fund'
 import { useFundComparison, type PeriodLabel, type FundComparisonItem } from '@/composables/useFundComparison'
 import { searchFund, type FundInfo } from '@/api/fundFast'
