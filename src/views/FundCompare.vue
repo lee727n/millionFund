@@ -266,15 +266,15 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
     <!-- 对比内容 -->
     <div v-if="canCompare" class="compare-content">
       <!-- 标签页切换 -->
-      <van-tabs v-model:active="activeTab" sticky>
+      <van-tabs v-model:active="activeTab" sticky data-testid="compare-tabs">
         <van-tab title="收益对比" name="returns" />
         <van-tab title="风险指标" name="risk" />
         <van-tab title="持仓对比" name="holdings" />
       </van-tabs>
 
       <!-- 收益对比表格 -->
-      <div v-if="activeTab === 'returns'" class="returns-table-container">
-        <table class="returns-table">
+      <div v-if="activeTab === 'returns'" class="returns-table-container" data-testid="returns-tab">
+        <table class="returns-table" data-testid="returns-table">
           <thead>
             <tr>
               <th class="period-header">阶段</th>
@@ -300,8 +300,8 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
       </div>
 
       <!-- 风险指标对比 -->
-      <div v-if="activeTab === 'risk'" class="risk-table-container">
-        <table class="risk-table">
+      <div v-if="activeTab === 'risk'" class="risk-table-container" data-testid="risk-tab">
+        <table class="risk-table" data-testid="risk-table">
           <thead>
             <tr>
               <th class="metric-header">指标</th>
@@ -350,7 +350,7 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
       </div>
 
       <!-- 持仓对比 -->
-      <div v-if="activeTab === 'holdings'" class="holdings-container">
+      <div v-if="activeTab === 'holdings'" class="holdings-container" data-testid="holdings-tab">
         <!-- 重仓股交集 -->
         <div v-if="holdingsComparison.intersection.length > 0" class="holdings-section">
           <div class="section-title">共同持有（交集）</div>
@@ -411,6 +411,7 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
           v-model="searchKeyword"
           placeholder="搜索基金代码或名称"
           shape="round"
+          data-testid="fund-search-input"
         />
 
         <!-- 自选列表快捷添加 -->
