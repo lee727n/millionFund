@@ -777,7 +777,7 @@ onMounted(() => {
         <div v-else-if="filteredCrossValidationNews.length > 0" class="scroll-list">
           <div v-for="news in filteredCrossValidationNews" :key="news.id" class="news-card" @click="router.push(news.url)">
             <div class="news-source-tag" :class="{ 'cross-validated': news.crossCount > 1 }">{{ news.source }}</div>
-            <div class="news-time">{{ news.time }}</div>
+            <div class="news-time">{{ formatTime(news.publishedAt) }}</div>
             <div class="news-title">{{ news.title }}</div>
             <div class="news-summary">{{ news.summary }}</div>
             <div v-if="news.crossCount > 1" class="news-cross-validation">
