@@ -7,35 +7,27 @@ import type { ApiNewsItem } from '../types/news'
 
 /**
  * 抓取今日头条财经新闻
- * 今日头条有反爬，这里先返回模拟数据
+ * TODO: 今日头条有反爬，需找替代方案
+ * 可尝试：
+ * 1. 使用 RSSHub 路由：https://docs.rsshub.app/routes/new-media#jin-ri-tou-tiao
+ * 2. 使用第三方 API 或爬虫
+ * 3. 联系今日头条开放平台获取 API
  */
 export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNewsItem[]> {
   try {
-    // 尝试真实抓取（今日头条反爬严重，大概率失败）
-    const response = await Http.get({
-      url: 'https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    })
+    // TODO: 实现真实 API 调用
+    // 当前使用 RSSHub 路由（需确认是否可用）
+    // const response = await Http.get({
+    //   url: 'https://rsshub.app/jin-ri-tou-tiao',
+    //   headers: { 'User-Agent': 'Mozilla/5.0' }
+    // })
     
-    if (response.status === 200 && response.data) {
-      const data = JSON.parse(response.data)
-      return data.data.map((item: any) => ({
-        id: `toutiao_${item.ClusterId}`,
-        title: item.Title,
-        summary: item.Abstract || item.Title,
-        source: '今日头条',
-        publishedAt: new Date(item.PublishTime * 1000).toISOString(),
-        url: `https://www.toutiao.com${item.Url}`,
-        image: item.Image?.url
-      }))
-    }
+    console.warn('[今日头条] 使用模拟数据（需找替代数据源）')
   } catch (e) {
     console.warn('[今日头条] 抓取失败，使用模拟数据', e)
   }
   
-  // 兜底：模拟数据
+  // 模拟数据
   return generateMockToutiaoNews(page, pageSize)
 }
 
