@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useI18n } from 'vue-i18n'
 import LangSwitcher from '@/components/LangSwitcher.vue'
+import ConnectionStatus from '@/components/ConnectionStatus.vue'
 import { useNetworkStore } from '@/stores/network'
 import { useAlertChecker } from '@/composables/useAlertChecker'
 
@@ -119,6 +120,9 @@ function onTabChange(name: string | number) {
   <div class="app-container">
     <!-- 语言切换器 -->
     <LangSwitcher />
+    
+    <!-- WebSocket 连接状态指示器 -->
+    <ConnectionStatus />
     
     <!-- 网络状态提示条 -->
     <!-- [WHY] APK 用户在弱网/断网环境打开时，之前只能看到空白数据 -->

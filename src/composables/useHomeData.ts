@@ -24,8 +24,8 @@ export function useHomeData() {
   // 刷新状态
   const isRefreshing = ref(false)
   
-  // WebSocket 连接（用于实时更新）
-  const { connectionStatus, connect, on, off } = useWebSocket()
+  // WebSocket 连接（用于实时更新）- 使用单例
+  const { connectionStatus, connect, on, off } = useDefaultWebSocket()
   
   // 沪深300实时涨跌幅
   const hs300ChangePercent = computed(() => {
