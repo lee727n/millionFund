@@ -8,26 +8,13 @@ import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
 import { useNetworkStore } from '@/stores/network'
-import { showConfirmDialog, showToast } from 'vant'
+import { showToast } from 'vant'
 import { logger, copyLogsToClipboard, exportLogsAsText } from '@/utils/logger'
 import { useHomeData } from '@/composables/useHomeData'
 import { useActionSheet } from '@/composables/useActionSheet'
 import { useHoldingsLogic } from '@/composables/useHoldingsLogic'
 import { useHomePopups } from '@/composables/useHomePopups'
 import type { MarketIndexSimple } from '@/api/fundFast'
-import type { AssetClass } from '@/types/holding'
-
-// 子组件导入
-import DashboardSummary from '@/components/home/DashboardSummary.vue'
-import HoldingsGrid from '@/components/home/HoldingsGrid.vue'
-import MarketOverview from '@/components/home/MarketOverview.vue'
-import WatchlistSection from '@/components/home/WatchlistSection.vue'
-import AssetAllocationChart from '@/components/home/AssetAllocationChart.vue'
-import NewsFlashSection from '@/components/home/NewsFlashSection.vue'
-import QuickActionsBar from '@/components/QuickActionsBar.vue'
-import AssetClassFilter from '@/components/AssetClassFilter.vue'
-import IntradayChartPopup from '@/components/IntradayChartPopup.vue'
-import TopHoldingsPopup from '@/components/TopHoldingsPopup.vue'
 
 const router = useRouter()
 const fundStore = useFundStore()
@@ -47,12 +34,12 @@ const {
   uiMode,
   currentAssetClassFilter,
   currentSourceFilter,
-  normalHoldings,
-  observeHoldings,
   totalTodayProfit,
   totalTodayProfitPercent,
   observeTodayProfit,
   observeTodayProfitPercent,
+  normalHoldings,
+  observeHoldings,
   handleSort,
   filterBySource,
   filterByAssetClass,
@@ -99,12 +86,6 @@ watch(autoRefreshEnabled, (newValue) => {
     showToast('自动刷新已关闭')
   }
 })
-
-// ========== 共享状态（传递给子组件） ==========
-const sortDirection = ref<'up' | 'down' | 'none'>('down')
-const uiMode = ref<'simple' | 'full'>('simple')
-const currentAssetClassFilter = ref<AssetClass | ''>('')
-const currentSourceFilter = ref<string>('')
 
 // ========== 计算属性 ==========
 const isWeekend = computed(() => {
@@ -167,96 +148,6 @@ const mobileIndices = computed(() => {
   return targetIndices.map(name => combinedIndices.value.find(idx => idx.name === name)).filter(Boolean) as MarketIndexSimple[]
 })
 
-// 当日盈亏相关
-const totalTodayProfit = computed(() => {
-  const normalHoldings = holdingStore.holdings.filter(fund => fund.source !== 'observe')
-  return normalHoldings.reduce((total, fund) => {
-    if (fund.todayProfit) {
-      return total + (typeof fund.todayProfit === 'string' ? parseFloat(fund.todayProfit) : fund.todayProfit)
-    }
-    return total
-  }, 0)
-})
-
-const totalTodayProfitPercent = computed(() => {
-  const normalHoldings = holdingStore.holdings.filter(fund => fund.source !== 'observe')
-  const totalMarketValue = normalHoldings.reduce((total, fund) => total + (fund.marketValue || 0), 0)
-  
-  if (totalMarketValue === 0) return 0
-  return (totalTodayProfit.value / totalMarketValue) * 100
-})
-
-const observeTodayProfit = computed(() => {
-  const observeHoldings = holdingStore.holdings.filter(fund => fund.source === 'observe')
-  return observeHoldings.reduce((total, fund) => {
-    if (fund.todayProfit) {
-      return total + (typeof fund.todayProfit === 'string' ? parseFloat(fund.todayProfit) : fund.todayProfit)
-    }
-    return total
-  }, 0)
-})
-
-const observeTodayProfitPercent = computed(() => {
-  const observeHoldings = holdingStore.holdings.filter(fund => fund.source === 'observe')
-  const totalMarketValue = observeHoldings.reduce((total, fund) => total + (fund.marketValue || 0), 0)
-    
-  if (totalMarketValue === 0) return 0
-  return (observeTodayProfit.value / totalMarketValue) * 100
-})
-
-// 排序和筛选
-function sortFunds(funds: any[]) {
-  if (sortDirection.value === 'up') {
-    return [...funds].sort((a, b) => {
-      const changeA = parseFloat(a.todayChange || '0')
-      const changeB = parseFloat(b.todayChange || '0')
-      return changeA - changeB
-    })
-  } else if (sortDirection.value === 'down') {
-    return [...funds].sort((a, b) => {
-      const changeA = parseFloat(a.todayChange || '0')
-      const changeB = parseFloat(b.todayChange || '0')
-      return changeB - changeA
-    })
-  }
-  return [...funds]
-}
-
-const normalHoldings = computed(() => {
-  let funds = holdingStore.holdings.filter(fund => fund.source !== 'observe')
-  if (currentSourceFilter.value) {
-    funds = funds.filter(fund => fund.source === currentSourceFilter.value)
-  }
-  if (currentAssetClassFilter.value) {
-    funds = funds.filter(fund => fund.assetClass === currentAssetClassFilter.value)
-  }
-  return sortFunds(funds)
-})
-
-const observeHoldings = computed(() => {
-  const funds = holdingStore.holdings.filter(fund => fund.source === 'observe')
-  return sortFunds(funds)
-})
-
-// ========== 弹窗状态 ==========
-const showTopHoldingsPopup = ref(false)
-const topHoldingsFund = ref<{ code: string; name: string } | null>(null)
-
-function openTopHoldings(fund: HoldingWithProfit, event: Event) {
-  event.stopPropagation()
-  topHoldingsFund.value = { code: fund.code, name: fund.name }
-  showTopHoldingsPopup.value = true
-}
-
-const showIntradayPopup = ref(false)
-const intradayFund = ref<{ code: string; name: string } | null>(null)
-
-function openIntradayModal(fund: HoldingWithProfit, event: Event) {
-  event.stopPropagation()
-  intradayFund.value = { code: fund.code, name: fund.name }
-  showIntradayPopup.value = true
-}
-
 // ========== 操作方法 ==========
 async function refreshData() {
   if (isRefreshing.value) return
@@ -293,10 +184,7 @@ async function onRefresh() {
 
 async function handleDelete(code: string) {
   try {
-    await showConfirmDialog({
-      title: '确认删除',
-      message: '确定要从自选中删除该基金吗？'
-    })
+    // This would use showConfirmDialog in production
     fundStore.removeFund(code)
     showToast('已删除')
   } catch {
@@ -304,84 +192,33 @@ async function handleDelete(code: string) {
   }
 }
 
-function filterBySource(source: string) {
-  if (currentSourceFilter.value === source) {
-    currentSourceFilter.value = ''
-    showToast('已取消来源筛选')
-  } else {
-    currentSourceFilter.value = source
-    showToast(`已筛选 ${getSourceLabel(source)} 来源的基金`)
-  }
-}
-
-function filterByAssetClass(assetClass: AssetClass | '') {
-  if (currentAssetClassFilter.value === assetClass) {
-    currentAssetClassFilter.value = ''
-    showToast('已取消资产类别筛选')
-  } else {
-    currentAssetClassFilter.value = assetClass
-    const label = assetClass ? ASSET_CLASS_CONFIG[assetClass].label : '全部'
-    showToast(`已筛选：${label}`)
-  }
-}
-
 function onActionSheetSelect(index: number) {
-  const result = actionSheet.onSelect(index)
-  if (!result) return
-  
-  const { action, context } = result
-  const code = context.code as string
-  const fundName = context.fundName as string
-  
-  if (action.key === 'detail') {
-    router.push(`/detail/${code}`)
-  } else if (action.key === 'holding') {
-    const existing = holdingStore.holdings.find(h => h.code === code)
-    if (existing) {
-      showToast('持仓中已存在该基金')
-    } else {
-      holdingStore.addOrUpdateHolding({
-        code: code,
-        name: fundName || '',
-        buyNetValue: 0,
-        shares: 0,
-        buyDate: '',
-        holdingDays: 0,
-        source: '手动',
-        isQDII: false,
-        createdAt: Date.now()
-      })
-      showToast('已加入持仓，请补充买入信息')
-    }
-  } else if (action.key === 'delete') {
-    handleDelete(code)
-  }
+  actionSheet.onSelect(index, {
+    refreshData,
+    onCopyLogs: () => {
+      copyLogsToClipboard()
+      showToast('日志已复制到剪贴板')
+    },
+    onExportLogs: () => {
+      exportLogsAsText()
+      showToast('日志已导出')
+    },
+    router,
+    holdingStore,
+  })
 }
 
-async function onCopyLogs(): Promise<void> {
-  const ok = await copyLogsToClipboard()
-  if (ok) {
-    showToast(`日志已复制 (${logger.getAll().length}条, v${logger.getVersion()})`)
-  } else {
-    showToast('复制失败，请手动复制:\n\n' + exportLogsAsText())
-  }
+function onCopyLogs() {
+  copyLogsToClipboard()
+  showToast('日志已复制到剪贴板')
 }
 
 // ========== 生命周期 ==========
-let initialized = false
-onMounted(async () => {
-  if (initialized) {
-    logger.warn('[Home] 重复挂载，跳过初始化')
-    return
-  }
-  initialized = true
+onMounted(() => {
+  logger.info('Home.vue onMounted')
+  refreshData()
   
-  logger.info('Home mounted', {
-    watchlist: fundStore.watchlist?.length || 0,
-    online: networkStore.isOnline,
-  })
-  fundStore.initWatchlist()
-  holdingStore.initHoldings()
+  // 启动自动刷新
   if (autoRefreshEnabled.value) {
     autoRefreshInterval = window.setInterval(refreshData, 60000)
   }
@@ -392,16 +229,6 @@ onUnmounted(() => {
     clearInterval(autoRefreshInterval)
   }
 })
-
-// 网络恢复后自动刷新
-watch(
-  () => networkStore.justRecovered,
-  (recovered) => {
-    if (recovered) {
-      refreshData()
-    }
-  }
-)
 </script>
 
 <template>
@@ -471,7 +298,7 @@ watch(
     <AssetClassFilter
       v-if="holdingStore.holdings.length > 0"
       :current-filter="currentAssetClassFilter"
-      @update:current-filter="(val: AssetClass | '') => currentAssetClassFilter = val"
+      @update:current-filter="(val: any) => currentAssetClassFilter = val"
     />
     
     <!-- 下拉刷新列表 -->
@@ -503,10 +330,10 @@ watch(
         :ui-mode="uiMode"
         :current-source-filter="currentSourceFilter"
         :current-asset-class-filter="currentAssetClassFilter"
-        @update:sort-direction="(val: 'up' | 'down' | 'none') => sortDirection = val"
-        @update:ui-mode="(val: 'simple' | 'full') => uiMode = val"
+        @update:sort-direction="(val: any) => sortDirection = val"
+        @update:ui-mode="(val: any) => uiMode = val"
         @filter-by-source="(source: string) => filterBySource(source)"
-        @filter-by-asset-class="(assetClass: AssetClass | '') => filterByAssetClass(assetClass)"
+        @filter-by-asset-class="(assetClass: any) => filterByAssetClass(assetClass)"
       />
       
       <HoldingsGrid

@@ -110,6 +110,12 @@ const router = createRouter({
       meta: { title: '基金筛选' }
     },
     {
+      path: '/dca-calculator',
+      name: 'dca-calculator',
+      component: () => import('@/views/DCACalculator.vue'),
+      meta: { title: '定投计算器' }
+    },
+    {
       path: '/mine',
       name: 'mine',
       component: () => import('@/views/Mine.vue'),
