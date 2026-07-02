@@ -240,12 +240,13 @@ onMounted(() => {
     >
       <template #right>
         <van-badge :content="activeFilterCount" :show-zero="false">
-          <van-button
-            type="primary"
-            size="small"
-            plain
-            @click="toggleFilterPanel"
-          >
+        <van-button
+          type="primary"
+          size="small"
+          plain
+          @click="toggleFilterPanel"
+          data-testid="filter-button"
+        >
             筛选
           </van-button>
         </van-badge>
@@ -253,17 +254,18 @@ onMounted(() => {
     </van-nav-bar>
 
     <!-- 搜索栏 -->
-    <div class="search-bar">
+    <div class="search-bar" data-testid="screener-search-bar">
       <van-search
         v-model="filters.keyword"
         placeholder="搜索基金代码或名称"
         shape="round"
         @search="applyFilters"
+        data-testid="screener-search-input"
       />
     </div>
 
     <!-- 快捷筛选标签 -->
-    <div class="quick-filters">
+    <div class="quick-filters" data-testid="type-filter-tags">
       <div class="filter-tags">
         <van-tag
           v-for="opt in fundTypeOptions"
@@ -279,7 +281,7 @@ onMounted(() => {
     </div>
 
     <!-- 排序栏 -->
-    <div class="sort-bar">
+    <div class="sort-bar" data-testid="sort-bar">
       <div class="sort-options">
         <span
           v-for="opt in sortOptions"
@@ -301,16 +303,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 筛选结果列表 -->
-    <div class="filter-results">
-      <van-loading v-if="isLoading" class="loading" type="spinner" />
-
-      <div
-        v-for="fund in filterResults"
-        :key="fund.code"
-        class="fund-item"
-        @click="goToDetail(fund.code)"
-      >
+      <!-- 筛选结果列表 -->
+      <div class="filter-results" data-testid="fund-list">
+        <van-loading v-if="isLoading" class="loading" type="spinner" />
+        
+        <div
+          v-for="fund in filterResults"
+          :key="fund.code"
+          class="fund-item"
+          @click="goToDetail(fund.code)"
+          data-testid="fund-list-item"
+        >
         <div class="fund-info">
           <div class="fund-name">{{ fund.name }}</div>
           <div class="fund-meta">
