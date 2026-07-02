@@ -733,7 +733,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="news-page">
+  <div class="news-page" data-testid="news-page">
     <!-- 导航栏 -->
     <div class="custom-nav-bar">
       <div class="nav-title">{{ t('news.title') }}</div>
@@ -744,8 +744,8 @@ onMounted(() => {
     </div>
 
     <!-- 数据源切换 (Task #10: 改为下拉选择) -->
-    <div class="source-selector-bar">
-      <van-dropdown-menu active-color="#1677ff">
+    <div class="source-selector-bar" data-testid="source-selector-bar">
+      <van-dropdown-menu active-color="#1677ff" data-testid="source-dropdown">
         <van-dropdown-item v-model="activeSource" :options="sourceOptions" :title="getCurrentSourceName()" />
       </van-dropdown-menu>
     </div>
@@ -757,7 +757,7 @@ onMounted(() => {
     </div>
 
     <!-- 搜索框（Task #9 P0） -->
-    <div class="search-bar">
+    <div class="search-bar" data-testid="news-search-bar">
       <van-search
         v-model="searchKeyword"
         :placeholder="t('news.search_placeholder')"
@@ -765,6 +765,7 @@ onMounted(() => {
         background="transparent"
         clearable
         class="news-search"
+        data-testid="news-search-input"
       />
     </div>
 
@@ -774,8 +775,8 @@ onMounted(() => {
         <div v-if="isCrossLoading" class="loading-container">
           <van-loading size="24px">正在加载并交叉验证...</van-loading>
         </div>
-        <div v-else-if="filteredCrossValidationNews.length > 0" class="scroll-list">
-          <div v-for="news in filteredCrossValidationNews" :key="news.id" class="news-card" @click="router.push(news.url)">
+        <div v-else-if="filteredCrossValidationNews.length > 0" class="scroll-list" data-testid="cross-validation-list">
+          <div v-for="news in filteredCrossValidationNews" :key="news.id" class="news-card" @click="router.push(news.url)" data-testid="news-card">
             <div class="news-source-tag" :class="{ 'cross-validated': news.crossCount > 1 }">{{ news.source }}</div>
             <div class="news-time">{{ formatTime(news.publishedAt) }}</div>
             <div class="news-title">{{ news.title }}</div>
@@ -794,7 +795,7 @@ onMounted(() => {
 
     <!-- ==================== 金十数据 ==================== -->
     <template v-else-if="activeSource === 'jin10'">
-      <div class="sub-tabs">
+      <div class="sub-tabs" data-testid="news-tabs">
         <div class="sub-tab" :class="{ active: jin10Tab === 'news' }" @click="onJin10TabChange('news')">{{ t('news.tab_news') }}</div>
         <div class="sub-tab" :class="{ active: jin10Tab === 'flash' }" @click="onJin10TabChange('flash')">{{ t('news.tab_flash') }}</div>
         <div class="sub-tab" :class="{ active: jin10Tab === 'calendar' }" @click="onJin10TabChange('calendar')">{{ t('news.tab_calendar') }}</div>
@@ -811,7 +812,7 @@ onMounted(() => {
         </div>
         <div class="scroll-list">
           <template v-if="filteredNewsList.length > 0">
-            <div v-for="news in filteredNewsList" :key="news.id" class="news-card" @click="router.push(news.url)">
+            <div v-for="news in filteredNewsList" :key="news.id" class="news-card" @click="router.push(news.url)" data-testid="news-card">
               <div class="news-time">{{ news.time }}</div>
               <div class="news-category-tag">{{ news.category }}</div>
               <div class="news-title">{{ news.title }}</div>

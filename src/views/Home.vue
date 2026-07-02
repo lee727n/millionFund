@@ -191,7 +191,7 @@ onUnmounted(() => {
 <template>
   <div class="home-page">
     <!-- 顶部搜索栏 -->
-    <div class="top-header">
+    <div class="top-header" data-testid="home-header">
       <div class="header-left">
         <span class="app-title web-only">{{ t('home.app_title_full') }}</span>
         <span class="app-title mobile-only">{{ t('home.app_title_short') }}</span>
@@ -263,14 +263,14 @@ onUnmounted(() => {
       v-model="fundStore.isRefreshing" 
       @refresh="onRefresh"
       class="fund-list-container"
-      :data-test-id="'loading'"
+      data-testid="pull-refresh"
     >
       <!-- 错误降级显示 -->
-      <div v-if="hasError" class="error-fallback" :data-test-id="'error-message'">
+      <div v-if="hasError" class="error-fallback" data-testid="error-message">
         <div class="error-icon">⚠️</div>
         <div class="error-title">{{ t('home.error_title') }}</div>
         <div class="error-detail">{{ errorMessage || t('home.error_detail') }}</div>
-        <van-button round type="primary" @click="() => { hasError = false; refreshData(); }">
+        <van-button round type="primary" @click="() => { hasError = false; refreshData(); }" data-testid="retry-button">
           {{ t('home.retry') }}
         </van-button>
       </div>
@@ -291,6 +291,7 @@ onUnmounted(() => {
         @update:ui-mode="(val: any) => uiMode = val"
         @filter-by-source="(source: string) => filterBySource(source)"
         @filter-by-asset-class="(assetClass: any) => filterByAssetClass(assetClass)"
+        data-testid="dashboard-summary"
       />
       
       <HoldingsGrid
@@ -303,19 +304,21 @@ onUnmounted(() => {
         :observe-today-profit-percent="observeTodayProfitPercent"
         @open-top-holdings="openTopHoldings"
         @open-intraday-modal="openIntradayModal"
+        data-testid="holdings-grid"
       />
       
       <!-- 资产分配图 -->
-      <AssetAllocationChart />
+      <AssetAllocationChart data-testid="asset-allocation" />
       
       <!-- 市场概览 -->
       <MarketOverview
         :combined-indices="combinedIndices"
         :mobile-indices="mobileIndices"
+        data-testid="market-overview"
       />
       
       <!-- 资讯快讯 -->
-      <NewsFlashSection />
+      <NewsFlashSection data-testid="news-flash" />
       
       <!-- 自选基金列表 -->
       <WatchlistSection
@@ -324,6 +327,7 @@ onUnmounted(() => {
         @delete="handleDelete"
         @go-to-detail="(code: string) => router.push(`/detail/${code}`)"
         @go-to-search="() => router.push('/search')"
+        data-testid="watchlist-section"
       />
       
       <!-- 底部占位 -->
