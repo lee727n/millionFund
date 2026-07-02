@@ -162,6 +162,12 @@ export function useHomeData() {
     tradingSession,
     currentTime,
     isRefreshing,
+    // 计算属性
+    isWeekend,
+    hs300ChangePercent,
+    topIndices,
+    combinedIndices,
+    mobileIndices,
     // 方法
     loadIndices,
     loadGlobalIndices,
