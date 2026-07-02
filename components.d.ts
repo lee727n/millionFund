@@ -8,12 +8,14 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    DashboardSummary: typeof import('./src/components/home/DashboardSummary.vue')['default']
     DividendRecordsSection: typeof import('./src/components/DividendRecordsSection.vue')['default']
     FundAnnouncementsSection: typeof import('./src/components/FundAnnouncementsSection.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
     IntradayChartPopup: typeof import('./src/components/IntradayChartPopup.vue')['default']
     LangSwitcher: typeof import('./src/components/LangSwitcher.vue')['default']
+    MarketOverview: typeof import('./src/components/home/MarketOverview.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']
     QuickActionsBar: typeof import('./src/components/QuickActionsBar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
