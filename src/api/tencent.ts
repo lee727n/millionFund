@@ -1,24 +1,99 @@
 /**
  * 腾讯财经新闻API
+ * 使用Capacitor HTTP插件绕过CORS
  */
+import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 
 /**
- * 抓取腾讯财经新闻
- * TODO: 需找替代数据源（可尝试以下方案）
- * 1. RSS feed: https://finance.qq.com/rss.htm (需验证)
- * 2. RSSHub 路由: https://docs.rsshub.app/routes/finance#腾讯财经 (如有)
- * 3. 使用网页抓取（需处理反爬）
- * 4. 寻找公开的腾讯财经 API
+ * 腾讯财经 RSS URL 列表（多个备份）
+ */
+const TENCENT_RSS_URLS = [
+  'https://finance.qq.com/rss/rss.xml',
+  'https://finance.qq.com/rss.htm',
+  'https://rsshub.app/tencent/finance',  // RSSHub 路由（如有）
+]
+
+/**
+ * 抓取腾讯财经新闻（通过 RSS）
  */
 export async function fetchTencentNews(page = 1, pageSize = 20): Promise<ApiNewsItem[]> {
-  try {
-    // TODO: 实现真实 API 调用
-    console.warn('[腾讯财经] 使用模拟数据（需找替代数据源）')
-  } catch (e) {
-    console.warn('[腾讯财经] 抓取失败，使用模拟数据', e)
+  // 尝试所有 RSS URL
+  for (const url of TENCENT_RSS_URLS) {
+    try {
+      console.log(`[腾讯财经] 尝试 RSS: ${url}`)
+      
+      const response = await Http.get({
+        url,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      })
+      
+      if (response.status === 200 && response.data) {
+        const items = parseTencentRSSItems(response.data)
+        if (items.length > 0) {
+          console.log(`[腾讯财经] ✓ RSS 抓取成功: ${items.length} 条`)
+          return items.slice((page - 1) * pageSize, page * pageSize)
+        }
+      }
+    } catch (e) {
+      console.warn(`[腾讯财经] RSS 抓取失败: ${url}`, e)
+    }
   }
   
-  // 模拟数据
+  // 所有 RSS 都失败，使用模拟数据
+  console.warn('[腾讯财经] 所有 RSS 源失败，使用模拟数据')
   return generateMockTencentNews(page, pageSize)
+}
+
+/**
+ * 解析腾讯财经 RSS XML 数据
+ */
+function parseTencentRSSItems(xmlData: string): ApiNewsItem[] {
+  try {
+    const items: ApiNewsItem[] = []
+    
+    // 匹配 <item> 标签
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g
+    let match
+    
+    while ((match = itemRegex.exec(xmlData)) !== null) {
+      const itemContent = match[1]
+      
+      // 提取标题
+      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
+      const title = titleMatch ? titleMatch[1].trim() : ''
+      
+      // 提取链接
+      const linkMatch = /<link>(.*?)<\/link>/.exec(itemContent)
+      const url = linkMatch ? linkMatch[1].trim() : ''
+      
+      // 提取描述
+      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>/.exec(itemContent)
+      const summary = descMatch ? descMatch[1].trim() : ''
+      
+      // 提取发布时间
+      const dateMatch = /<pubDate>(.*?)<\/pubDate>/.exec(itemContent)
+      const dateStr = dateMatch ? dateMatch[1].trim() : ''
+      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
+      
+      if (title) {
+        items.push({
+          id: `tencent_${Date.now()}_${items.length}`,
+          title,
+          summary: summary || title,
+          source: '腾讯财经',
+          publishedAt,
+          url: url || 'https://finance.qq.com/',
+          image: undefined
+        })
+      }
+    }
+    
+    return items
+  } catch (e) {
+    console.error('[腾讯财经] RSS 解析失败', e)
+    return []
+  }
 }
