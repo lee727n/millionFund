@@ -24,6 +24,7 @@ declare module 'vue' {
     MarketIndicesSection: typeof import('./src/components/MarketIndicesSection.vue')['default']
     MarketOverview: typeof import('./src/components/home/MarketOverview.vue')['default']
     NewsFlashSection: typeof import('./src/components/home/NewsFlashSection.vue')['default']
+    OfflineIndicator: typeof import('./src/components/OfflineIndicator.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']
     QuickActionsBar: typeof import('./src/components/QuickActionsBar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

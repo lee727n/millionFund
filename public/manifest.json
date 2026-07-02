@@ -1,30 +1,92 @@
 {
-  "name": "AI百万资产 - 全品种资产管理工具",
-  "short_name": "AI百万资产",
-  "description": "实时估值、持仓管理、AI调仓追踪 - 支持基金/股票/加密货币/可转债",
+  "name": "百万基金",
+  "short_name": "百万基金",
+  "description": "全能基金助手 - 支持基金净值查询、定投计算、持仓管理",
+  "theme_color": "#0ea5e9",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "./",
+  "start_url": "./",
   "icons": [
     {
-      "src": "/icon.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "/icon512.png",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": "/",
-  "display": "standalone",
-  "theme_color": "#1976d6",
-  "background_color": "#ffffff",
-  "orientation": "portrait",
-  "categories": ["finance", "productivity"],
   "screenshots": [
     {
-      "src": "/screenshot1.png",
+      "src": "/screenshots/home.png",
       "sizes": "1280x720",
-      "type": "image/png"
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/screenshots/home-mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
     }
-  ]
+  ],
+  "categories": ["finance", "business", "utilities"],
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "iarc_rating_id": "",
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
+  "file_handlers": [],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "note_taking": {
+    "new_note_url": "/"
+  },
+  "protocol_handlers": [],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "text": "content"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "首页",
+      "short_name": "首页",
+      "description": "查看大盘指数和自选基金",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/shortcut-home.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "自选",
+      "short_name": "自选",
+      "description": "查看自选基金列表",
+      "url": "/watchlist",
+      "icons": [
+        {
+          "src": "/icons/shortcut-watchlist.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "widgets": []
 }
