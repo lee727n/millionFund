@@ -11,6 +11,7 @@ declare module 'vue' {
     AnnouncementTimeline: typeof import('./src/components/AnnouncementTimeline.vue')['default']
     AssetAllocationChart: typeof import('./src/components/home/AssetAllocationChart.vue')['default']
     AssetClassFilter: typeof import('./src/components/AssetClassFilter.vue')['default']
+    ConnectionStatus: typeof import('./src/components/ConnectionStatus.vue')['default']
     DashboardSummary: typeof import('./src/components/home/DashboardSummary.vue')['default']
     DividendRecordsSection: typeof import('./src/components/DividendRecordsSection.vue')['default']
     FundAnnouncementsSection: typeof import('./src/components/FundAnnouncementsSection.vue')['default']
