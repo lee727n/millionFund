@@ -2,8 +2,44 @@
 // [WHAT] 使用 Tesseract.js 进行本地文字识别，无需外部 API
 // [DEPS] 依赖 tesseract.js 库
 
-import Tesseract from 'tesseract.js'
+import Tesseract, { type Worker } from 'tesseract.js'
 import { logger } from './logger'
+
+let sharedWorker: Worker | null = null
+let workerInitPromise: Promise<Worker> | null = null
+const WORKER_LANG = 'chi_sim+eng'
+
+async function getSharedWorker(): Promise<Worker> {
+  if (sharedWorker) return sharedWorker
+  if (workerInitPromise) return workerInitPromise
+
+  workerInitPromise = (async () => {
+    try {
+      const worker = await Tesseract.createWorker(WORKER_LANG, 1, {
+        logger: () => {}
+      })
+      sharedWorker = worker
+      return worker
+    } catch (err) {
+      workerInitPromise = null
+      throw err
+    }
+  })()
+
+  return workerInitPromise
+}
+
+export async function terminateOcrWorker() {
+  if (sharedWorker) {
+    try {
+      await sharedWorker.terminate()
+    } catch (e) {
+      // ignore
+    }
+    sharedWorker = null
+    workerInitPromise = null
+  }
+}
 
 /**
  * 检测当前环境是否支持 Tesseract.js 运行
@@ -224,9 +260,63 @@ export interface RecognizedHolding {
 export type OcrProgressCallback = (progress: number, status: string) => void
 
 /**
+ * 检测图片模糊度（拉普拉斯方差）
+ * [WHY] 模糊的截图 OCR 识别率低，提前检测并提示用户
+ * [RETURN] 方差值越小越模糊，一般 < 100 认为较模糊
+ */
+export function detectImageBlur(imageSource: File | string): Promise<number> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const img = await loadImage(imageSource)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')!
+      
+      const maxDim = 400
+      const scale = Math.min(maxDim / img.width, maxDim / img.height, 1)
+      canvas.width = Math.floor(img.width * scale)
+      canvas.height = Math.floor(img.height * scale)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+      const gray: number[] = []
+      
+      for (let i = 0; i < data.length; i += 4) {
+        gray.push(0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!)
+      }
+      
+      const w = canvas.width
+      const h = canvas.height
+      let sum = 0
+      let count = 0
+      
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x
+          const laplacian = (
+            4 * gray[idx]! -
+            gray[idx - 1]! -
+            gray[idx + 1]! -
+            gray[idx - w]! -
+            gray[idx + w]!
+          )
+          sum += laplacian * laplacian
+          count++
+        }
+      }
+      
+      const variance = count > 0 ? sum / count : 0
+      resolve(variance)
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+/**
  * 从图片中识别文字
  * [WHY] 使用 Tesseract.js 进行本地 OCR，支持中英文混合识别
- * [WHAT] 返回识别出的原始文字
+ * [WHAT] 返回识别出的原始文字，支持 PSM 模式自动重试
  * @param imageSource 图片来源（File 对象、URL 或 Base64）
  * @param onProgress 进度回调
  */
@@ -236,7 +326,6 @@ export async function recognizeText(
 ): Promise<string> {
   if (onProgress) addProgressListener(onProgress)
 
-  // logger 将进度广播给所有注册的 progressListeners
   const makeLogger = () => (m: any) => {
     try {
       const progress = typeof m?.progress === 'number' ? Math.round(m.progress * 100) : 0
@@ -249,25 +338,52 @@ export async function recognizeText(
     }
   }
 
-  try {
-    // [IMPROVE] 图像预处理：增强 OCR 识别率（灰度 + 自适应阈值 + 去噪）
-    const processedImage = await preprocessImageForOcr(imageSource)
+  const psmModes = [6, 3, 4]
 
-    // [FIX] 添加超时保护，避免移动端卡死
-    // [IMPROVE] 语言包从 eng 切换为 chi_sim+eng，支持中英文混合识别（支付宝/天天基金截图优化）
-    const ocrPromise = (Tesseract as any).recognize(processedImage, 'chi_sim+eng', { logger: makeLogger() })
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('OCR 识别超时（30秒）')), 30000)
-    )
-    
-    const result = await Promise.race([ocrPromise, timeoutPromise]) as any
-    // [SECURITY] 不再写入 globalThis，避免隐私数据泄露到全局
-    const ocrText = result.data.text
-    return ocrText
+  try {
+    const processedImage = await preprocessImageForOcr(imageSource)
+    const worker = await getSharedWorker()
+
+    let lastResult: string = ''
+    let lastConfidence = 0
+
+    for (let i = 0; i < psmModes.length; i++) {
+      const psm = psmModes[i]!
+      try {
+        await worker.setParameters({
+          tessedit_pageseg_mode: psm,
+        })
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('OCR 识别超时（30秒）')), 30000)
+        )
+
+        const recognizePromise = worker.recognize(processedImage)
+        const result = await Promise.race([recognizePromise, timeoutPromise]) as any
+
+        const text = result.data.text
+        const confidence = result.data.confidence || 0
+
+        if (confidence > lastConfidence) {
+          lastConfidence = confidence
+          lastResult = text
+          ;(globalThis as any).__lastOcrData = result.data
+        }
+
+        if (confidence >= 70) {
+          break
+        }
+      } catch (err: any) {
+        if (i === psmModes.length - 1) throw err
+        logger.warn(`OCR PSM ${psm} 失败，尝试下一个模式`, err)
+      }
+    }
+
+    ;(globalThis as any).__lastOcrData = null
+    return lastResult
   } catch (err: any) {
     logger.error('OCR 识别失败', err)
     
-    // [FIX] 更友好的错误信息
     let userMessage = 'OCR 识别失败'
     const errMsg = (err?.message || '').toLowerCase()
     
