@@ -1,6 +1,8 @@
 // [WHY] 定义基金相关的 TypeScript 类型，确保类型安全
 // [WHAT] 包含基金估值、基金信息、持仓数据等核心数据结构
 
+import type { AssetClass } from './holding'
+
 /**
  * 基金实时估值数据（天天基金 JSONP 返回格式）
  * [EDGE] gszzl 可能为空字符串（非交易时间）
@@ -71,7 +73,7 @@ export interface HoldingRecord {
   /** 持仓收益（用户调整时保存） */
   profit?: number
   /** 资产类别（默认 'fund' 保持向后兼容） */
-  assetClass?: 'fund' | 'astock' | 'hkstock' | 'usstock' | 'crypto' | 'convertible' | 'reits' | 'gold' | 'commodity'
+  assetClass?: AssetClass
 }
 
 /**
