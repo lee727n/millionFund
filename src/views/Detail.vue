@@ -37,6 +37,9 @@ import { logger } from '@/utils/logger'
 import TrendPredictionSection from '@/components/TrendPredictionSection.vue'
 import DividendRecordsSection from '@/components/DividendRecordsSection.vue'
 import FundAnnouncementsSection from '@/components/FundAnnouncementsSection.vue'
+import DetailHeader from '@/components/detail/DetailHeader.vue'
+import DetailHoldingPanel from '@/components/detail/DetailHoldingPanel.vue'
+import DetailBottomBar from '@/components/detail/DetailBottomBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -648,138 +651,21 @@ function formatPercent(num: number): string {
 
 <template>
   <div class="detail-page">
-    <!-- 顶部区域 -->
-    <div class="top-header">
-      <!-- 导航栏 -->
-      <div class="nav-bar">
-        <van-icon name="arrow-left" size="22" color="var(--text-primary)" @click="goBack" :data-test-id="'back-button'" />
-        <div class="nav-title">
-          <div class="fund-name" :data-test-id="'fund-name'">{{ fundInfo?.name || '加载中...' }}</div>
-          <div class="fund-info-row">
-            <span class="fund-code" :data-test-id="'fund-code'">{{ fundCode }}</span>
-            <span class="info-divider">|</span>
-            <span class="estimate-tag" :class="isUp ? 'up' : 'down'">
-              {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}
-            </span>
-            <span class="info-divider">|</span>
-            <span class="estimate-tag">
-              {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }} {{ fundInfo?.gsz ? parseFloat(fundInfo.gsz).toFixed(4) : '--' }}
-            </span>
-          </div>
-          <div v-if="holdingDetails" class="fund-info-row holding-info-row">
-            <span class="fund-code">市值 {{ formatMoney(holdingDetails.amount) }}</span>
-            <span class="info-divider">|</span>
-            <span class="estimate-tag">收益 {{ formatMoney(holdingDetails.profit) }}</span>
-            <span class="info-divider">|</span>
-            <span class="estimate-tag">占比 {{ holdingDetails.ratio.toFixed(2) }}%</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 核心指标 -->
-      <div class="core-metrics" v-if="!isLoading" :data-test-id="'valuation-section'">
-        <div class="main-change">
-          <div class="change-label">当日涨幅 {{ fundInfo?.gztime?.slice(5, 10) || '--' }}</div>
-          <div class="change-value" :class="isUp ? 'up' : 'down'" :data-test-id="'valuation-change'">
-            {{ formatPercent(priceChangePercent) }}
-          </div>
-        </div>
-        <div class="sub-metrics">
-          <div class="metric-item">
-            <div class="metric-label">{{ t('detail.estimate_nav') }}</div>
-            <div class="metric-value" :data-test-id="'valuation'">{{ fundInfo?.gsz || '--' }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">{{ t('detail.yesterday_nav') }}</div>
-            <div class="metric-value">{{ fundInfo?.dwjz || '--' }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">{{ bestPeriodReturn.label }}</div>
-            <div class="metric-value" :class="bestPeriodReturn.value >= 0 ? 'up' : 'down'">
-              {{ bestPeriodReturn.value !== 0 ? formatPercent(bestPeriodReturn.value) : '--' }}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-else class="core-metrics loading" :data-test-id="'loading'">
-        <van-loading color="var(--text-secondary)" />
-      </div>
-    </div>
+    <DetailHeader
+      :fund-code="fundCode"
+      :fund-info="fundInfo"
+      :holding-details="holdingDetails"
+      :is-loading="isLoading"
+      :best-period-return="bestPeriodReturn"
+      :price-change-percent="priceChangePercent"
+      :is-up="isUp"
+      @back="goBack"
+    />
     
-    <!-- 持仓数据区 -->
-    <div v-if="holdingDetails" class="holding-panel" :class="{ collapsed: !holdingExpanded }">
-      <div class="holding-summary" @click="holdingExpanded = !holdingExpanded">
-        <div class="summary-item">
-          <span class="summary-label">{{ t('detail.hold_amount') }}</span>
-          <span class="summary-value">{{ formatNum(holdingDetails.amount) }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">{{ t('detail.hold_profit') }}</span>
-          <span class="summary-value" :class="holdingDetails.profit >= 0 ? 'up' : 'down'">
-            {{ formatNum(holdingDetails.profit) }}
-          </span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">{{ t('holding.profit_rate_label') }}</span>
-          <span class="summary-value" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
-            {{ formatPercent(holdingDetails.profitRate) }}
-          </span>
-        </div>
-        <van-icon 
-          :name="holdingExpanded ? 'arrow-up' : 'arrow-down'" 
-          class="expand-icon"
-        />
-      </div>
-      
-      <transition name="slide">
-        <div v-show="holdingExpanded" class="holding-grid">
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.hold_amount') }}</div>
-            <div class="item-value">{{ formatNum(holdingDetails.amount) }}</div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.hold_shares') }}</div>
-            <div class="item-value">{{ formatNum(holdingDetails.shares) }}</div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.holding_ratio') }}</div>
-            <div class="item-value">{{ holdingDetails.ratio.toFixed(2) }}%</div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.hold_profit') }}</div>
-            <div class="item-value" :class="holdingDetails.profit >= 0 ? 'up' : 'down'">
-              {{ formatNum(holdingDetails.profit) }}
-            </div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.hold_profit_rate') }}</div>
-            <div class="item-value" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
-              {{ formatPercent(holdingDetails.profitRate) }}
-            </div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.holding_cost') }}</div>
-            <div class="item-value">{{ holdingDetails.cost.toFixed(4) }}</div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.today_profit') }}</div>
-            <div class="item-value" :class="holdingDetails.todayProfit >= 0 ? 'up' : 'down'">
-              {{ formatNum(holdingDetails.todayProfit) }}
-            </div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.yesterday_profit') }}</div>
-            <div class="item-value" :class="holdingDetails.yesterdayProfit >= 0 ? 'up' : 'down'">
-              {{ formatNum(holdingDetails.yesterdayProfit) }}
-            </div>
-          </div>
-          <div class="holding-item">
-            <div class="item-label">{{ t('detail.hold_days') }}</div>
-            <div class="item-value">{{ holdingDetails.holdDays }}</div>
-          </div>
-        </div>
-      </transition>
-    </div>
+    <DetailHoldingPanel
+      v-if="holdingDetails"
+      :holding-details="holdingDetails"
+    />
 
     <!-- 图表区域 -->
     <div class="chart-section" :data-test-id="'chart-container'">
@@ -1165,41 +1051,19 @@ function formatPercent(num: number): string {
       @open-announcement="openAnnouncement"
     />
 
-    <!-- 底部操作栏 -->
-    <div class="bottom-bar">
-      <div class="bar-item" @click="editHolding">
-        <van-icon name="edit" size="20" />
-        <span>{{ t('detail.edit_holding') }}</span>
-      </div>
-      <div class="bar-item" v-if="holdingInfo" @click="handleDelete">
-        <van-icon name="delete" size="20" />
-        <span>{{ t('detail.remove_from_holdings') }}</span>
-      </div>
-      <div class="bar-item" @click="manageSource">
-        <van-icon name="shop-o" size="20" />
-        <span>{{ t('news.source') }}</span>
-      </div>
-      <div class="bar-item" @click="showTransactions">
-        <van-icon name="orders-o" size="20" />
-        <span>{{ t('detail.trade_record') }}</span>
-      </div>
-      <div class="bar-item" @click="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()">
-        <van-icon :name="fundStore.isFundInWatchlist(fundCode) ? 'star' : 'star-o'" size="20" />
-        <span>{{ fundStore.isFundInWatchlist(fundCode) ? '删自选' : '加自选' }}</span>
-      </div>
-      <div class="bar-item" @click="goToCompare">
-        <van-icon name="bars" size="20" />
-        <span>对比</span>
-      </div>
-      <div class="bar-item" @click="manageSectors">
-        <van-icon name="cluster-o" size="20" />
-        <span>{{ t('detail.industry_sector') }}</span>
-      </div>
-      <div class="bar-item" @click="showMore">
-        <van-icon name="ellipsis" size="20" />
-        <span>{{ t('detail.more') }}</span>
-      </div>
-    </div>
+    <DetailBottomBar
+      :fund-code="fundCode"
+      :has-holding="!!holdingInfo"
+      :is-in-watchlist="fundStore.isFundInWatchlist(fundCode)"
+      @edit-holding="editHolding"
+      @delete-holding="handleDelete"
+      @manage-source="manageSource"
+      @show-transactions="showTransactions"
+      @toggle-watchlist="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()"
+      @go-compare="goToCompare"
+      @manage-sectors="manageSectors"
+      @show-more="showMore"
+    />
 
     <!-- 调整成本弹窗 -->
     <van-popup
