@@ -60,7 +60,7 @@ async function handleFileChange(event: Event) {
       showDialog({
         title: t('ocr.permission_denied'),
         message: t('ocr.permission_message'),
-        confirmButtonText: '知道了',
+        confirmButtonText: t('ocr.got_it'),
       })
       return
     }
@@ -113,8 +113,8 @@ async function startRecognition(file: File) {
     const errMsg = error?.message || t('ocr.recognize_failed_retry')
     showDialog({
       title: t('ocr.recognize_failed'),
-      message: errMsg + '\n\n建议：\n1. 确保截图清晰\n2. 确保包含基金代码和金额\n3. 尝试重新拍照',
-      confirmButtonText: 't("ocr.reselect")',
+      message: errMsg + t('ocr.error_suggestion'),
+      confirmButtonText: t('ocr.reselect'),
     }).then(() => {
       step.value = 'upload'
     })

@@ -23,6 +23,8 @@
     "holding_trend": "持仓趋势",
     "watchlist": "自选基金",
     "market_closed": "休市",
+    "market_weekend": "周末休市，数据可能延迟",
+    "market_holiday": "节假日休市，数据可能延迟",
     "sort_asc": "升序",
     "sort_desc": "降序",
     "total_assets": "总资产",
@@ -820,5 +822,10 @@
     "deselect_all": "取消全选",
     "confirm_import": "确认导入",
     "importing_status": "正在导入...",
-    "permission_message": "需要相机和存储权限才能使用截图导入功能，请在系统设置中授予权限"
+    "permission_message": "需要相机和存储权限才能使用截图导入功能，请在系统设置中授予权限",
+    "got_it": "知道了",
+    "error_suggestion": "\n\n建议：\n1. 确保截图清晰\n2. 确保包含基金代码和金额\n3. 尝试重新拍照",
+    "platform_detected": "检测到平台",
+    "blur_detected": "图片可能模糊，识别效果可能不佳",
+    "no_code_no_name": "缺少基金代码和名称，无法匹配"
   }}

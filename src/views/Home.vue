@@ -43,6 +43,15 @@ const isWeekend = computed(() => {
   return day === 0 || day === 6
 })
 
+function getTradingStatusText(session: string): string {
+  const map: Record<string, string> = {
+    closed: t('home.market_closed'),
+    weekend: t('home.market_weekend'),
+    holiday: t('home.market_holiday'),
+  }
+  return map[session] || t('home.market_closed')
+}
+
 // ActionSheet composable
 const actionSheet = useActionSheet()
 
@@ -275,6 +284,12 @@ onUnmounted(() => {
         </van-button>
       </div>
       
+      <!-- 非交易时间状态栏 -->
+      <div v-if="tradingSession === 'closed' || tradingSession === 'weekend' || tradingSession === 'holiday'" class="trading-status-bar" data-testid="trading-status-bar">
+        <van-icon name="clock-o" size="14" />
+        <span>{{ getTradingStatusText(tradingSession) }}</span>
+      </div>
+
       <!-- 资产总览卡片 + 持仓网格 -->
       <DashboardSummary
         v-if="holdingStore.holdings.length > 0"
@@ -358,6 +373,19 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* ========== 非交易时间状态栏 ========== */
+.trading-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(255, 152, 0, 0.12);
+  color: #ff9800;
+  font-size: 12px;
+  text-align: center;
+  justify-content: center;
+}
+
 /* ========== 首页布局样式 ========== */
 .home-page {
   height: 100%;

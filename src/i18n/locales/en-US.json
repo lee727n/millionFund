@@ -23,6 +23,8 @@
     "holding_trend": "Holding Trend",
     "watchlist": "Watchlist",
     "market_closed": "Market Closed",
+    "market_weekend": "Weekend - Market closed, data may be delayed",
+    "market_holiday": "Holiday - Market closed, data may be delayed",
     "sort_asc": "Ascending",
     "sort_desc": "Descending",
     "total_assets": "Total Assets",
@@ -793,5 +795,10 @@
     "deselect_all": "Deselect All",
     "confirm_import": "Confirm Import",
     "importing_status": "Importing...",
-    "permission_message": "Camera and storage permissions are required for screenshot import. Please grant them in system settings."
+    "permission_message": "Camera and storage permissions are required for screenshot import. Please grant them in system settings.",
+    "got_it": "Got it",
+    "error_suggestion": "\n\nSuggestions:\n1. Ensure the screenshot is clear\n2. Ensure it contains fund code and amount\n3. Try taking a new photo",
+    "platform_detected": "Platform detected",
+    "blur_detected": "Image may be blurry, recognition may be affected",
+    "no_code_no_name": "Missing fund code and name, cannot match"
   }}
