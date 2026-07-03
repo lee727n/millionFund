@@ -40,6 +40,7 @@ import FundAnnouncementsSection from '@/components/FundAnnouncementsSection.vue'
 import DetailHeader from '@/components/detail/DetailHeader.vue'
 import DetailHoldingPanel from '@/components/detail/DetailHoldingPanel.vue'
 import DetailBottomBar from '@/components/detail/DetailBottomBar.vue'
+import DetailPortfolioSection from '@/components/detail/DetailPortfolioSection.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,21 +83,6 @@ const bestPeriodReturn = computed(() => {
   if (periodReturns.value.length === 0) return { label: t('detail.best_return'), value: 0 }
   const sorted = [...periodReturns.value].sort((a, b) => b.fundReturn - a.fundReturn)
   return { label: sorted[0]!.label, value: sorted[0]!.fundReturn }
-})
-
-// [WHAT] 行业配置饼图数据（转换为SVG stroke-dasharray格式）
-const industryPieData = computed(() => {
-  const total = industryAllocation.value.reduce((s, i) => s + i.ratio, 0)
-  if (total === 0) return []
-  const circumference = 2 * Math.PI * 40  // r=40
-  let offset = 0
-  return industryAllocation.value.map(item => {
-    const ratio = item.ratio / total
-    const dashArray = ratio * circumference
-    const result = { ...item, dashArray: `${dashArray} ${circumference - dashArray}`, offset: -offset }
-    offset += dashArray
-    return result
-  })
 })
 
 // [WHAT] 预估赎回费
@@ -898,143 +884,12 @@ function formatPercent(num: number): string {
       </div>
     </div>
 
-    <!-- ========== 重仓股票 ========== -->
-    <div class="info-section">
-      <div class="section-header">
-        <span>{{ t('detail.top_stocks') }}</span>
-        <span class="section-tip" v-if="stockHoldings.length > 0">
-          TOP{{ stockHoldings.length }}
-        </span>
-      </div>
-      <div v-if="stockHoldings.length > 0" class="holdings-list">
-        <div 
-          v-for="(stock, idx) in stockHoldings" 
-          :key="idx"
-          class="holding-item"
-        >
-          <div class="holding-rank">{{ idx + 1 }}</div>
-          <div class="holding-info">
-            <div class="holding-name">{{ stock.stockName }}</div>
-            <div class="holding-code">{{ stock.stockCode }}</div>
-          </div>
-          <div class="holding-ratio">
-            <div class="ratio-value">{{ stock.holdingRatio.toFixed(2) }}%</div>
-            <div class="ratio-label">{{ t('detail.hold_ratio') }}</div>
-          </div>
-        </div>
-      </div>
-      <div v-else class="empty-hint">{{ t('detail.no_holding_data') }}</div>
-    </div>
-
-    <!-- ========== 行业配置 ========== -->
-    <div class="info-section" v-if="industryAllocation.length > 0">
-      <div class="section-header">
-        <span>{{ t('detail.industry_alloc') }}</span>
-      </div>
-      <div class="industry-chart">
-     
-        <div class="pie-container">
-          <svg viewBox="0 0 100 100" class="pie-svg">
-            <circle 
-              v-for="(item, idx) in industryPieData" 
-              :key="idx"
-              cx="50" cy="50" r="40"
-              fill="transparent"
-              :stroke="item.color"
-              stroke-width="20"
-              :stroke-dasharray="item.dashArray"
-              :stroke-dashoffset="item.offset"
-              :style="{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }"
-            />
-          </svg>
-        </div>
-        <div class="industry-legend">
-          <div 
-            v-for="item in industryAllocation.slice(0, 6)" 
-            :key="item.name"
-            class="legend-item"
-          >
-            <span class="legend-color" :style="{ background: item.color }"></span>
-            <span class="legend-name">{{ item.name }}</span>
-            <span class="legend-value">{{ item.ratio }}%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-   
-    <div class="info-section" v-if="assetAllocation">
-      <div class="section-header">
-        <span>{{ t('detail.asset_alloc') }}</span>
-      </div>
-      <div class="asset-bars">
-        <div class="asset-item" v-if="assetAllocation.stock > 0">
-          <span class="asset-label">{{ t('detail.stock_label') }}</span>
-          <div class="asset-bar">
-            <div class="bar-fill stock" :style="{ width: assetAllocation.stock + '%' }"></div>
-          </div>
-          <span class="asset-value">{{ assetAllocation.stock }}%</span>
-        </div>
-        <div class="asset-item" v-if="assetAllocation.bond > 0">
-          <span class="asset-label">{{ t('detail.bond_label') }}</span>
-          <div class="asset-bar">
-            <div class="bar-fill bond" :style="{ width: assetAllocation.bond + '%' }"></div>
-          </div>
-          <span class="asset-value">{{ assetAllocation.bond }}%</span>
-        </div>
-        <div class="asset-item" v-if="assetAllocation.cash > 0">
-          <span class="asset-label">{{ t('detail.cash_label') }}</span>
-          <div class="asset-bar">
-            <div class="bar-fill cash" :style="{ width: assetAllocation.cash + '%' }"></div>
-          </div>
-          <span class="asset-value">{{ assetAllocation.cash }}%</span>
-        </div>
-        <div class="asset-item" v-if="assetAllocation.other > 0">
-          <span class="asset-label">{{ t('detail.other_label') }}</span>
-          <div class="asset-bar">
-            <div class="bar-fill other" :style="{ width: assetAllocation.other + '%' }"></div>
-          </div>
-          <span class="asset-value">{{ assetAllocation.other }}%</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="info-section" v-if="fundRating">
-      <div class="section-header">
-        <span>{{ t('detail.fund_rating') }}</span>
-        <span class="section-tip">{{ fundRating.riskLevel }}</span>
-      </div>
-      <div class="rating-content">
-        <div class="rating-stars">
-          <van-icon 
-            v-for="i in 5" 
-            :key="i" 
-            :name="i <= fundRating.rating ? 'star' : 'star-o'" 
-            :color="i <= fundRating.rating ? '#f59e0b' : '#d1d5db'"
-            size="20"
-          />
-          <span class="rating-text">{{ fundRating.rating }}星</span>
-        </div>
-        <div class="rating-metrics">
-          <div class="metric-item">
-            <div class="metric-value">{{ fundRating.sharpeRatio || '--' }}</div>
-            <div class="metric-label">{{ t('detail.sharpe_ratio') }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-value danger">{{ fundRating.maxDrawdown ? fundRating.maxDrawdown + '%' : '--' }}</div>
-            <div class="metric-label">{{ t('detail.max_drawdown') }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-value">{{ fundRating.volatility ? fundRating.volatility + '%' : '--' }}</div>
-            <div class="metric-label">{{ t('detail.volatility') }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-value primary">{{ fundRating.rankInSimilar }}</div>
-            <div class="metric-label">{{ t('detail.peer_rank') }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <DetailPortfolioSection
+      :stock-holdings="stockHoldings"
+      :industry-allocation="industryAllocation"
+      :asset-allocation="assetAllocation"
+      :fund-rating="fundRating"
+    />
 
    
     <!-- ========== 分红记录 ========== -->
