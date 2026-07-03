@@ -41,6 +41,7 @@ import DetailHeader from '@/components/detail/DetailHeader.vue'
 import DetailHoldingPanel from '@/components/detail/DetailHoldingPanel.vue'
 import DetailBottomBar from '@/components/detail/DetailBottomBar.vue'
 import DetailPortfolioSection from '@/components/detail/DetailPortfolioSection.vue'
+import DetailFundInfo from '@/components/detail/DetailFundInfo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,18 +84,6 @@ const bestPeriodReturn = computed(() => {
   if (periodReturns.value.length === 0) return { label: t('detail.best_return'), value: 0 }
   const sorted = [...periodReturns.value].sort((a, b) => b.fundReturn - a.fundReturn)
   return { label: sorted[0]!.label, value: sorted[0]!.fundReturn }
-})
-
-// [WHAT] 预估赎回费
-const estimatedRedemptionFee = computed(() => {
-  if (!fundFees.value || !holdingDetails.value) return null
-  const holdDays = holdingDetails.value.holdDays
-  const fee = fundFees.value.redemptionFees.find(f => holdDays >= f.minDays && holdDays < f.maxDays)
-  if (!fee) return null
-  return {
-    rate: fee.rate,
-    fee: holdingDetails.value.amount * (fee.rate / 100)
-  }
 })
 
 // [WHAT] 累计分红
@@ -777,112 +766,11 @@ function formatPercent(num: number): string {
       </div>
     </div>
 
-    <!-- ========== 基金规模 ========== -->
-    <div v-if="fundScale && fundScale.scale > 0" class="info-section">
-      <div class="section-header">
-        <span>{{ t('detail.fund_scale') }}</span>
-        <span class="section-tip">{{ fundScale.scaleDate }}</span>
-      </div>
-      <div class="scale-grid">
-        <div class="scale-item">
-          <div class="scale-value">{{ fundScale.scale.toFixed(2) }}亿</div>
-          <div class="scale-label">{{ t('detail.asset_scale') }}</div>
-        </div>
-        <div class="scale-item">
-          <div class="scale-value">{{ fundScale.shareTotal.toFixed(2) }}亿份</div>
-          <div class="scale-label">{{ t('detail.total_shares') }}</div>
-        </div>
-        <div class="scale-item">
-          <div class="scale-value">{{ fundScale.institutionRatio.toFixed(1) }}%</div>
-          <div class="scale-label">{{ t('detail.inst_hold') }}</div>
-        </div>
-        <div class="scale-item">
-          <div class="scale-value">{{ fundScale.personalRatio.toFixed(1) }}%</div>
-          <div class="scale-label">{{ t('detail.personal_hold') }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== 费率信息 ========== -->
-    <div v-if="fundFees" class="info-section">
-      <div class="section-header">
-        <span>{{ t('detail.fee_info') }}</span>
-      </div>
-      <div class="fee-grid">
-        <div class="fee-item">
-          <div class="fee-label">{{ t('detail.management_fee') }}</div>
-          <div class="fee-value">{{ fundFees.managementFee.toFixed(2) }}%/年</div>
-        </div>
-        <div class="fee-item">
-          <div class="fee-label">{{ t('detail.custodian_fee') }}</div>
-          <div class="fee-value">{{ fundFees.custodianFee.toFixed(2) }}%/年</div>
-        </div>
-        <div class="fee-item" v-if="fundFees.salesServiceFee > 0">
-          <div class="fee-label">{{ t('detail.sales_service_fee') }}</div>
-          <div class="fee-value">{{ fundFees.salesServiceFee.toFixed(2) }}%/年</div>
-        </div>
-      </div>
-      
-     
-      <div class="fee-table">
-        <div class="table-title">{{ t('detail.purchase_rate') }}</div>
-        <div class="table-row header">
-          <span>{{ t('detail.amount') }}</span>
-          <span>{{ t('detail.original_rate') }}</span>
-          <span>{{ t('detail.discounted_rate') }}</span>
-        </div>
-        <div 
-          v-for="(fee, idx) in fundFees.purchaseFees.slice(0, 4)" 
-          :key="'p' + idx"
-          class="table-row"
-        >
-          <span>
-            {{ fee.minAmount === 0 && fee.maxAmount === Infinity 
-              ? '全部金额'
-              : fee.maxAmount === Infinity 
-                ? `≥${fee.minAmount}万` 
-                : fee.minAmount === 0
-                  ? `<${fee.maxAmount}万`
-                  : `${fee.minAmount}-${fee.maxAmount}万` }}
-          </span>
-          <span>{{ fee.rate >= 1000 ? `${fee.rate}元` : fee.rate === 0 ? '免费' : `${fee.rate}%` }}</span>
-          <span class="discount">{{ fee.discountRate >= 1000 ? `${fee.discountRate}元` : fee.discountRate === 0 ? '免费' : `${fee.discountRate}%` }}</span>
-        </div>
-      </div>
-      
-     
-      <div class="fee-table">
-        <div class="table-title">{{ t('detail.redemption_fee') }}</div>
-        <div class="table-row header">
-          <span>{{ t('detail.hold_days') }}</span>
-          <span>{{ t('detail.rate') }}</span>
-        </div>
-        <div 
-          v-for="(fee, idx) in fundFees.redemptionFees" 
-          :key="'r' + idx"
-          class="table-row"
-        >
-          <span>
-            {{ fee.maxDays === Infinity 
-              ? `≥${fee.minDays}天` 
-              : fee.minDays === 0 
-                ? `<${fee.maxDays}天`
-                : `${fee.minDays}-${fee.maxDays}天` }}
-          </span>
-          <span :class="{ free: fee.rate === 0 }">{{ fee.rate === 0 ? '免费' : `${fee.rate}%` }}</span>
-        </div>
-      </div>
-      
-     
-      <div v-if="estimatedRedemptionFee && holdingDetails" class="redemption-estimate">
-        <div class="estimate-info">
-          <span>当前持有 {{ holdingDetails.holdDays }} 天，赎回费率 {{ estimatedRedemptionFee.rate }}%</span>
-        </div>
-        <div class="estimate-fee">
-          预估赎回费: <span class="fee-amount">¥{{ estimatedRedemptionFee.fee.toFixed(2) }}</span>
-        </div>
-      </div>
-    </div>
+    <DetailFundInfo
+      :fund-scale="fundScale"
+      :fund-fees="fundFees"
+      :holding-details="holdingDetails"
+    />
 
     <DetailPortfolioSection
       :stock-holdings="stockHoldings"
