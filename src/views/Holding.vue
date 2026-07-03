@@ -20,6 +20,8 @@ import { logger, copyLogsToClipboard } from '@/utils/logger'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
+import HoldingNavBar from '@/components/holding/HoldingNavBar.vue'
+import HoldingSummaryCard from '@/components/holding/HoldingSummaryCard.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
 
@@ -876,73 +878,27 @@ async function onCopyLogs(): Promise<void> {
 
 <template>
   <div class="holding-page">
-    <!-- 顶部导航栏 -->
-    <div class="custom-nav-bar">
-      <div class="nav-title">{{ t('holding.title') }}</div>
-      <div class="nav-actions">
-        <!-- 网页端按钮 -->
-        <div class="web-actions web-only">
-          <van-icon name="replay" size="20" @click="refreshHoldings" class="refresh-icon" />
-          <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
-          <van-button size="small" @click="showImportDialog = true" class="nav-btn">{{ t('holding.import_screenshot') }}</van-button>
-          <van-button size="small" @click="openBatchDialog" class="nav-btn">{{ t('holding.batch') }}</van-button>
-          <van-button size="small" @click="exportCSV" class="nav-btn">{{ t('holding.export_csv') }}</van-button>
-          <van-button size="small" @click="backupHoldings" class="nav-btn">{{ t('holding.backup') }}</van-button>
-          <van-button size="small" @click="restoreHoldings" class="nav-btn">{{ t('holding.restore') }}</van-button>
-        </div>
-        
-        <!-- 移动端按钮 -->
-        <div class="mobile-actions mobile-only">
-          <img 
-            :src="riseW" 
-            class="sort-mobile-icon"
-            :class="{ active: sortDirection === 'up' }"
-            @click="handleSort('up')"
-            :alt="t('holding.sort_asc')" 
-          />
-          <img 
-            :src="downW" 
-            class="sort-mobile-icon"
-            :class="{ active: sortDirection === 'down' }"
-            @click="handleSort('down')"
-            :alt="t('holding.sort_desc')" 
-          />
-          <van-icon name="description-o" size="20" @click="onCopyLogs" :title="t('holding.copy_logs')" />
-          <van-button size="small" @click="showImportDialog = true">{{ t('holding.import_screenshot') }}</van-button>
-          <van-button size="small" @click="openBatchDialog">{{ t('holding.batch') }}</van-button>
-          <van-button size="small" @click="exportCSV">{{ t('holding.export_csv') }}</van-button>
-          <van-button size="small" @click="restoreHoldings">{{ t('holding.restore') }}</van-button>
-        </div>
-      </div>
-    </div>
+    <HoldingNavBar
+      :sort-direction="sortDirection"
+      :current-source-filter="currentSourceFilter"
+      :rise-icon="riseW"
+      :down-icon="downW"
+      @refresh="refreshHoldings"
+      @copy-logs="onCopyLogs"
+      @import-screenshot="showImportDialog = true"
+      @batch-entry="openBatchDialog"
+      @export-csv="exportCSV"
+      @backup="backupHoldings"
+      @restore="restoreHoldings"
+      @sort="handleSort"
+      @filter-source="filterBySource"
+    />
 
     <!-- 汇总统计卡片 -->
-    <div v-if="holdingStore.holdings.length > 0" class="summary-card">
-      <div class="summary-row summary-row-single">
-        <div class="summary-item">
-          <div class="summary-label">{{ t('holding.account_assets') }}</div>
-          <div class="summary-value">{{ formatMoney(holdingStore.summary.totalValue, '', isMobile()) }}</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">{{ t('holding.today_profit_label') }}</div>
-          <div class="summary-value" :class="summaryTodayClass">
-            {{ isMobile() ? '' : (holdingStore.summary.todayProfit >= 0 ? '+' : '') }}{{ formatMoney(holdingStore.summary.todayProfit, '', isMobile()) }}
-          </div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">{{ t('holding.holding_profit') }}</div>
-          <div class="summary-value" :class="summaryProfitClass">
-            {{ isMobile() ? '' : (holdingStore.summary.totalProfit >= 0 ? '+' : '') }}{{ formatMoney(holdingStore.summary.totalProfit, '', isMobile()) }}
-          </div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">{{ t("holding.profit_rate_label") }}</div>
-          <div class="summary-value" :class="summaryProfitClass">
-            {{ isMobile() ? '' : '' }}{{ formatPercent(holdingStore.summary.totalProfitRate, isMobile()) }}
-          </div>
-        </div>
-      </div>
-    </div>
+    <HoldingSummaryCard
+      v-if="holdingStore.holdings.length > 0"
+      :summary="holdingStore.summary"
+    />
 
     <!-- 持仓列表表头 -->
     <div v-if="holdingStore.holdings.length > 0" class="list-header">
