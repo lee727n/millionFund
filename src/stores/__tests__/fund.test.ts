@@ -32,6 +32,10 @@ describe('fund.ts store', () => {
   test('initWatchlist 从 storage 读取数据', async () => {
     const { getWatchlist } = await import('@/utils/storage')
     getWatchlist.mockResolvedValue(['110011', '110022'])
+    // [WHY] 缓存优先加载后 refreshEstimates 是 fire-and-forget 后台触发，未挂起的 mock 会快速走完并把 loading 置为 false
+    // [WHAT] 让刷新接口保持 pending，以便断言 initWatchlist 写入的初始 loading 状态（缓存未命中 → loading: true）
+    const { fetchFundEstimateFast } = await import('@/api/fundFast')
+    fetchFundEstimateFast.mockReturnValue(new Promise(() => {}))
 
     const store = (await import('@/stores/fund')).useFundStore()
     await store.initWatchlist()

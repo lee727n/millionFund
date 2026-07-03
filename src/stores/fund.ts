@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { WatchlistItem, FundEstimate } from '@/types/fund'
 import { fetchFundEstimateFast, fetchFundAccurateData, fetchFundBasicInfo } from '@/api/fundFast'
+import { getCache } from '@/api/cache'
 import {
   getWatchlist,
   addToWatchlist as addToStorage,
@@ -36,18 +37,57 @@ export const useFundStore = defineStore('fund', () => {
   /**
    * 初始化自选列表
    * [WHY] APP 启动时从本地存储恢复数据
+   * [WHAT] 委托给 loadWatchlist 走缓存优先加载流程
    */
   async function initWatchlist() {
+    await loadWatchlist()
+  }
+
+  /**
+   * 加载自选列表（缓存优先策略入口）
+   * [WHY] 保持外部调用入口不变，内部统一走缓存优先流程
+   * [WHAT] 委托给 loadWatchlistCached 完成实际加载
+   */
+  async function loadWatchlist() {
+    await loadWatchlistCached()
+  }
+
+  /**
+   * 缓存优先加载自选列表
+   * [WHY] 缓存优先策略 - 先用缓存数据立即渲染，避免空白/loading 闪烁；再后台拉取最新数据更新 UI
+   * [WHAT] 1. 读取本地存储的基金代码列表
+   *        2. 从内存缓存读取每只基金的估值数据，立即渲染（命中缓存则直接展示，未命中则显示 loading）
+   *        3. 后台并发拉取最新估值（refreshEstimates），数据到达后由其自动更新 UI
+   */
+  async function loadWatchlistCached() {
     const codes = await getWatchlist()
-    watchlist.value = codes.map((code) => ({
-      code,
-      name: '',
-      loading: true
-    }))
-    // [WHAT] 初始化后立即刷新估值
-    if (codes.length > 0) {
-      refreshEstimates()
+
+    // [EDGE] 没有自选基金时清空列表并重置刷新状态
+    if (codes.length === 0) {
+      watchlist.value = []
+      isRefreshing.value = false
+      return
     }
+
+    // [WHAT] 缓存优先：用内存缓存中的估值数据立即渲染，命中缓存的不显示 loading
+    watchlist.value = codes.map((code) => {
+      const cached = getCache<FundEstimate>(`estimate_${code}`)
+      if (cached && cached.name) {
+        return {
+          code: cached.fundcode || code,
+          name: cached.name,
+          estimateValue: cached.gsz,
+          estimateChange: cached.gszzl,
+          estimateTime: cached.gztime,
+          lastValue: cached.dwjz,
+          loading: false
+        }
+      }
+      return { code, name: '', loading: true }
+    })
+
+    // [WHAT] 后台拉取最新数据，到达后由 refreshEstimates 自动更新 UI
+    refreshEstimates()
   }
 
   /**
@@ -222,6 +262,8 @@ export const useFundStore = defineStore('fund', () => {
     watchlistCodes,
     // Actions
     initWatchlist,
+    loadWatchlist,
+    loadWatchlistCached,
     refreshEstimates,
     refreshSingleFund,
     addFund,
