@@ -495,7 +495,21 @@
     "balance": "当日余额",
     "north_trend": "近5日北向资金",
     "logs_copied": "日志已复制",
-    "copy_failed": "复制失败，请手动复制"
+    "copy_failed": "复制失败，请手动复制",
+    "search_placeholder": "搜索新闻标题、摘要或来源...",
+    "source_toutiao": "今日头条",
+    "source_sina": "新浪财经",
+    "source_netease": "网易财经",
+    "source_tencent": "腾讯财经",
+    "source_10jqka": "同花顺",
+    "source_stcn": "证券时报",
+    "source_csnews": "中国证券报",
+    "source_yicai": "第一财经",
+    "all_sources_cross": "全部来源 (交叉验证)",
+    "cross_validation_enabled": "交叉验证: 已启用",
+    "cross_count": "在{count}个来源中出现",
+    "current_source": "当前来源",
+    "news_count": "新闻数量"
   },
   "trend": {
     "up": "看涨",

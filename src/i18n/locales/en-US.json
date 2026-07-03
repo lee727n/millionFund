@@ -482,7 +482,21 @@
     "balance": "Daily Balance",
     "north_trend": "5-Day North Flow",
     "logs_copied": "Logs copied",
-    "copy_failed": "Copy failed"
+    "copy_failed": "Copy failed",
+    "search_placeholder": "Search news title, summary or source...",
+    "source_toutiao": "Toutiao",
+    "source_sina": "Sina Finance",
+    "source_netease": "Netease Finance",
+    "source_tencent": "Tencent Finance",
+    "source_10jqka": "10jqka",
+    "source_stcn": "STCN",
+    "source_csnews": "CS News",
+    "source_yicai": "Yicai",
+    "all_sources_cross": "All Sources (Cross-Validation)",
+    "cross_validation_enabled": "Cross-Validation: Enabled",
+    "cross_count": "Appeared in {count} sources",
+    "current_source": "Current Source",
+    "news_count": "News Count"
   },
   "trades": {
     "title": "Trade Records",

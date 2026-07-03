@@ -49,22 +49,21 @@ const searchKeyword = ref('')
 type DataSource = 'jin10' | 'cls' | 'xueqiu' | 'choice' | 'toutiao' | 'sina' | 'netease' | 'tencent' | 'eastmoney' | '10jqka' | 'stcn' | 'csnews' | 'yicai' | 'all'
 const activeSource = ref<DataSource>('jin10')
 
-// 数据源下拉选项 (Task #10: 合并 FinanceNews.vue)
-const sourceOptions = [
-  { text: '金十数据', value: 'jin10' },
-  { text: '财联社', value: 'cls' },
-  { text: '雪球', value: 'xueqiu' },
-  { text: '东方财富', value: 'choice' },
-  { text: '今日头条', value: 'toutiao' },
-  { text: '新浪财经', value: 'sina' },
-  { text: '网易财经', value: 'netease' },
-  { text: '腾讯财经', value: 'tencent' },
-  { text: '同花顺', value: '10jqka' },
-  { text: '证券时报', value: 'stcn' },
-  { text: '中国证券报', value: 'csnews' },
-  { text: '第一财经', value: 'yicai' },
-  { text: '全部来源 (交叉验证)', value: 'all' }
-]
+const sourceOptions = computed(() => [
+  { text: t('news.jin10'), value: 'jin10' },
+  { text: t('news.cls'), value: 'cls' },
+  { text: t('news.xueqiu'), value: 'xueqiu' },
+  { text: t('news.capital_flow'), value: 'choice' },
+  { text: t('news.source_toutiao'), value: 'toutiao' },
+  { text: t('news.source_sina'), value: 'sina' },
+  { text: t('news.source_netease'), value: 'netease' },
+  { text: t('news.source_tencent'), value: 'tencent' },
+  { text: t('news.source_10jqka'), value: '10jqka' },
+  { text: t('news.source_stcn'), value: 'stcn' },
+  { text: t('news.source_csnews'), value: 'csnews' },
+  { text: t('news.source_yicai'), value: 'yicai' },
+  { text: t('news.all_sources_cross'), value: 'all' }
+])
 
 // ========== 交叉验证状态 (Task #11: Jaccard 相似度) ==========
 const crossValidation = ref({
@@ -191,6 +190,27 @@ const filteredCrossValidationNews = computed(() => {
     item.source.toLowerCase().includes(kw)
   )
 })
+
+function filterApiNewsList(list: ApiNewsItem[]) {
+  if (!searchKeyword.value.trim()) return list
+  const kw = searchKeyword.value.toLowerCase()
+  return list.filter(item =>
+    item.title.toLowerCase().includes(kw) ||
+    item.summary.toLowerCase().includes(kw) ||
+    item.source.toLowerCase().includes(kw)
+  )
+}
+
+const filteredToutiaoNews = computed(() => filterApiNewsList(toutiaoNewsList.value))
+const filteredSinaNews = computed(() => filterApiNewsList(sinaNewsList.value))
+const filteredNeteaseNews = computed(() => filterApiNewsList(neteaseNewsList.value))
+const filteredTencentNews = computed(() => filterApiNewsList(tencentNewsList.value))
+const filteredXueqiuNews = computed(() => filterApiNewsList(xueqiuNewsList.value))
+const filteredEastmoneyNews = computed(() => filterApiNewsList(eastmoneyNewsList.value))
+const filteredJqkaNews = computed(() => filterApiNewsList(jqkaNewsList.value))
+const filteredStcnNews = computed(() => filterApiNewsList(stcnNewsList.value))
+const filteredCsNews = computed(() => filterApiNewsList(csNewsList.value))
+const filteredYicaiNews = computed(() => filterApiNewsList(yicaiNewsList.value))
 
 // ========== 金十数据 ==========
 
@@ -1129,8 +1149,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="toutiaoNewsList.length > 0" class="scroll-list">
-          <div v-for="item in toutiaoNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">今日头条</div>
+          <div v-for="item in filteredToutiaoNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_toutiao') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1147,8 +1167,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="sinaNewsList.length > 0" class="scroll-list">
-          <div v-for="item in sinaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">新浪财经</div>
+          <div v-for="item in filteredSinaNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_sina') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1165,8 +1185,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="neteaseNewsList.length > 0" class="scroll-list">
-          <div v-for="item in neteaseNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">网易财经</div>
+          <div v-for="item in filteredNeteaseNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_netease') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1183,8 +1203,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="tencentNewsList.length > 0" class="scroll-list">
-          <div v-for="item in tencentNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">腾讯财经</div>
+          <div v-for="item in filteredTencentNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_tencent') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1206,8 +1226,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="eastmoneyNewsList.length > 0" class="scroll-list">
-          <div v-for="item in eastmoneyNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">东方财富</div>
+          <div v-for="item in filteredEastmoneyNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('settings.eastmoney') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1224,8 +1244,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="jqkaNewsList.length > 0" class="scroll-list">
-          <div v-for="item in jqkaNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">同花顺</div>
+          <div v-for="item in filteredJqkaNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_10jqka') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1242,8 +1262,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="stcnNewsList.length > 0" class="scroll-list">
-          <div v-for="item in stcnNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">证券时报</div>
+          <div v-for="item in filteredStcnNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_stcn') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1260,8 +1280,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="csNewsList.length > 0" class="scroll-list">
-          <div v-for="item in csNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">中国证券报</div>
+          <div v-for="item in filteredCsNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_csnews') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
@@ -1278,8 +1298,8 @@ onMounted(() => {
           <van-loading size="24px">加载中...</van-loading>
         </div>
         <div v-else-if="yicaiNewsList.length > 0" class="scroll-list">
-          <div v-for="item in yicaiNewsList" :key="item.id" class="news-card" @click="router.push(item.url)">
-            <div class="news-source-tag">第一财经</div>
+          <div v-for="item in filteredYicaiNews" :key="item.id" class="news-card" @click="router.push(item.url)">
+            <div class="news-source-tag">{{ t('news.source_yicai') }}</div>
             <div class="news-time">{{ formatTime(item.publishedAt) }}</div>
             <div class="news-title">{{ item.title }}</div>
             <div class="news-summary">{{ item.summary }}</div>
