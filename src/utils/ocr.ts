@@ -1,9 +1,143 @@
 // [WHY] OCR 识别服务 - 用于从截图中识别基金持仓信息
 // [WHAT] 使用 Tesseract.js 进行本地文字识别，无需外部 API
 // [DEPS] 依赖 tesseract.js 库
+// [REF] v1.10: OCR增强 - 多平台模板支持（支付宝/天天基金/微信/京东金融）
 
 import Tesseract, { type Worker } from 'tesseract.js'
 import { logger } from './logger'
+
+export type OcrPlatform =
+  | 'alipay'      // 支付宝
+  | 'tiantian'    // 天天基金
+  | 'wechat'      // 微信理财通
+  | 'jd'          // 京东金融
+  | 'ant'         // 蚂蚁财富
+  | 'unknown'     // 未知平台
+
+export interface PlatformTemplate {
+  platform: OcrPlatform
+  name: string
+  keywords: string[]
+  layout: {
+    namePosition: 'before' | 'after' | 'above' | 'below'
+    codePosition: 'before' | 'after' | 'above' | 'below' | 'hidden'
+    amountKeywords: string[]
+    sharesKeywords: string[]
+  }
+  amountPatterns: RegExp[]
+}
+
+const PLATFORM_TEMPLATES: PlatformTemplate[] = [
+  {
+    platform: 'alipay',
+    name: '支付宝',
+    keywords: ['支付宝', '蚂蚁财富', '持有金额', '持有份额', '收益明细', '累计收益', '昨日收益'],
+    layout: {
+      namePosition: 'before',
+      codePosition: 'hidden',
+      amountKeywords: ['持有金额', '金额'],
+      sharesKeywords: ['持有份额', '份额'],
+    },
+    amountPatterns: [
+      /持有金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+      /金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+    ],
+  },
+  {
+    platform: 'tiantian',
+    name: '天天基金',
+    keywords: ['天天基金', '活期宝', '定期宝', '指数宝', '基金代码', '最新净值', '累计收益', '持有收益'],
+    layout: {
+      namePosition: 'before',
+      codePosition: 'after',
+      amountKeywords: ['持有金额', '市值'],
+      sharesKeywords: ['持有份额', '份额'],
+    },
+    amountPatterns: [
+      /持有金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+      /市值\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+    ],
+  },
+  {
+    platform: 'wechat',
+    name: '微信理财通',
+    keywords: ['理财通', '腾讯理财', '微信理财', '累计收益', '持有金额', '买入', '卖出'],
+    layout: {
+      namePosition: 'before',
+      codePosition: 'hidden',
+      amountKeywords: ['持有金额', '金额'],
+      sharesKeywords: ['持有份额', '份额'],
+    },
+    amountPatterns: [
+      /持有金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+      /金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+    ],
+  },
+  {
+    platform: 'jd',
+    name: '京东金融',
+    keywords: ['京东金融', '小金库', '基金理财', '持有金额', '累计收益', '持有份额'],
+    layout: {
+      namePosition: 'before',
+      codePosition: 'after',
+      amountKeywords: ['持有金额', '金额'],
+      sharesKeywords: ['持有份额', '份额'],
+    },
+    amountPatterns: [
+      /持有金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+      /金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+    ],
+  },
+  {
+    platform: 'ant',
+    name: '蚂蚁财富',
+    keywords: ['蚂蚁财富', '蚂蚁基金', '持有收益', '持有金额', '持有份额', '收益率'],
+    layout: {
+      namePosition: 'before',
+      codePosition: 'hidden',
+      amountKeywords: ['持有金额', '金额'],
+      sharesKeywords: ['持有份额', '份额'],
+    },
+    amountPatterns: [
+      /持有金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+      /金额\s*[¥￥]?\s*([\d,]+\.?\d*)/,
+    ],
+  },
+]
+
+export function detectPlatform(text: string): { platform: OcrPlatform; confidence: number; template: PlatformTemplate | null } {
+  if (!text || !text.trim()) {
+    return { platform: 'unknown', confidence: 0, template: null }
+  }
+
+  let bestPlatform: OcrPlatform = 'unknown'
+  let bestScore = 0
+  let bestTemplate: PlatformTemplate | null = null
+
+  for (const template of PLATFORM_TEMPLATES) {
+    let score = 0
+    for (const keyword of template.keywords) {
+      if (text.includes(keyword)) {
+        score += 1
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestPlatform = template.platform
+      bestTemplate = template
+    }
+  }
+
+  const totalKeywords = bestTemplate ? bestTemplate.keywords.length : 1
+  const confidence = Math.min(bestScore / Math.min(totalKeywords, 5), 1)
+
+  return { platform: bestPlatform, confidence, template: bestTemplate }
+}
+
+export function getAllPlatformTemplates(): PlatformTemplate[] {
+  return [...PLATFORM_TEMPLATES]
+}
+
 
 let sharedWorker: Worker | null = null
 let workerInitPromise: Promise<Worker> | null = null
@@ -252,6 +386,8 @@ export interface RecognizedHolding {
   buyDate?: string
   /** 识别置信度（0-1） */
   confidence: number
+  /** 检测到的平台（可选） */
+  platform?: OcrPlatform
 }
 
 /**
@@ -420,57 +556,68 @@ function removeProgressListener(cb: OcrProgressCallback) {
  */
 export function parseHoldingText(text: string): RecognizedHolding[] {
   const holdings: RecognizedHolding[] = []
-  // 预处理：OCR 常把中文字符间插入空格，先把相邻中文字符间的空格去掉
+
+  const { platform, template } = detectPlatform(text)
+
   const normalizedText = collapseChineseSpacing(text)
   const lines = normalizedText.split('\n').map(line => line.trim()).filter(Boolean)
   
-  // [WHAT] 预处理：合并相邻行（有些平台名称和代码在不同行）
   let processedLines = preprocessLines(lines)
-  // 优先合并末行为份额类型（单独的 C / A）和名称带括号包含代码的常见格式（如支付宝截图）
   processedLines = mergeTrailingClassLine(processedLines)
   processedLines = mergeNameWithParen(processedLines)
-  // 额外尝试解析截图上的日期，作为买入日期候选
   const detectedDate = findDate(lines)
   
-  // [WHAT] 解析每一行，尝试提取持仓信息
-  for (const line of processedLines) {
-    const holding = parseSingleLine(line)
-    if (holding) {
-      if (detectedDate) holding.buyDate = detectedDate
-      holdings.push(holding)
-    }
-  }
-  
-  // [WHAT] 如果单行解析失败，尝试多行组合解析
-  if (holdings.length === 0) {
-    const multiLineHoldings = parseMultiLine(lines)
-    // 如果能从多行解析出日期，附加到每条持仓
-    const detectedDate2 = detectedDate || findDate(processedLines)
-    holdings.push(...multiLineHoldings)
-    if (detectedDate2) {
-      for (const h of multiLineHoldings) h.buyDate = detectedDate2
+  if (template) {
+    const platformResult = parseWithPlatformTemplate(normalizedText, processedLines, template)
+    if (platformResult.length > 0) {
+      for (const h of platformResult) {
+        h.platform = platform
+        if (detectedDate) h.buyDate = detectedDate
+        holdings.push(h)
+      }
     }
   }
 
-  // 回退策略：若仍无结果，尝试基于 OCR 单词块做进一步提取（提高支付宝截图识别率）
+  if (holdings.length === 0) {
+    for (const line of processedLines) {
+      const holding = parseSingleLine(line)
+      if (holding) {
+        if (detectedDate) holding.buyDate = detectedDate
+        holding.platform = platform
+        holdings.push(holding)
+      }
+    }
+  }
+  
+  if (holdings.length === 0) {
+    const multiLineHoldings = parseMultiLine(lines)
+    const detectedDate2 = detectedDate || findDate(processedLines)
+    for (const h of multiLineHoldings) {
+      h.platform = platform
+      if (detectedDate2) h.buyDate = detectedDate2
+    }
+    holdings.push(...multiLineHoldings)
+  }
+
   if (holdings.length === 0) {
     const fallback = extractFromOcrWords()
     if (fallback.length > 0) {
       const dt = detectedDate || findDate(processedLines)
       for (const h of fallback) {
         if (dt) h.buyDate = dt
+        h.platform = platform
         holdings.push(h)
       }
     }
   }
 
-  // 最终宽松回退：尝试直接从原始文本中抓取裸数字（如没有小数点或货币符号的整数），并把前面的中文片段当作名称候选
   if (holdings.length === 0) {
     const relaxed = extractNumbersOnlyFallback(text)
     if (relaxed.length > 0) {
       const dt = detectedDate || findDate(processedLines)
       for (const h of relaxed) {
         if (dt) h.buyDate = dt
+        h.platform = platform
         holdings.push(h)
       }
     }
@@ -478,6 +625,143 @@ export function parseHoldingText(text: string): RecognizedHolding[] {
   
   return holdings
 }
+
+function parseWithPlatformTemplate(
+  fullText: string,
+  lines: string[],
+  template: PlatformTemplate
+): RecognizedHolding[] {
+  const results: RecognizedHolding[] = []
+
+  const fundBlocks = extractFundBlocks(lines, template)
+  for (const block of fundBlocks) {
+    const holding = parseFundBlock(block, template)
+    if (holding) {
+      results.push(holding)
+    }
+  }
+
+  if (results.length === 0) {
+    for (const line of lines) {
+      for (const pattern of template.amountPatterns) {
+        const match = line.match(pattern)
+        if (match && match[1]) {
+          const amount = parseAmount(match[1])
+          if (amount >= 100) {
+            const nameMatch = line.match(/([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·]{2,})\s*/)
+            const name = nameMatch ? cleanFundName(nameMatch[1]!) : ''
+            const codeMatch = line.match(/\d{6}/)
+            const code = codeMatch && isValidFundCode(codeMatch[0]!) ? codeMatch[0]! : ''
+            results.push({
+              code,
+              name,
+              amount,
+              confidence: 0.7,
+            })
+            break
+          }
+        }
+      }
+    }
+  }
+
+  return results
+}
+
+function extractFundBlocks(lines: string[], template: PlatformTemplate): string[][] {
+  const blocks: string[][] = []
+  let currentBlock: string[] = []
+  let inBlock = false
+
+  const amountKws = template.layout.amountKeywords
+  for (const line of lines) {
+    const hasAmount = amountKws.some(kw => line.includes(kw)) ||
+      /[\d,]+\.\d{2}/.test(line)
+    const hasName = /[\u4e00-\u9fa5]{2,}/.test(line) && !/收益|金额|份额|净值|日期/.test(line)
+
+    if (hasName && !inBlock) {
+      inBlock = true
+      currentBlock = [line]
+    } else if (inBlock && hasAmount) {
+      currentBlock.push(line)
+      blocks.push([...currentBlock])
+      inBlock = false
+      currentBlock = []
+    } else if (inBlock) {
+      currentBlock.push(line)
+      if (currentBlock.length > 5) {
+        inBlock = false
+        currentBlock = []
+      }
+    }
+  }
+
+  return blocks
+}
+
+function parseFundBlock(block: string[], template: PlatformTemplate): RecognizedHolding | null {
+  if (block.length === 0) return null
+
+  const fullBlock = block.join(' ')
+  let name = ''
+  let code = ''
+  let amount = 0
+  let shares: number | undefined
+
+  for (const line of block) {
+    const nameMatch = line.match(/^([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·\s]{2,20})/)
+    if (!name && nameMatch) {
+      name = cleanFundName(nameMatch[1]!)
+    }
+
+    const codeMatch = line.match(/\b(\d{6})\b/)
+    if (!code && codeMatch && isValidFundCode(codeMatch[1]!)) {
+      code = codeMatch[1]!
+    }
+
+    for (const amountKeyword of template.layout.amountKeywords) {
+      const idx = line.indexOf(amountKeyword)
+      if (idx >= 0) {
+        const afterKeyword = line.slice(idx + amountKeyword.length)
+        const numMatch = afterKeyword.match(/[¥￥]?\s*([\d,]+\.?\d*)/)
+        if (numMatch && numMatch[1]) {
+          const amt = parseAmount(numMatch[1])
+          if (amt > amount) amount = amt
+        }
+      }
+    }
+
+    for (const sharesKeyword of template.layout.sharesKeywords) {
+      const idx = line.indexOf(sharesKeyword)
+      if (idx >= 0 && shares === undefined) {
+        const afterKeyword = line.slice(idx + sharesKeyword.length)
+        const numMatch = afterKeyword.match(/[¥￥]?\s*([\d,]+\.?\d*)/)
+        if (numMatch && numMatch[1]) {
+          shares = parseAmount(numMatch[1])
+        }
+      }
+    }
+  }
+
+  if (amount === 0) {
+    const amtMatch = fullBlock.match(/[¥￥]\s*([\d,]+\.\d{2})/)
+    if (amtMatch && amtMatch[1]) {
+      amount = parseAmount(amtMatch[1])
+    }
+  }
+
+  if (!name && !code && amount === 0) return null
+  if (amount < 100 && !code) return null
+
+  return {
+    code,
+    name,
+    amount,
+    shares,
+    confidence: 0.75,
+  }
+}
+
 
 /**
  * 宽松回退：从纯文本中提取可能的金额（整数或带小数），并尝试从前文找中文名称片段

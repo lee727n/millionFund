@@ -5,7 +5,7 @@
  */
 
 /** 当前应用版本号 */
-export const APP_VERSION = '1.9.8'
+export const APP_VERSION = '1.10.0'
 
 /** 应用名称 */
 export const APP_NAME = 'AI百万资产'

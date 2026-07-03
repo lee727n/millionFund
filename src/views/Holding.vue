@@ -18,6 +18,7 @@ import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
 import { saveHoldings, saveSourceFilter, getSourceFilter } from '@/utils/storage'
 import { logger, copyLogsToClipboard } from '@/utils/logger'
 import { isWeb, isMobile } from '@/utils/platform'
+import { getQDIIDelayText, getQDIIDelayDescription, detectQDII } from '@/utils/qdii'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
 import HoldingNavBar from '@/components/holding/HoldingNavBar.vue'
@@ -52,7 +53,8 @@ const showImportDialog = ref(false)
 const formData = ref({
   code: '',
   name: '',
-  amount: ''
+  amount: '',
+  isQDII: false
 })
 
 // ========== ActionSheet 相关 ==========
@@ -254,6 +256,7 @@ async function selectFund(fund: FundInfo) {
   selectedFund.value = fund
   formData.value.code = fund.code
   formData.value.name = fund.name
+  formData.value.isQDII = detectQDII(fund.name, fund.type)
   searchKeyword.value = ''
   searchResults.value = []
   
@@ -315,7 +318,8 @@ async function submitForm() {
     shares: calculatedShares.value,
     buyDate: new Date().toISOString().split('T')[0]!,
     holdingDays: 0,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    isQDII: formData.value.isQDII
   }
   
   await holdingStore.addOrUpdateHolding(record)
@@ -397,6 +401,17 @@ async function submitCostAdjust() {
 // [WHAT] 跳转到基金详情
 function goToDetail(code: string) {
   router.push(`/detail/${code}`)
+}
+
+// [WHAT] 获取QDII基金延迟文本
+function getQdiiDelayText(holding: { name?: string; isQDII?: boolean }): string {
+  if (!holding.isQDII) return ''
+  return getQDIIDelayText(holding.name || '')
+}
+
+function getQdiiDelayDesc(holding: { name?: string; isQDII?: boolean }): string {
+  if (!holding.isQDII) return ''
+  return getQDIIDelayDescription(holding.name || '')
 }
 
 // [WHY] 长按持仓卡片弹出快捷操作菜单
@@ -783,6 +798,9 @@ async function batchImport() {
         
         const fund = searchResults[0]!
         batchItems.value[index]!.name = fund.name
+        if (batchItems.value[index]) {
+          batchItems.value[index]!.isQDII = detectQDII(fund.name, fund.type)
+        }
         
         let netValue = 1
         try {
@@ -977,7 +995,7 @@ async function onCopyLogs(): Promise<void> {
                 @touchmove.passive="stopHoldLongPress"
               >
                 <div class="fund-name-line">
-                  <span v-if="holding.isQDII" class="qdii-tag">QD</span>
+                  <span v-if="holding.isQDII" class="qdii-tag" :title="getQdiiDelayDesc(holding)">{{ getQdiiDelayText(holding) }}</span>
                   <div class="fund-name">
                     {{ holding.name || t("holding.loading") }}
                   </div>
@@ -1091,6 +1109,14 @@ async function onCopyLogs(): Promise<void> {
             :label="t('holding.holding_amount')"
             :placeholder="t('holding.holding_amount_placeholder')"
           />
+
+          <!-- QDII 标记 -->
+          <div class="form-item">
+            <div class="qdii-toggle">
+              <span class="qdii-label">{{ t("holding.is_qdii") }}</span>
+              <van-switch v-model="formData.isQDII" size="24" />
+            </div>
+          </div>
 
           <!-- 计算结果展示 -->
           <div v-if="calculatedShares > 0" class="calc-result">

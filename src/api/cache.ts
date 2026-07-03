@@ -1,5 +1,8 @@
 // [WHY] 全局缓存管理器，参考 fishing-funds 的缓存策略
 // [WHAT] 提供内存缓存，避免重复请求，提升加载速度
+// [REF] v1.10: 缓存键版本化 - 不同版本使用不同命名空间，防版本升级冲突
+
+import { APP_VERSION } from '@/config/version'
 
 interface CacheItem<T> {
   data: T
@@ -9,51 +12,73 @@ interface CacheItem<T> {
 
 class CacheManager {
   private cache = new Map<string, CacheItem<any>>()
+  private version: string
+
+  constructor() {
+    this.version = APP_VERSION
+  }
+
+  private getVersionedKey(key: string): string {
+    return `v${this.version}:${key}`
+  }
   
-  // [WHAT] 设置缓存
   set<T>(key: string, data: T, ttlMs = 30000): void {
-    this.cache.set(key, {
+    this.cache.set(this.getVersionedKey(key), {
       data,
       timestamp: Date.now(),
       ttl: ttlMs
     })
   }
   
-  // [WHAT] 获取缓存（返回null表示过期或不存在）
   get<T>(key: string): T | null {
-    const item = this.cache.get(key)
+    const item = this.cache.get(this.getVersionedKey(key))
     if (!item) return null
     
     if (Date.now() - item.timestamp > item.ttl) {
-      this.cache.delete(key)
+      this.cache.delete(this.getVersionedKey(key))
       return null
     }
     
     return item.data as T
   }
   
-  // [WHAT] 检查缓存是否存在且有效
   has(key: string): boolean {
     return this.get(key) !== null
   }
   
-  // [WHAT] 清除指定缓存
   delete(key: string): void {
-    this.cache.delete(key)
+    this.cache.delete(this.getVersionedKey(key))
   }
   
-  // [WHAT] 清除所有缓存
   clear(): void {
     this.cache.clear()
   }
+
+  clearOldVersions(): void {
+    const currentPrefix = `v${this.version}:`
+    const keysToDelete: string[] = []
+    for (const key of this.cache.keys()) {
+      if (!key.startsWith(currentPrefix)) {
+        keysToDelete.push(key)
+      }
+    }
+    keysToDelete.forEach(key => this.cache.delete(key))
+  }
   
-  // [WHAT] 获取缓存大小
   get size(): number {
+    const currentPrefix = `v${this.version}:`
+    let count = 0
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(currentPrefix)) count++
+    }
+    return count
+  }
+
+  getTotalSize(): number {
     return this.cache.size
   }
 }
 
-// [WHAT] 导出单例
 export const cache = new CacheManager()
 
 // [WHAT] 兼容 utils/cache 的接口（秒级 TTL）

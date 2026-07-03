@@ -6,13 +6,25 @@ import eyeIcon from '@/assets/eye.png'
 import { getSourceLabel } from '@/config/sources'
 import type { HoldingWithProfit } from '@/stores/holding'
 import { useI18n } from 'vue-i18n'
+import { getQDIIDelayText, getQDIIDelayDescription } from '@/utils/qdii'
+import { computed } from 'vue'
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   fund: HoldingWithProfit
   uiMode: 'simple' | 'full'
   tradingSession?: string
 }>()
+
+const qdiiDelayText = computed(() => {
+  if (!props.fund.isQDII) return ''
+  return getQDIIDelayText(props.fund.name || props.fund.code)
+})
+
+const qdiiDelayDesc = computed(() => {
+  if (!props.fund.isQDII) return ''
+  return getQDIIDelayDescription(props.fund.name || props.fund.code)
+})
 
 const emit = defineEmits<{
   click: []
@@ -55,7 +67,7 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
           <img :src="sourceIconMap[fund.source || 'observe']" class="source-icon-small" :alt="getSourceLabel(fund.source || 'observe')" />
         </div>
         <div class="fund-name-middle">
-          <span v-if="fund.isQDII" class="qdii-tag">QD</span>
+          <span v-if="fund.isQDII" class="qdii-tag" :title="qdiiDelayDesc">{{ qdiiDelayText }}</span>
         </div>
         <div class="fund-name-right" :class="getFundNameClass(fund, tradingSession)">{{ fund.name }}</div>
       </div>
@@ -112,7 +124,7 @@ function getFundNameClass(fund: HoldingWithProfit, tradingSession?: string) {
             <img :src="sourceIconMap[fund.source || 'observe']" class="source-icon-small" :alt="getSourceLabel(fund.source || 'observe')" />
           </div>
           <div class="fund-name-middle">
-            <span v-if="fund.isQDII" class="qdii-tag">QD</span>
+            <span v-if="fund.isQDII" class="qdii-tag" :title="qdiiDelayDesc">{{ qdiiDelayText }}</span>
           </div>
           <div class="fund-name-right" :class="getFundNameClass(fund, tradingSession)">{{ fund.name }}</div>
         </div>
