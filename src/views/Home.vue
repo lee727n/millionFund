@@ -104,13 +104,13 @@ onErrorCaptured((err, _instance, info) => {
 watch(autoRefreshEnabled, (newValue) => {
   if (newValue) {
     autoRefreshInterval = window.setInterval(refreshData, 60000)
-    showToast('自动刷新已开启')
+    showToast(t('home.auto_refresh_on'))
   } else {
     if (autoRefreshInterval) {
       clearInterval(autoRefreshInterval)
       autoRefreshInterval = undefined
     }
-    showToast('自动刷新已关闭')
+    showToast(t('home.auto_refresh_off'))
   }
 })
 
@@ -125,10 +125,10 @@ async function refreshData() {
       loadGlobalIndices(),
       holdingStore.refreshEstimates()
     ])
-    showToast('刷新成功')
+    showToast(t('home.refresh_success'))
   } catch (err) {
     logger.error('refreshData failed', err)
-    showToast('刷新失败，请重试')
+    showToast(t('home.refresh_failed'))
   } finally {
     isRefreshing.value = false
   }
@@ -142,7 +142,7 @@ async function onRefresh() {
       loadIndices(),
       loadGlobalIndices()
     ])
-    showToast('刷新成功')
+    showToast(t('home.refresh_success'))
   } finally {
     isRefreshing.value = false
   }
@@ -152,7 +152,7 @@ async function handleDelete(code: string) {
   try {
     // This would use showConfirmDialog in production
     fundStore.removeFund(code)
-    showToast('已删除')
+    showToast(t('common.deleted'))
   } catch {
     // 用户取消
   }
@@ -163,11 +163,11 @@ function onActionSheetSelect(index: number) {
     refreshData,
     onCopyLogs: () => {
       copyLogsToClipboard()
-      showToast('日志已复制到剪贴板')
+      showToast(t('home.logs_copied'))
     },
     onExportLogs: () => {
       exportLogsAsText()
-      showToast('日志已导出')
+      showToast(t('home.logs_exported'))
     },
     router,
     holdingStore,
@@ -176,7 +176,7 @@ function onActionSheetSelect(index: number) {
 
 function onCopyLogs() {
   copyLogsToClipboard()
-  showToast('日志已复制到剪贴板')
+  showToast(t('home.logs_copied'))
 }
 
 // ========== 生命周期 ==========

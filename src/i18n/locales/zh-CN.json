@@ -42,7 +42,13 @@
     "market_closed_short": "休市",
     "profit_short": "盈亏",
     "quant_observe": "量化观察",
-    "global_indices": "全球主要指数"
+    "global_indices": "全球主要指数",
+    "refresh_success": "刷新成功",
+    "refresh_failed": "刷新失败，请重试",
+    "auto_refresh_on": "自动刷新已开启",
+    "auto_refresh_off": "自动刷新已关闭",
+    "logs_copied": "日志已复制到剪贴板",
+    "logs_exported": "日志已导出"
   },
   "portfolio": {
     "title": "持仓",
@@ -68,7 +74,9 @@
     "holdings_list": "持仓列表",
     "export": "导出 CSV",
     "export_success": "导出成功",
-    "no_data_to_export": "暂无数据可导出"
+    "no_data_to_export": "暂无数据可导出",
+    "refresh_success": "刷新完成",
+    "refresh_failed": "刷新失败"
   },
   "holding": {
     "title": "我的持仓",
@@ -722,7 +730,12 @@
     "placeholder": "输入基金代码或名称",
     "history": "搜索历史",
     "no_result": "未找到相关基金",
-    "tip": "输入基金代码（如 001186）或名称搜索"
+    "tips": "输入基金代码（如 001186）或名称搜索",
+    "search_failed": "搜索失败",
+    "already_in_watchlist": "已在自选中",
+    "adding": "添加中...",
+    "add_success": "已添加到自选",
+    "add_failed": "添加失败"
   },
   "holding_edit": {
     "edit": "编辑持仓",

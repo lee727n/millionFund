@@ -126,7 +126,7 @@ async function doSearch(kw: string) {
       }
     }))
   } catch (err) {
-    showToast('搜索失败')
+    showToast(t('search.search_failed'))
   } finally {
     isSearching.value = false
   }
@@ -158,19 +158,19 @@ function getChangeClass(gszzl?: string): string {
 async function handleAdd(e: Event, fund: FundInfo) {
   e.stopPropagation()
   if (fundStore.isFundInWatchlist(fund.code)) {
-    showToast('已在自选中')
+    showToast(t('search.already_in_watchlist'))
     return
   }
   
-  showLoadingToast({ message: '添加中...', forbidClick: true })
+  showLoadingToast({ message: t('search.adding'), forbidClick: true })
   
   try {
     await fundStore.addFund(fund.code, fund.name)
     closeToast()
-    showToast('添加成功')
+    showToast(t('search.add_success'))
   } catch {
     closeToast()
-    showToast('添加失败')
+    showToast(t('search.add_failed'))
   }
 }
 

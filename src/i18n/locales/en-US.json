@@ -33,7 +33,22 @@
     "no_holdings": "No Holdings",
     "sorted_by_profit": "Holdings (Sorted by P&L)",
     "quant_observe": "Quant Observe",
-    "global_indices": "Global Major Indices"
+    "global_indices": "Global Major Indices",
+    "app_title_full": "AI Million Fund",
+    "app_title_short": "AI Fund",
+    "reference_ma": "MA Ref",
+    "filter_all": "All",
+    "error_title": "Page load error",
+    "error_detail": "Some data temporarily unavailable",
+    "retry": "Retry",
+    "market_closed_short": "Closed",
+    "profit_short": "P&L",
+    "refresh_success": "Refresh succeeded",
+    "refresh_failed": "Refresh failed, please retry",
+    "auto_refresh_on": "Auto refresh enabled",
+    "auto_refresh_off": "Auto refresh disabled",
+    "logs_copied": "Logs copied to clipboard",
+    "logs_exported": "Logs exported"
   },
   "portfolio": {
     "title": "Portfolio",
@@ -59,7 +74,9 @@
     "holdings_list": "Holdings List",
     "export": "Export CSV",
     "export_success": "Export successful",
-    "no_data_to_export": "No data to export"
+    "no_data_to_export": "No data to export",
+    "refresh_success": "Refresh complete",
+    "refresh_failed": "Refresh failed"
   },
   "holding": {
     "title": "My Holdings",
@@ -684,7 +701,12 @@
     "placeholder": "Enter fund code or name",
     "history": "Search History",
     "no_result": "No results found",
-    "tip": "Enter fund code (e.g. 001186) or name to search"
+    "tip": "Enter fund code (e.g. 001186) or name to search",
+    "search_failed": "Search failed",
+    "already_in_watchlist": "Already in watchlist",
+    "adding": "Adding...",
+    "add_success": "Added to watchlist",
+    "add_failed": "Failed to add"
   },
   "holding_edit": {
     "edit": "Edit Holding",

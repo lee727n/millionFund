@@ -128,7 +128,7 @@ async function loadData() {
       historyStore.saveCurrentSnapshot(summary.value)
     }
   } catch (err) {
-    showToast('刷新失败')
+    showToast(t('portfolio.refresh_failed'))
     console.error('[Portfolio] 加载数据失败', err)
   } finally {
     isRefreshing.value = false
@@ -138,7 +138,7 @@ async function loadData() {
 // 下拉刷新
 async function onRefresh() {
   await loadData()
-  showToast('刷新成功')
+  showToast(t('portfolio.refresh_success'))
 }
 
 // 跳转到持仓编辑
