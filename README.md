@@ -6,7 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android%20%2B%20Windows-blue.svg)
-![Version](https://img.shields.io/badge/version-1.9.8-orange.svg)
+![Version](https://img.shields.io/badge/version-1.11.0-orange.svg)
 
 > [GitHub 仓库](https://github.com/ghshhf/millionFund) | [在线体验](#快速开始) | [更新记录](#更新记录) | [问题反馈](https://github.com/ghshhf/millionFund/issues)
 
@@ -41,6 +41,54 @@
 
 ## 更新记录
 
+### v1.11.0 (2026-07-18) - 数据统一 & 安全加固
+
+**数据层统一 🏗**
+- 统一资产数据模型 `UnifiedHolding`（基金/股票/债券/加密货币/大宗商品/期货）
+- Portfolio Store 与 News Store 独立拆分，职责清晰
+- FX 汇率转换层（CNY/USD/HKD → CNY 统一币种）
+- IndexedDB 存储层迁移（替代 localStorage，支持结构化存储）
+- 自选列表缓存优先加载 + 拼音搜索
+
+**安全修复 🔒**
+- 轮换 Android 签名密钥，消除入库的密钥泄漏
+- 清理冗余产物与孤儿测试，修正 keystore gitignore
+
+**平台精简**
+- 砍掉 iOS/macOS/Linux/Web 平台，仅保留 Android + Windows
+- 移除 PWA 分发、vite-plugin-pwa、manifest.json、sw.js
+- CI/CD 收敛到 Android + Windows 双端构建
+
+**依赖升级**
+- 全量升级所有依赖到最新版本
+
+### v1.10.0 (2026-07-03) - 基础设施重置
+
+**OCR 识别增强 📸**
+- Canvas 图像预处理管道（灰度 + 自适应阈值 + 去噪）
+- Tesseract 语言包 `eng` → `chi_sim+eng`（支持中文截图识别）
+- Worker 单例复用 + 懒加载 + PSM 模式自动重试
+- 截图模糊检测 + 多平台截图适配模板
+- OCR 组件 i18n 补完
+
+**新闻资讯整合 📰**
+- 合并 News.vue + FinanceNews.vue 为统一页面
+- 完善 12 数据源搜索过滤 + i18n 国际化覆盖
+- 实现剩余 6 个数据源 RSS 抓取 + 新闻缓存机制（已读/未读标记）
+- `NewsSource` 类型扩展至 12 个源
+
+**代码架构拆分 🏗**
+- `fundFast.ts` 拆分为 7 个模块（fundDetail/Estimate/Market/NetValue/Rating/Search/Types）
+- `Home.vue` 拆分（688→493 行），提取 composables
+- Detail 页面拆分（DetailHeader/DetailHoldingPanel/DetailBottomBar/DetailFundInfo/DetailPortfolioSection）
+- Holding 页面拆分（HoldingNavBar/HoldingSummaryCard）
+
+**基金功能增强**
+- 缓存键版本化（防冲突）
+- QDII 基金标记 + 延迟更新逻辑
+- 非交易时间状态栏
+- 定投模拟器（历史回测 + 可视化）
+
 ### v1.9.8 (2026-07-01) - 🆕 全品种资产平台
 
 **全品种资产支持**
@@ -57,7 +105,6 @@
 
 **新增功能 ✨**
 - **数据导出**：一键导出持仓数据为 CSV 文件（支持中英文）
-- **PWA 支持**：离线缓存、可安装到桌面/主屏幕
 - **资产趋势图**：7天/30天/90天 资产总值变化趋势
 
 **国际化 🌐**

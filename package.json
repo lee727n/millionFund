@@ -1,7 +1,7 @@
 {
   "name": "fund-app",
   "private": true,
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "AI百万资产 - 安卓 + Windows 双端全品种资产管理工具，支持基金/股票/加密货币/可转债实时估值、持仓管理、AI调仓追踪",
   "author": {
     "name": "millionFund",
