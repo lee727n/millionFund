@@ -107,44 +107,6 @@
           <van-button type="primary" size="small" round @click="downloadWin('nsis')">{{ t('common.download') }}</van-button>
         </div>
 
-        <!-- macOS -->
-        <div class="download-card">
-          <div class="download-icon">🍎</div>
-          <div class="download-info">
-            <div class="download-name">macOS</div>
-            <div class="download-desc">{{ t('about.macos_desc') }}</div>
-          </div>
-          <van-button type="primary" size="small" round @click="downloadMac('dmg')">{{ t('common.download') }}</van-button>
-        </div>
-
-        <!-- Linux -->
-        <div class="download-card">
-          <div class="download-icon">🐧</div>
-          <div class="download-info">
-            <div class="download-name">Linux</div>
-            <div class="download-desc">{{ t('about.linux_desc') }}</div>
-          </div>
-          <van-button type="primary" size="small" round @click="downloadLinux('appimage')">{{ t('common.download') }}</van-button>
-        </div>
-
-        <!-- Web 版 -->
-        <div class="download-card" v-if="isWeb()">
-          <div class="download-icon">🌐</div>
-          <div class="download-info">
-            <div class="download-name">{{ t('about.web_title') }}</div>
-            <div class="download-desc">{{ t('about.web_desc') }}</div>
-          </div>
-          <van-button plain size="small" round @click="copyWebUrl">{{ t('common.copy_link') }}</van-button>
-        </div>
-
-        <!-- PWA {{ t('common.install') }}横幅 -->
-        <div v-if="canInstallPwa" class="pwa-install-banner">
-          <div class="pwa-install-info">
-            <span>📲</span>
-            <span>{{ t('about.install_pwa') }}</span>
-          </div>
-          <van-button type="primary" size="small" round @click="installPwa">{{ t('about.pwa_install') }}</van-button>
-        </div>
       </div>
 
       <!-- ========== APK {{ t('common.qr_code') }}弹窗 ========== -->
@@ -188,45 +150,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { showToast, showSuccessToast, showConfirmDialog } from 'vant'
+import { showToast, showConfirmDialog } from 'vant'
 import { APP_INFO, GITHUB_REPO, DOWNLOAD_URLS, getBuildTime } from '@/config/release'
-import { getPlatform, isWeb, isAndroid } from '@/utils/platform'
+import { getPlatform, isAndroid } from '@/utils/platform'
 
 const router = useRouter()
 const { t } = useI18n()
 const buildTime = ref(getBuildTime())
-
-// ========== PWA {{ t('common.install') }} ==========
-const pwaInstallEvent = ref<any>(null)
-const canInstallPwa = ref(false)
-
-onMounted(() => {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    pwaInstallEvent.value = e
-    canInstallPwa.value = true
-  })
-  window.addEventListener('appinstalled', () => {
-    canInstallPwa.value = false
-    pwaInstallEvent.value = null
-    showSuccessToast(t('about.install_success') + ' 🎉')
-  })
-})
-
-async function installPwa() {
-  if (!pwaInstallEvent.value) {
-    showToast(t('about.use_browser_menu'))
-    return
-  }
-  pwaInstallEvent.value.prompt()
-  const result = await pwaInstallEvent.value.userChoice
-  if (result.outcome === 'accepted') showSuccessToast(t('about.install_success') + ' 🎉')
-  pwaInstallEvent.value = null
-  canInstallPwa.value = false
-}
 
 /** 点击{{ t('common.install') }}/{{ t('common.download') }} APK */
 async function downloadAndInstallApk() {
@@ -255,8 +188,7 @@ const apkQrUrl = computed(() =>
 const platformLabel = computed(() => ({
   web: 'Web 浏览器',
   android: 'Android',
-  ios: 'iOS',
-  electron: 'Windows/Mac/Linux 桌面端',
+  electron: 'Windows 桌面端',
 }[getPlatform()] || 'Web 浏览器'))
 
 const showAndroid = computed(() => !isAndroid())
@@ -265,13 +197,6 @@ const dataSourceCount = 10
 // ========== {{ t('common.download') }}处理 ==========
 function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast(t('about.downloading_apk') + '...') }
 function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast(t('about.downloading_windows') + '...') }
-function downloadMac(type: 'dmg' | 'arm64') { window.open(DOWNLOAD_URLS.macos[type], '_blank'); showToast(t('about.downloading_mac') + '...') }
-function downloadLinux(type: 'appimage' | 'deb') { window.open(DOWNLOAD_URLS.linux[type], '_blank'); showToast(t('about.downloading_linux') + '...') }
-
-async function copyWebUrl() {
-  try { await navigator.clipboard.writeText(window.location.origin); showSuccessToast(t('about.copy_success')) }
-  catch { showToast(t('about.copy_failed')) }
-}
 function openUrl(url: string) { window.open(url, '_blank') }
 </script>
 
@@ -372,15 +297,6 @@ function openUrl(url: string) { window.open(url, '_blank') }
 .disclaimer { margin-top: 10px; padding: 12px 16px; background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2); border-radius: 10px; }
 .disclaimer-title { font-size: 14px; font-weight: 600; color: #e6a23c; margin-bottom: 6px; }
 .disclaimer-text { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
-
-/* ========== PWA 横幅 ========== */
-.pwa-install-banner {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; margin-top: 8px;
-  background: linear-gradient(135deg, rgba(22,119,255,0.1), rgba(22,119,255,0.05));
-  border: 1px solid rgba(22,119,255,0.2); border-radius: 12px;
-}
-.pwa-install-info { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); }
 
 /* ========== {{ t('common.qr_code') }}弹窗 ========== */
 .qr-modal {

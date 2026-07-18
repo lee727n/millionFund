@@ -2,6 +2,8 @@
 
 本文档介绍如何从源码构建基金宝 Android 应用。
 
+> 注：本项目仅维护 **Android** 与 **Windows** 两个平台，iOS / macOS / Linux / Web 已不再构建。
+
 ## 环境要求
 
 - **Node.js** 18.x 或更高版本

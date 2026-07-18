@@ -1,11 +1,11 @@
 # AI百万资产
 
-一款功能丰富的开源全品种资产管理工具，支持 **Web / Android / iOS / Windows / macOS / Linux** 全平台。提供基金/股票/加密货币/可转债实时估值、持仓盈亏管理、AI 调仓追踪、涨跌提醒、趋势分析、市场概览等功能。
+一款功能丰富的开源全品种资产管理工具，支持 **Android / Windows** 双端。提供基金/股票/加密货币/可转债实时估值、持仓盈亏管理、AI 调仓追踪、涨跌提醒、趋势分析、市场概览等功能。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-全平台-green.svg)
+![Platform](https://img.shields.io/badge/Platform-Android%20%2B%20Windows-blue.svg)
 ![Version](https://img.shields.io/badge/version-1.9.8-orange.svg)
 
 > [GitHub 仓库](https://github.com/ghshhf/millionFund) | [在线体验](#快速开始) | [更新记录](#更新记录) | [问题反馈](https://github.com/ghshhf/millionFund/issues)
@@ -27,18 +27,17 @@
 | 基金详情 | 完整信息展示，包含分时图、净值走势、持仓分析 |
 | 深度数据 | 资产配置、持有人结构、同类排名、风格分析 |
 | 资讯动态 | 基金相关新闻与市场资讯聚合 |
-| **PWA 支持** | 离线缓存，可安装到桌面/主屏幕（v1.9.8 新增）|
 
-## 全平台支持
+## 支持平台
 
 | 平台 | 构建方式 | 打包产物 |
 |------|---------|---------|
-| Web | Vite | `dist/` |
 | Android | Gradle + Capacitor | `app-release.apk` |
-| iOS | Xcode + Capacitor | `ios/App/` 项目 |
-| Windows / macOS / Linux | Electron | `electron/` 项目 |
+| Windows | Electron | `release/desktop/*.exe` |
 
-自动化流程：每次提交自动触发 GitHub Actions 多平台并行构建，打 tag 时自动发布到 Releases。
+> 仅维护 Android 与 Windows 两个平台（开发者自用设备）。iOS / macOS / Linux / Web 已不再构建。
+
+自动化流程：每次提交自动触发 GitHub Actions 构建 Android + Windows，打 tag 时自动发布到 Releases。
 
 ## 更新记录
 
@@ -78,7 +77,7 @@
 
 - **API 层合并**：删除冗余 `fund.ts`，整合至 `fundFast.ts`，减少约 1500 行代码
 - **全局变量污染治理**：引入串行化队列工具 `queueGlobalVarScript`，解决 JSONP 数据覆盖问题
-- **全平台构建统一**：GitHub Actions 支持 Web + Android + Windows + macOS + Linux 并行构建
+- **构建统一**：GitHub Actions 支持 Android + Windows 并行构建
 - **代码清洗**：移除上游遗留 APK 和无关声明
 
 ### v1.8.0 — TypeScript 强化 & 导航优化
@@ -114,16 +113,15 @@ npm run dev
 npm run build
 ```
 
-### 全平台一键构建
+### 构建
 
 ```bash
-# 构建所有平台（Web + Android + Electron）
+# 构建所有平台（Android + Windows）
 npm run build:all
 
 # 单独构建
-npm run build:web       # Web
 npm run build:android   # Android APK
-npm run build:electron  # 桌面端
+npm run build:windows   # Windows 安装包
 ```
 
 ### Android APK 构建
@@ -135,17 +133,10 @@ cd android && ./gradlew assembleRelease
 
 APK 输出：`android/app/build/outputs/apk/release/app-release.apk`
 
-### iOS 构建
+### Windows 桌面端
 
 ```bash
-npm run build && npx cap sync ios && npx cap open ios
-# 在 Xcode 中选择 Product → Archive
-```
-
-### Electron 桌面端
-
-```bash
-npm run build:electron
+npm run build:windows
 ```
 
 ## 技术栈
@@ -187,8 +178,7 @@ millionFund/
 │   ├── styles/         # 全局样式
 │   └── config/         # 配置文件（版本号/发布地址）
 ├── android/            # Android 原生项目（Capacitor）
-├── ios/                # iOS 原生项目（Capacitor）
-├── electron/           # Electron 桌面端
+├── electron/           # Electron 桌面端（Windows）
 ├── scripts/            # 自动化脚本
 ├── .github/workflows/  # CI/CD 工作流
 │

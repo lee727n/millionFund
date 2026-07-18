@@ -47,14 +47,6 @@ describe('release.ts', () => {
     // Windows
     expect(DOWNLOAD_URLS.windows.nsis).toContain('.exe')
     expect(DOWNLOAD_URLS.windows.portable).toContain('.exe')
-
-    // macOS
-    expect(DOWNLOAD_URLS.macos.dmg).toContain('.dmg')
-    expect(DOWNLOAD_URLS.macos.arm64).toContain('arm64.dmg')
-
-    // Linux
-    expect(DOWNLOAD_URLS.linux.appimage).toContain('.AppImage')
-    expect(DOWNLOAD_URLS.linux.deb).toContain('.deb')
   })
 
   test('getBuildTime 有 __BUILD_TIME__ 时返回它', () => {

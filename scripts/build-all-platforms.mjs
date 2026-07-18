@@ -1,25 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * AI百万实盘 - 全平台统一打包脚本
- * 
+ * AI百万实盘 - 安卓 + Windows 统一打包脚本
+ *
  * 支持构建:
- *   - Web (静态站点)
  *   - Android APK (需要 Android SDK)
- *   - iOS (需要 macOS + Xcode)
- *   - Windows 桌面端 (NSIS 安装包)
- *   - macOS 桌面端 (DMG)
- *   - Linux 桌面端 (AppImage + deb)
- * 
+ *   - Windows 桌面端 (NSIS 安装包 + 便携版)
+ *
  * 用法:
  *   node scripts/build-all-platforms.mjs [平台]
- * 
- * 平台参数 (可选，默认构建当前平台支持的所有目标):
- *   web       - 仅构建 Web
+ *
+ * 平台参数 (可选，默认构建所有支持的目标):
  *   android   - 仅构建 Android APK
- *   ios       - 仅构建 iOS (需要 macOS)
- *   desktop   - 构建桌面端 (当前系统)
- *   all       - 构建所有可用平台
+ *   windows   - 仅构建 Windows 桌面端
+ *   desktop   - windows 的别名
+ *   all       - 构建 Android + Windows
  */
 
 import { execSync } from 'child_process'
@@ -71,24 +66,20 @@ function copyDir(src, dest) {
 // 构建步骤
 // ═══════════════════════════════════════════
 
+// [WHY] Android 与 Windows 都依赖 Vite 构建出的 dist/，这里只负责产出 Web 资源
 function buildWeb() {
-  banner('📦 构建 Web 应用')
+  banner('📦 构建 Web 资源 (dist/)')
   run('npm run build')
-  
-  // 复制到 release/web
-  const webDir = join(RELEASE, 'web')
-  ensureDir(webDir)
-  copyDir(DIST, webDir)
-  console.log(`  ✓ Web 构建完成 → ${webDir}`)
 }
 
 function buildAndroid() {
   banner('📱 构建 Android APK')
-  
-  // 先构建 web
-  run('npm run build')
+
+  // 先构建 web 资源
+  buildWeb()
+
   run('npx cap sync android')
-  
+
   // 检查是否有 Android SDK
   const androidDir = join(ROOT, 'android')
   if (!existsSync(androidDir)) {
@@ -107,12 +98,12 @@ function buildAndroid() {
   // 复制 APK 到 release
   const apkDir = join(RELEASE, 'android')
   ensureDir(apkDir)
-  
+
   const apkPaths = [
     join(androidDir, 'app/build/outputs/apk/debug/app-debug.apk'),
     join(androidDir, 'app/build/outputs/apk/release/app-release.apk'),
   ]
-  
+
   let found = false
   for (const apkPath of apkPaths) {
     if (existsSync(apkPath)) {
@@ -122,51 +113,27 @@ function buildAndroid() {
       found = true
     }
   }
-  
+
   if (!found) {
     console.warn('  ⚠ 未找到 APK 文件，请检查 Android SDK 配置')
   }
 }
 
-function buildIOS() {
-  banner('🍎 构建 iOS')
-  
-  if (platform() !== 'darwin') {
-    console.warn('  ⚠ iOS 构建需要 macOS 环境，当前系统不支持')
-    console.log('  提示: 可在 macOS 上运行此脚本或使用 GitHub Actions')
-    return
-  }
-  
-  run('npm run build')
-  run('npx cap sync ios')
-  console.log('  ✓ iOS 项目已同步 → ios/App/')
-  console.log('  提示: 使用 Xcode 打开 ios/App/App.xcworkspace 进行打包')
-}
+function buildWindows() {
+  banner('🪟 构建 Windows 桌面端 (NSIS 安装包 + 便携版)')
 
-function buildDesktop() {
-  banner('🖥  构建桌面端 (' + { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[platform()] + ')')
-  
-  run('npm run build')
-  
-  const currentPlatform = platform()
-  let targetFlag = ''
+  // 先构建 web 资源
+  buildWeb()
 
-  if (currentPlatform === 'win32') {
-    targetFlag = '--win'
-  } else if (currentPlatform === 'darwin') {
-    targetFlag = '--mac'
-  } else {
-    targetFlag = '--linux'
-  }
-
-  run(`npx electron-builder ${targetFlag}`)
+  // 仅构建 Windows 目标（已砍掉 macOS / Linux）
+  run('npx electron-builder --win --x64')
 
   // 移动产物到 release/desktop
   const electronOutput = join(ROOT, 'release', 'desktop')
   if (existsSync(electronOutput)) {
-    console.log(`  ✓ 桌面端构建完成 → ${electronOutput}`)
+    console.log(`  ✓ Windows 构建完成 → ${electronOutput}`)
   } else {
-    console.warn('  ⚠ 桌面端构建产物未找到，请检查 electron-builder 配置')
+    console.warn('  ⚠ Windows 构建产物未找到，请检查 electron-builder 配置')
   }
 }
 
@@ -178,7 +145,7 @@ async function main() {
   const target = process.argv[2] || 'all'
 
   console.log('')
-  console.log('  🤖 AI百万实盘 - 全平台构建工具')
+  console.log('  🤖 AI百万实盘 - 安卓 + Windows 构建工具')
   console.log(`  版本: ${JSON.parse(execSync('node -e "console.log(JSON.stringify(require(\'./package.json\').version))"', { cwd: ROOT })).toString().trim()}`)
   console.log(`  目标: ${target}`)
   console.log(`  系统: ${platform()}`)
@@ -186,18 +153,17 @@ async function main() {
   ensureDir(RELEASE)
 
   const targets = target === 'all'
-    ? ['web', 'android', platform() === 'darwin' ? 'ios' : null, 'desktop'].filter(Boolean)
+    ? ['android', 'windows']
     : [target]
 
   for (const t of targets) {
     switch (t) {
-      case 'web':     buildWeb(); break
       case 'android': buildAndroid(); break
-      case 'ios':     buildIOS(); break
-      case 'desktop': buildDesktop(); break
+      case 'windows':
+      case 'desktop': buildWindows(); break
       default:
         console.error(`  未知目标: ${t}`)
-        console.log('  可用目标: web, android, ios, desktop, all')
+        console.log('  可用目标: android, windows, desktop, all')
         process.exit(1)
     }
   }
@@ -207,7 +173,7 @@ async function main() {
   console.log('')
   listReleaseDir(RELEASE, 0)
   console.log('')
-  console.log('  ✅ 全平台构建完成！')
+  console.log('  ✅ 安卓 + Windows 构建完成！')
   console.log(`  产物目录: ${RELEASE}`)
   console.log('')
 }

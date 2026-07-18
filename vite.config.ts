@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import Components from 'unplugin-vue-components/vite'
 import { VantResolver } from '@vant/auto-import-resolver'
-import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -29,74 +28,6 @@ export default defineConfig({
     Components({
       resolvers: [VantResolver()],
     }),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icons/*.png', 'screenshots/*.png'],
-      manifest: false, // 使用已手动创建的 manifest.json
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fund\.eastmoney\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'fund-api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7天
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/push2\.eastmoney\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'market-api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7天
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/.*\.jin10\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'news-api-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 3, // 3天
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
-      },
-      devOptions: {
-        enabled: false, // 开发环境禁用 PWA
-      },
-    }),
-    {
-      // [WHY] GitHub Pages 使用 history 模式路由，直接访问子路径会 404
-      // [WHAT] 构建后复制 index.html 为 404.html，让 Pages 能正确回退到 SPA 入口
-      name: 'spa-fallback',
-      closeBundle() {
-        const srcFile = path.resolve(__dirname, 'dist/index.html')
-        const destFile = path.resolve(__dirname, 'dist/404.html')
-        if (fs.existsSync(srcFile)) {
-          fs.copyFileSync(srcFile, destFile)
-          console.log('\n  ✅ SPA fallback generated: dist/404.html')
-        }
-      },
-    },
   ],
   resolve: {
     alias: {
