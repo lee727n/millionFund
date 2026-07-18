@@ -15,3 +15,6 @@ count-eslint.cjs
 eslint-results.json
 actions-logs/
 actions-logs.zip
+
+# 生成产物（由 unplugin 自动生成，无需提交）
+components.d.ts

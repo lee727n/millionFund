@@ -4,13 +4,22 @@ android {
     namespace "com.fundapp.realtime"
     compileSdk rootProject.ext.compileSdkVersion
     
+    // 签名凭据从 gitignore 外的 key.properties 读取（本地生成 / CI 从 Secret 注入），不硬编码、不入库
+    def keyPropsFile = rootProject.file('key.properties')
+    def keyProps = new Properties()
+    if (keyPropsFile.exists()) {
+        keyProps.load(new FileInputStream(keyPropsFile))
+    }
+
     // APK 签名配置（必须在 buildTypes 之前定义）
     signingConfigs {
         release {
-            storeFile file('../keystore.jks')
-            storePassword 'android'
-            keyAlias 'key0'
-            keyPassword 'android'
+            if (keyProps.containsKey('storePassword')) {
+                storeFile file(keyProps['storeFile'] ?: '../keystore.jks')
+                storePassword keyProps['storePassword']
+                keyAlias keyProps['keyAlias']
+                keyPassword keyProps['keyPassword']
+            }
         }
     }
     
@@ -32,8 +41,8 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             
-            // 如果签名文件存在，使用签名
-            if (new File('../keystore.jks').exists()) {
+            // 仅当 key.properties 已配置且 keystore 文件存在时才启用签名
+            if (keyProps.containsKey('storePassword') && new File('../keystore.jks').exists()) {
                 signingConfig signingConfigs.release
             }
         }

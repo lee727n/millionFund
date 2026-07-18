@@ -53,9 +53,12 @@ captures/
 .idea/navEditor.xml
 
 # Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+# 签名密钥库绝不入库：已跟踪的旧密钥库需走 P0 密钥轮换流程从历史清除
+*.jks
+*.keystore
+
+# 签名凭据（storePassword/keyPassword/keyAlias），由本地生成或 CI 从 Secret 注入，绝不入库
+key.properties
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild

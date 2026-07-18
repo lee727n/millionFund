@@ -162,14 +162,21 @@ jobs:
           npm run build
           npx cap sync android
 
-      - name: 生成签名密钥
+      - name: 注入签名密钥（从 GitHub Secrets，绝不入库）
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
         run: |
           cd android
-          keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 \
-            -alias key0 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=AI百万资产, OU=Dev, O=FundApp, L=Unknown, ST=Unknown, C=CN" || true
+          echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+          cat > key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=../keystore.jks
+          EOF
           cd ..
 
       - name: Build Release APK (Universal)
