@@ -129,7 +129,8 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/'
+      name: 'not-found',
+      component: () => import('@/views/NotFound.vue')
     }
   ]
 })

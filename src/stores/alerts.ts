@@ -32,7 +32,12 @@ export const useAlertsStore = defineStore('alerts', () => {
   }
 
   function saveRules() {
-    localStorage.setItem('alert_rules', JSON.stringify(rules.value))
+    try {
+      localStorage.setItem('alert_rules', JSON.stringify(rules.value))
+    } catch (e) {
+      // [FIX] 存储满或被禁用时静默失败，避免未捕获异常导致页面白屏
+      console.warn('[alerts] 保存规则失败', e)
+    }
   }
 
   function addRule(rule: Omit<AlertRule, 'id' | 'createdAt'>) {

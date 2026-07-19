@@ -5,7 +5,7 @@
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 
-const CACHE_TTL = {
+const MODULE_CACHE_TTL = {
   INDEX_QUOTE: 60,
   INDEX_VALUATION: 3600,
   SECTOR_INDEX: 120,
@@ -75,7 +75,7 @@ export async function fetchIndexQuote(code: string): Promise<IndexQuote | null> 
         changePercent: parseFloat(changeMatch?.[1] || '0'),
         volume: 0, PE: 0, PB: 0, ROE: 0,
       }
-      setCache(cacheKey, result, CACHE_TTL.INDEX_QUOTE)
+      setCache(cacheKey, result, MODULE_CACHE_TTL.INDEX_QUOTE)
       return result
     }
     return null
@@ -132,7 +132,7 @@ export async function fetchIndexValuation(code: string): Promise<IndexValuation 
         riskLevel,
         updateDate: new Date().toISOString().split('T')[0]!,
       }
-      setCache(cacheKey, result, CACHE_TTL.INDEX_VALUATION)
+      setCache(cacheKey, result, MODULE_CACHE_TTL.INDEX_VALUATION)
       return result
     }
     return fallbackIndexValuation(code)
@@ -144,12 +144,11 @@ export async function fetchIndexValuation(code: string): Promise<IndexValuation 
 // ========== 批量指数估值 ==========
 
 export async function fetchBatchIndexValuation(codes: string[]): Promise<IndexValuation[]> {
-  const results: IndexValuation[] = []
-  for (const code of codes) {
-    const val = await fetchIndexValuation(code)
-    if (val) results.push(val)
-  }
-  return results
+  // [FIX] 并行请求所有指数估值，避免串行等待
+  const results = await Promise.all(
+    codes.map(code => fetchIndexValuation(code))
+  )
+  return results.filter((val): val is IndexValuation => val != null)
 }
 
 // ========== 常见宽基指数估值 ==========

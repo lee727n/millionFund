@@ -31,12 +31,13 @@ export default defineConfig({
       include: ['src/**/*'],
       exclude: ['src/**/*.d.ts', 'src/**/*.test.ts', 'src/**/*.spec.ts', 'src/views/**', 'src/api/fundFast.ts'],
       
-      // CI 环境中放宽覆盖率要求（仅报告，不阻塞）
+      // [M16] 覆盖率门禁基线：当前覆盖率约 6%，先设 5% 基线避免 CI 失败。
+      // 后续应随测试用例补充逐步提高至 60%。
       thresholds: {
-        lines: 0,
-        functions: 0,
-        branches: 0,
-        statements: 0
+        lines: 5,
+        functions: 5,
+        branches: 5,
+        statements: 5
       }
     },
   },

@@ -8,7 +8,27 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
 import { fetchPeriodReturnExt } from '@/api/tiantianApi'
+import { fetchFundRating } from '@/api/fundDetail'
 import { showToast } from 'vant'
+
+// [M3] 收益日期范围 → 阶段涨幅 API 的 period 键
+const DATE_RANGE_TO_PERIOD: Record<string, string> = {
+  '1周': '1w',
+  '1月': '1m',
+  '3月': '3m',
+  '6月': '6m',
+  '1年': '1y',
+  '今年来': 'ytd'
+}
+
+// [M3] 风险等级 → 数值评分，用于排序
+const RISK_LEVEL_SCORE: Record<string, number> = {
+  '低风险': 1,
+  '中低风险': 2,
+  '中风险': 3,
+  '中高风险': 4,
+  '高风险': 5
+}
 
 const router = useRouter()
 const { t } = useI18n()
@@ -135,7 +155,7 @@ async function applyFilters() {
     // }
 
     // 排序
-    results = sortFunds(results)
+    results = await sortFunds(results)
 
     filterResults.value = results
   } catch (err) {
@@ -148,38 +168,70 @@ async function applyFilters() {
 
 /**
  * 排序基金列表
+ * [M3] 收益 / 评级 / 风险排序此前直接回退到代码排序（未实现）。
+ * 现改为：需要时对每个基金异步补充对应指标（阶段涨幅 / 评级 / 风险），再排序。
  */
-function sortFunds(funds: FundInfo[]): FundInfo[] {
-  const sorted = [...funds]
+async function sortFunds(funds: FundInfo[]): Promise<FundInfo[]> {
+  const sortBy = filters.sortBy
 
-  sorted.sort((a, b) => {
+  // 代码 / 名称排序无需联网，直接本地排序
+  if (sortBy === 'code' || sortBy === 'name') {
+    const sorted = [...funds]
+    sorted.sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'code':
+          cmp = a.code.localeCompare(b.code)
+          break
+        case 'name':
+          cmp = a.name.localeCompare(b.name)
+          break
+      }
+      return filters.sortOrder === 'desc' ? -cmp : cmp
+    })
+    return sorted
+  }
+
+  // 收益 / 评级 / 风险排序：并发补充每个基金的对应指标
+  const enriched = await Promise.all(
+    funds.map(async (fund) => {
+      let returnVal: number | null = null
+      let ratingVal: number | null = null
+      let riskVal: number | null = null
+
+      try {
+        if (sortBy === 'return') {
+          const period = DATE_RANGE_TO_PERIOD[filters.dateRange] ?? '1y'
+          const returns = await fetchPeriodReturnExt(fund.code)
+          returnVal = returns.find((r) => r.period === period)?.fundReturn ?? null
+        } else {
+          const rating = await fetchFundRating(fund.code)
+          if (rating) {
+            ratingVal = rating.rating
+            riskVal = RISK_LEVEL_SCORE[rating.riskLevel] ?? 3
+          }
+        }
+      } catch {
+        // 单个基金指标获取失败不影响整体排序，缺失值排到末尾
+      }
+
+      return { fund, returnVal, ratingVal, riskVal }
+    })
+  )
+
+  enriched.sort((a, b) => {
     let cmp = 0
-
-    switch (filters.sortBy) {
-      case 'code':
-        cmp = a.code.localeCompare(b.code)
-        break
-      case 'name':
-        cmp = a.name.localeCompare(b.name)
-        break
-      case 'return':
-        // 默认按代码排序（收益需要异步获取）
-        cmp = a.code.localeCompare(b.code)
-        break
-      case 'rating':
-        // 默认按代码排序（评级需要异步获取）
-        cmp = a.code.localeCompare(b.code)
-        break
-      case 'risk':
-        // 默认按代码排序
-        cmp = a.code.localeCompare(b.code)
-        break
+    if (sortBy === 'return') {
+      cmp = (a.returnVal ?? -Infinity) - (b.returnVal ?? -Infinity)
+    } else if (sortBy === 'rating') {
+      cmp = (a.ratingVal ?? -Infinity) - (b.ratingVal ?? -Infinity)
+    } else {
+      cmp = (a.riskVal ?? -Infinity) - (b.riskVal ?? -Infinity)
     }
-
     return filters.sortOrder === 'desc' ? -cmp : cmp
   })
 
-  return sorted
+  return enriched.map((item) => item.fund)
 }
 
 /**

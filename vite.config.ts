@@ -111,6 +111,24 @@ export default defineConfig({
   esbuild: {
     drop: ['debugger'],
   },
+  // [WHY] 手动分包，将体积较大的依赖拆分为独立 chunk，提升首屏加载速度
+  // [WHAT] chart.js、lightweight-charts、vant、echarts 等归为独立 vendor chunk
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('chart.js')) return 'chartjs'
+            if (id.includes('lightweight-charts')) return 'lightweight-charts'
+            if (id.includes('tesseract.js')) return 'tesseract'
+            if (id.includes('echarts')) return 'echarts'
+            if (id.includes('vant') || id.includes('@vant')) return 'vant'
+            return 'vendor'
+          }
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

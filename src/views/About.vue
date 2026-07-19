@@ -188,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showToast, showSuccessToast, showConfirmDialog } from 'vant'
@@ -203,17 +203,28 @@ const buildTime = ref(getBuildTime())
 const pwaInstallEvent = ref<any>(null)
 const canInstallPwa = ref(false)
 
+// [WHAT] 命名处理函数，便于在 onUnmounted 中准确移除监听器
+function handleBeforeInstallPrompt(e: Event) {
+  e.preventDefault()
+  pwaInstallEvent.value = e
+  canInstallPwa.value = true
+}
+
+function handleAppInstalled() {
+  canInstallPwa.value = false
+  pwaInstallEvent.value = null
+  showSuccessToast(t('about.install_success') + ' 🎉')
+}
+
 onMounted(() => {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    pwaInstallEvent.value = e
-    canInstallPwa.value = true
-  })
-  window.addEventListener('appinstalled', () => {
-    canInstallPwa.value = false
-    pwaInstallEvent.value = null
-    showSuccessToast(t('about.install_success') + ' 🎉')
-  })
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+  window.addEventListener('appinstalled', handleAppInstalled)
+})
+
+// [WHAT] 组件卸载时移除事件监听器，避免内存泄漏
+onUnmounted(() => {
+  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+  window.removeEventListener('appinstalled', handleAppInstalled)
 })
 
 async function installPwa() {

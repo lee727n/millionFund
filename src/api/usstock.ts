@@ -83,14 +83,20 @@ export async function fetchUSStockQuote(symbols: string[]): Promise<USStockQuote
   const results: USStockQuote[] = []
   const errors: Error[] = []
 
-  for (const symbol of formattedSymbols) {
-    try {
-      const quote = await fetchSingleUSStockInternal(symbol)
-      if (quote) {
-        results.push(quote)
+  // [FIX] 并行请求所有股票行情，避免串行 N+1 等待
+  const quoteResults = await Promise.all(
+    formattedSymbols.map(async (symbol) => {
+      try {
+        return await fetchSingleUSStockInternal(symbol)
+      } catch (err) {
+        errors.push(err instanceof Error ? err : new Error(String(err)))
+        return null
       }
-    } catch (err) {
-      errors.push(err instanceof Error ? err : new Error(String(err)))
+    })
+  )
+  for (const quote of quoteResults) {
+    if (quote) {
+      results.push(quote)
     }
   }
 
@@ -99,7 +105,7 @@ export async function fetchUSStockQuote(symbols: string[]): Promise<USStockQuote
   }
 
   // 缓存 3 秒（股票行情变化快）
-  cache.set(cacheKey, results, 3)
+  cache.set(cacheKey, results, 3000)
 
   return results
 }

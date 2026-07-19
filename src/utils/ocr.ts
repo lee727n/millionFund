@@ -2,7 +2,6 @@
 // [WHAT] 使用 Tesseract.js 进行本地文字识别，无需外部 API
 // [DEPS] 依赖 tesseract.js 库
 
-import Tesseract from 'tesseract.js'
 import { logger } from './logger'
 
 /**
@@ -252,6 +251,9 @@ export async function recognizeText(
   try {
     // [IMPROVE] 图像预处理：增强 OCR 识别率（灰度 + 自适应阈值 + 去噪）
     const processedImage = await preprocessImageForOcr(imageSource)
+
+    // [FIX] 动态导入 Tesseract.js，避免该重型 OCR 库（含 WASM）被打包进主 chunk（仅截图导入时使用）
+    const Tesseract = await import('tesseract.js')
 
     // [FIX] 添加超时保护，避免移动端卡死
     // [IMPROVE] 语言包从 eng 切换为 chi_sim+eng，支持中英文混合识别（支付宝/天天基金截图优化）

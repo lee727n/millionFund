@@ -3,7 +3,7 @@
     <!-- 导航栏 -->
     <div class="page-header">
       <van-icon name="arrow-left" size="22" @click="router.back()" />
-      <span class="header-title">{{ t('alerts.title') }}</span>/span>
+      <span class="header-title">{{ t('alerts.title') }}</span>
       <van-icon name="plus" size="22" @click="showAdd = true" />
     </div>
 
@@ -11,8 +11,8 @@
       <!-- 空状态 -->
       <div v-if="rules.length === 0" class="empty-state">
         <van-icon name="bell-o" size="48" :style="{ color: 'var(--van-text-color-3)' }" />
-        <p class="empty-text">{{ t('alerts.no_rules') }}</p>/p>
-        <p class="empty-hint">{{ t('alerts.add_hint') }}</p>/p>
+        <p class="empty-text">{{ t('alerts.no_rules') }}</p>
+        <p class="empty-hint">{{ t('alerts.add_hint') }}</p>
       </div>
 
       <!-- 提醒规则列表 -->
@@ -31,7 +31,7 @@
             <span class="rule-detail">{{ detailLabel(rule) }}</span>
           </div>
           <div class="rule-actions">
-            <van-button size="mini" type="danger" plain round @click="onRemove(rule.id)">{{ t('alerts.delete') }}</van-button>/van-button>
+            <van-button size="mini" type="danger" plain round @click="onRemove(rule.id)">{{ t('alerts.delete') }}</van-button>
           </div>
         </div>
       </div>
@@ -47,7 +47,7 @@
       :style="{ height: '80%' }"
     >
       <div class="popup-header">
-        <span>{{ t('alerts.add_rule') }}</span>/span>
+        <span>{{ t('alerts.add_rule') }}</span>
         <van-icon name="cross" @click="showAdd = false" />
       </div>
       <div class="popup-body">

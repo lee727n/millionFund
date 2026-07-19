@@ -186,44 +186,7 @@ function setTrendDays(days: number) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 虚拟滚动优化（性能提升）
-// ──────────────────────────────────────────────────────────────
-const listContainer = ref<HTMLElement | null>(null)
-const visibleStart = ref(0)
-const itemHeight = 120 // 每个持仓项的高度（px）
-const bufferSize = 5 // 上下缓冲项数
-
-// 计算可见区域
-const visibleHoldings = computed(() => {
-  if (!listContainer.value) return sortedHoldings.value
-  
-  const scrollTop = listContainer.value.scrollTop
-  const containerHeight = listContainer.value.clientHeight
-  
-  const start = Math.max(0, Math.floor(scrollTop / itemHeight) - bufferSize)
-  const visibleCount = Math.ceil(containerHeight / itemHeight) + bufferSize * 2
-  const end = Math.min(sortedHoldings.value.length, start + visibleCount)
-  
-  return sortedHoldings.value.slice(start, end)
-})
-
-// 总列表高度（用于占位）
-const totalListHeight = computed(() => {
-  return sortedHoldings.value.length * itemHeight
-})
-
-// 列表顶部偏移（用于定位可见项）
-const listOffsetY = computed(() => {
-  if (!listContainer.value) return 0
-  const scrollTop = listContainer.value.scrollTop
-  const start = Math.max(0, Math.floor(scrollTop / itemHeight) - bufferSize)
-  return start * itemHeight
-})
-
-// 是否启用虚拟滚动（超过 50 项时启用）
-const enableVirtualScroll = computed(() => {
-  return sortedHoldings.value.length > 50
-})
+// [M2] 已删除未使用的虚拟滚动实现代码（模板始终渲染完整 sortedHoldings 列表）
 
 // ──────────────────────────────────────────────────────────────
 
@@ -279,6 +242,8 @@ function exportToCSV() {
   link.style.display = 'none'
   document.body.appendChild(link)
   link.click()
+  // [M2] 释放通过 createObjectURL 创建的临时 URL，避免内存泄漏
+  URL.revokeObjectURL(url)
   document.body.removeChild(link)
 
   showToast(t('portfolio.export_success'))

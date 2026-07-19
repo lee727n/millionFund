@@ -7,7 +7,7 @@ function toggleLanguage() {
   const newLocale = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
   locale.value = newLocale
   localStorage.setItem('locale', newLocale)
-  showToast(t('common.' + (newLocale === 'zh-CN' ? 'ok' : 'ok')))
+  showToast(newLocale === 'zh-CN' ? '已切换至中文' : 'Switched to English')
 }
 </script>
 

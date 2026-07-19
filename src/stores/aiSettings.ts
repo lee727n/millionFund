@@ -40,7 +40,12 @@ export const useAISettingsStore = defineStore('aiSettings', () => {
   }
 
   function save() {
-    localStorage.setItem('ai-settings', JSON.stringify(config.value))
+    try {
+      localStorage.setItem('ai-settings', JSON.stringify(config.value))
+    } catch (e) {
+      // [FIX] 存储满或被禁用时静默失败，避免未捕获异常
+      console.warn('[AISettings] 保存配置失败', e)
+    }
   }
 
   async function test(): Promise<boolean> {

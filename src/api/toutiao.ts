@@ -4,6 +4,8 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { parseRssItems } from '@/utils/rss'
+import { logger } from '@/utils/logger'
 
 /**
  * RSSHub 路由列表（多个备份）
@@ -21,7 +23,7 @@ export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNews
   // 尝试所有 RSS URL
   for (const url of TOUTIAO_RSS_URLS) {
     try {
-      console.log(`[今日头条] 尝试 RSS: ${url}`)
+      logger.info(`[今日头条] 尝试 RSS: ${url}`)
       
       const response = await Http.get({
         url,
@@ -31,72 +33,24 @@ export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNews
       })
       
       if (response.status === 200 && response.data) {
-        const items = parseRSSItems(response.data)
+        // [M15] 使用统一 RSS 解析工具
+        const items = parseRssItems(response.data, '今日头条', 'toutiao', 'https://www.toutiao.com/')
         if (items.length > 0) {
-          console.log(`[今日头条] ✓ RSS 抓取成功: ${items.length} 条`)
+          logger.info(`[今日头条] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[今日头条] RSS 抓取失败: ${url}`, e)
+      logger.warn(`[今日头条] RSS 抓取失败: ${url}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[今日头条] 所有 RSS 源失败，使用模拟数据')
+  logger.warn('[今日头条] 所有 RSS 源失败，使用模拟数据')
   return generateMockToutiaoNews(page, pageSize)
 }
 
-/**
- * 解析 RSS XML 数据
- */
-function parseRSSItems(xmlData: string): ApiNewsItem[] {
-  try {
-    const items: ApiNewsItem[] = []
-    
-    // 匹配 <item> 或 <entry> 标签
-    const itemRegex = /<item>([\s\S]*?)<\/item>|<entry>([\s\S]*?)<\/entry>/g
-    let match
-    
-    while ((match = itemRegex.exec(xmlData)) !== null) {
-      const itemContent = match[1] || match[2]
-      
-      // 提取标题
-      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      
-      // 提取链接
-      const linkMatch = /<link>(.*?)<\/link>|<guid>(.*?)<\/guid>/.exec(itemContent)
-      const url = linkMatch ? (linkMatch[1] || linkMatch[2]).trim() : ''
-      
-      // 提取描述
-      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>|<summary>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/summary>/.exec(itemContent)
-      const summary = descMatch ? (descMatch[1] || descMatch[2]).trim() : ''
-      
-      // 提取发布时间
-      const dateMatch = /<pubDate>(.*?)<\/pubDate>|<published>(.*?)<\/published>|<updated>(.*?)<\/updated>/.exec(itemContent)
-      const dateStr = dateMatch ? (dateMatch[1] || dateMatch[2] || dateMatch[3]).trim() : ''
-      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
-      
-      if (title) {
-        items.push({
-          id: `toutiao_${Date.now()}_${items.length}`,
-          title,
-          summary: summary || title,
-          source: '今日头条',
-          publishedAt,
-          url: url || 'https://www.toutiao.com/',
-          image: undefined
-        })
-      }
-    }
-    
-    return items
-  } catch (e) {
-    console.error('[今日头条] RSS 解析失败', e)
-    return []
-  }
-}
+// [M15] 解析逻辑已抽取至 @/utils/rss 的 parseRssItems，避免各数据源重复实现
 
 function generateMockToutiaoNews(page: number, pageSize: number): ApiNewsItem[] {
   const mockNews = [

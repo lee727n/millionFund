@@ -3,7 +3,7 @@
 // [WHAT] 显示持仓列表、汇总统计，支持添加/编辑/删除持仓
 // [WHAT] 支持 A类/C类基金费用计算
 
-import { ref, onMounted, computed, watch, onErrorCaptured } from 'vue'
+import { ref, onMounted, computed, watch, onErrorCaptured, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
@@ -89,6 +89,12 @@ const costFormData = ref({
 onMounted(() => {
   holdingStore.initHoldings()
   currentSourceFilter.value = getSourceFilter()
+})
+
+// [WHAT] 组件卸载时清除防抖/长按定时器，避免回调在组件销毁后执行
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (holdingPressTimer) clearTimeout(holdingPressTimer)
 })
 
 // [WHY] 网络恢复后自动刷新持仓数据

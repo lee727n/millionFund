@@ -4,6 +4,8 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { parseRssItems } from '@/utils/rss'
+import { logger } from '@/utils/logger'
 
 /**
  * 证券时报 RSS URL 列表（多个备份）
@@ -21,7 +23,7 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
   // 尝试所有 RSS URL
   for (const url of STCN_RSS_URLS) {
     try {
-      console.log(`[证券时报] 尝试 RSS: ${url}`)
+      logger.info(`[证券时报] 尝试 RSS: ${url}`)
       
       const response = await Http.get({
         url,
@@ -31,69 +33,21 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
       })
       
       if (response.status === 200 && response.data) {
-        const items = parseSTCNRSSItems(response.data)
+        // [M15] 使用统一 RSS 解析工具
+        const items = parseRssItems(response.data, '证券时报', 'stcn', 'http://www.stcn.com/')
         if (items.length > 0) {
-          console.log(`[证券时报] ✓ RSS 抓取成功: ${items.length} 条`)
+          logger.info(`[证券时报] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[证券时报] RSS 抓取失败: ${url}`, e)
+      logger.warn(`[证券时报] RSS 抓取失败: ${url}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[证券时报] 所有 RSS 源失败，使用模拟数据')
+  logger.warn('[证券时报] 所有 RSS 源失败，使用模拟数据')
   return generateMockSTCNNews(page, pageSize)
 }
 
-/**
- * 解析证券时报 RSS XML 数据
- */
-function parseSTCNRSSItems(xmlData: string): ApiNewsItem[] {
-  try {
-    const items: ApiNewsItem[] = []
-    
-    // 匹配 <item> 标签
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g
-    let match
-    
-    while ((match = itemRegex.exec(xmlData)) !== null) {
-      const itemContent = match[1]
-      
-      // 提取标题
-      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      
-      // 提取链接
-      const linkMatch = /<link>(.*?)<\/link>/.exec(itemContent)
-      const url = linkMatch ? linkMatch[1].trim() : ''
-      
-      // 提取描述
-      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>/.exec(itemContent)
-      const summary = descMatch ? descMatch[1].trim() : ''
-      
-      // 提取发布时间
-      const dateMatch = /<pubDate>(.*?)<\/pubDate>/.exec(itemContent)
-      const dateStr = dateMatch ? dateMatch[1].trim() : ''
-      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
-      
-      if (title) {
-        items.push({
-          id: `stcn_${Date.now()}_${items.length}`,
-          title,
-          summary: summary || title,
-          source: '证券时报',
-          publishedAt,
-          url: url || 'http://www.stcn.com/',
-          image: undefined
-        })
-      }
-    }
-    
-    return items
-  } catch (e) {
-    console.error('[证券时报] RSS 解析失败', e)
-    return []
-  }
-}
+// [M15] 解析逻辑已抽取至 @/utils/rss 的 parseRssItems，避免各数据源重复实现

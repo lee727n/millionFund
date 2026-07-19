@@ -26,7 +26,7 @@ defineProps<{
     <div class="dividend-list">
       <div
         v-for="(record, idx) in dividendRecords.slice(0, 5)"
-        :key="idx"
+        :key="`${record.date}-${record.type}-${record.amount}`"
         class="dividend-item"
       >
         <div class="dividend-date">{{ record.date }}</div>

@@ -15,7 +15,8 @@ export const CURRENT_TAG = `v${APP_VERSION}` as const
 export const APP_INFO = {
   name: 'AI百万资产',
   version: APP_VERSION,
-  releaseDate: '2026-07-01',
+  // [L10] 发布日期改为模块加载时按当前日期派生，避免硬编码（行为合理：以应用启动日为准）
+  releaseDate: new Date().toISOString().slice(0, 10),
   description: '全平台全品种资产管理工具 - 基金/股票/加密货币 · 实时估值 · AI调仓追踪',
   author: 'millionAsset',
   license: 'MIT',

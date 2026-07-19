@@ -5,7 +5,7 @@
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 
-const CACHE_TTL = {
+const MODULE_CACHE_TTL = {
   STAR_RATING: 3600,     // 1小时
   STYLE_BOX: 3600,
   FUND_CATEGORY: 7200,
@@ -88,7 +88,7 @@ export async function fetchStarRating(code: string): Promise<StarRating | null> 
         categoryCount: parseInt(d.categoryCount || '0'),
         ratingDate: d.ratingDate || '',
       }
-      setCache(cacheKey, result, CACHE_TTL.STAR_RATING)
+      setCache(cacheKey, result, MODULE_CACHE_TTL.STAR_RATING)
       return result
     }
     return null
@@ -120,7 +120,7 @@ export async function fetchStyleBox(code: string): Promise<StyleBox[]> {
         style: item.style || 'blend',
         weight: parseFloat(item.weight || '0'),
       }))
-      setCache(cacheKey, list, CACHE_TTL.STYLE_BOX)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.STYLE_BOX)
       return list
     }
     return fallbackStyleBox()
@@ -155,7 +155,7 @@ export async function fetchFundCategory(code: string): Promise<FundCategory | nu
         categoryCode: d.categoryCode || '',
         riskLevel: d.riskLevel || '中风险',
       }
-      setCache(cacheKey, result, CACHE_TTL.FUND_CATEGORY)
+      setCache(cacheKey, result, MODULE_CACHE_TTL.FUND_CATEGORY)
       return result
     }
     return null

@@ -7,16 +7,16 @@ export const useTradeStore = defineStore('trade', {
     trades: [] as TradeRecord[],
   }),
   actions: {
-    loadTrades() {
-      this.trades = getTrades()
+    async loadTrades() {
+      this.trades = await getTrades()
     },
-    addTrade(trade: TradeRecord) {
-      addTrade(trade)
-      this.loadTrades()
+    async addTrade(trade: TradeRecord) {
+      await addTrade(trade)
+      await this.loadTrades()
     },
-    deleteTrade(id: string) {
-      deleteTrade(id)
-      this.loadTrades()
+    async deleteTrade(id: string) {
+      await deleteTrade(id)
+      await this.loadTrades()
     },
   },
 })

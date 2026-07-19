@@ -7,7 +7,7 @@ import { http } from '@/utils/http'
 import type { CommodityQuote, GoldPrice } from '@/types/commodity'
 import { logger } from '@/utils/logger'
 
-const CACHE_TTL = 5 // 缓存 5 秒（大宗商品价格变化较快）
+const MODULE_CACHE_TTL = 5 // 缓存 5 秒（大宗商品价格变化较快）
 
 // ========== 新浪财经 API 响应解析 ==========
 
@@ -92,7 +92,7 @@ export async function fetchCommodityQuote(symbols: string[]): Promise<CommodityQ
     const results = parseSinaCommodityResponse(text, symbols)
 
     // 缓存 5 秒
-    setCache(cacheKey, results, CACHE_TTL)
+    setCache(cacheKey, results, MODULE_CACHE_TTL)
 
     return results
   } catch (err) {

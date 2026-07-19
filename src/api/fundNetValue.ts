@@ -6,7 +6,7 @@ import { cache, CACHE_TTL } from './cache'
 import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 import type { NetValueRecord } from '@/types/fund'
-import type { SimpleKLineData, PeriodReturn } from './fundTypes'
+import type { IntradayPoint, SimpleKLineData, PeriodReturn } from './fundTypes'
 import { queueGlobalVarScript } from './fundUtils'
 
 // ========== 历史净值API ==========
@@ -128,7 +128,7 @@ export async function fetchIntradayData(code: string, forceRefresh = false): Pro
       })
 
       // [WHY] 交易时间缓存30秒，非交易时间缓存5分钟
-      cache.set(cacheKey, points, isTradingTime ? 30 : 300)
+      cache.set(cacheKey, points, isTradingTime ? 30000 : 300000)
       return points
     }
     return null

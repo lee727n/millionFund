@@ -3,6 +3,7 @@
 // [DEPS] 依赖 jin10、cls、xueqiu、choice 等API模块
 
 import type { NewsSource } from '@/types/news'
+import { logger } from '@/utils/logger'
 
 // 导入金十数据API
 import {
@@ -71,7 +72,7 @@ export async function fetchJin10Flash(): Promise<Jin10FlashItem[]> {
   try {
     return await jin10FetchFlash()
   } catch (error) {
-    console.error('[news.ts] 获取金十快讯失败:', error)
+    logger.error('[news.ts] 获取金十快讯失败:', error)
     return []
   }
 }
@@ -91,7 +92,7 @@ export async function fetchJin10News(
   try {
     return await jin10FetchNewsList(page, pageSize, category)
   } catch (error) {
-    console.error('[news.ts] 获取金十新闻失败:', error)
+    logger.error('[news.ts] 获取金十新闻失败:', error)
     return []
   }
 }
@@ -107,7 +108,7 @@ export async function fetchJin10Calendar(
   try {
     return await jin10FetchCalendar(date)
   } catch (error) {
-    console.error('[news.ts] 获取金十日历失败:', error)
+    logger.error('[news.ts] 获取金十日历失败:', error)
     return []
   }
 }
@@ -125,7 +126,7 @@ export async function fetchCailianNews(
   try {
     return await clsFetchTelegram(limit)
   } catch (error) {
-    console.error('[news.ts] 获取财联社电报失败:', error)
+    logger.error('[news.ts] 获取财联社电报失败:', error)
     return []
   }
 }
@@ -138,7 +139,7 @@ export async function fetchCailianHotTopics(): Promise<ClsHotTopic[]> {
   try {
     return await clsFetchHotTopics()
   } catch (error) {
-    console.error('[news.ts] 获取财联社热门主题失败:', error)
+    logger.error('[news.ts] 获取财联社热门主题失败:', error)
     return []
   }
 }
@@ -151,7 +152,7 @@ export async function fetchCailianPlate(): Promise<ClsPlateMovement[]> {
   try {
     return await clsFetchPlate()
   } catch (error) {
-    console.error('[news.ts] 获取财联社板块异动失败:', error)
+    logger.error('[news.ts] 获取财联社板块异动失败:', error)
     return []
   }
 }
@@ -171,7 +172,7 @@ export async function fetchXueqiuDiscussions(
   try {
     return await xueqiuFetchDiscussions(type, count)
   } catch (error) {
-    console.error('[news.ts] 获取雪球讨论失败:', error)
+    logger.error('[news.ts] 获取雪球讨论失败:', error)
     return []
   }
 }
@@ -189,7 +190,7 @@ export async function fetchXueqiuSentiment(
   try {
     return await xueqiuFetchSentiment(type, count)
   } catch (error) {
-    console.error('[news.ts] 获取雪球情绪失败:', error)
+    logger.error('[news.ts] 获取雪球情绪失败:', error)
     return []
   }
 }
@@ -205,7 +206,7 @@ export async function fetchXueqiuViews(
   try {
     return await xueqiuFetchViews(count)
   } catch (error) {
-    console.error('[news.ts] 获取雪球大V观点失败:', error)
+    logger.error('[news.ts] 获取雪球大V观点失败:', error)
     return []
   }
 }
@@ -220,7 +221,7 @@ export async function fetchChoiceNorthFlow(): Promise<ChoiceNorthFlow | null> {
   try {
     return await choiceFetchNorth()
   } catch (error) {
-    console.error('[news.ts] 获取北向资金失败:', error)
+    logger.error('[news.ts] 获取北向资金失败:', error)
     return null
   }
 }
@@ -236,7 +237,7 @@ export async function fetchChoiceSectorFlows(
   try {
     return await choiceFetchSector(count)
   } catch (error) {
-    console.error('[news.ts] 获取板块资金失败:', error)
+    logger.error('[news.ts] 获取板块资金失败:', error)
     return []
   }
 }
@@ -249,12 +250,28 @@ export async function fetchChoiceMainForce(): Promise<ChoiceMainForce[]> {
   try {
     return await choiceFetchMainForce()
   } catch (error) {
-    console.error('[news.ts] 获取主力资金失败:', error)
+    logger.error('[news.ts] 获取主力资金失败:', error)
     return []
   }
 }
 
 // ========== 统一入口函数 ==========
+
+/** [M13] fetchNews 的统一返回类型，替代 any，覆盖所有分支实际返回结构 */
+type FetchNewsResult =
+  | Jin10FlashItem[]
+  | Jin10CalendarItem[]
+  | Jin10NewsItem[]
+  | ClsTelegramItem[]
+  | ClsHotTopic[]
+  | ClsPlateMovement[]
+  | XueqiuDiscussion[]
+  | XueqiuSentiment[]
+  | XueqiuUserView[]
+  | ChoiceNorthFlow
+  | ChoiceSectorFlow[]
+  | ChoiceMainForce[]
+  | []
 
 /**
  * 统一资讯获取入口
@@ -262,7 +279,7 @@ export async function fetchChoiceMainForce(): Promise<ChoiceMainForce[]> {
  * 
  * @param {NewsSource} source - 数据源类型
  * @param {Object} options - 可选参数
- * @returns {Promise<any>} 对应数据源的数据
+ * @returns {Promise<FetchNewsResult>} 对应数据源的数据
  * 
  * @example
  * // 获取金十快讯
@@ -282,7 +299,7 @@ export async function fetchNews(
     limit?: number
     count?: number
   }
-): Promise<any> {
+): Promise<FetchNewsResult> {
   switch (source) {
     case 'jin10':
       if (options?.type === 'flash') {
@@ -340,7 +357,7 @@ export async function fetchNews(
       }
 
     default:
-      console.warn(`[news.ts] 未知的数据源: ${source}`)
+      logger.warn(`[news.ts] 未知的数据源: ${source}`)
       return []
   }
 }

@@ -37,7 +37,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   const top10 = await queueGlobalVarScript<HoldingStock[]>(
     `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&_=${Date.now()}`,
     async () => {
-      const html = (window as any).apidata?.content || ''
+      const html = window.apidata?.content || ''
       if (!html) return []
 
       const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || ''
@@ -106,47 +106,44 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
         }).filter(Boolean).join(',')
 
         if (tencentCodes) {
+          const qtUrl = `https://qt.gtimg.cn/q?q=${tencentCodes}`
           try {
-            const qtUrl = `https://qt.gtimg.cn/q?q=${tencentCodes}`
-            const qtRes = await fetch(qtUrl)
-            if (qtRes.ok) {
-              const qtText = await qtRes.text()
-              const qtRegex = /v_s_(sh|sz|bj|hk|us)(\w+)="([^"]+)"/g
-              let m: RegExpExecArray | null
-              const qtData: Record<string, string> = {}
-              while ((m = qtRegex.exec(qtText)) !== null) {
-                const prefix = m[1]
-                const code = m[2]
-                const dataStr = m[3]
-                if (!dataStr) continue
-                let key = ''
-                if (prefix === 'sh' || prefix === 'sz' || prefix === 'bj') key = `${prefix}${code}`
-                else if (prefix === 'hk') key = `hk${code}`
-                else if (prefix === 'us') key = `us${code}`
-                if (key) qtData[key] = dataStr
-              }
-              needQuotes.forEach((h) => {
-                const cd = String(h.code || '')
-                let lookup = ''
-                if (/^\d{6}$/.test(cd)) {
-                  const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz')
-                  lookup = `${pfx}${cd}`
-                } else if (/^\d{5}$/.test(cd)) {
-                  lookup = `hk${cd}`
-                } else if (/^[A-Z]{1,6}$/.test(cd)) {
-                  lookup = `us${cd}`
-                } else return
-                const dataStr = qtData[lookup]
-                if (dataStr) {
-                  const parts = dataStr.split('~')
-                  if (parts.length > 5 && parts[5]) h.change = parseFloat(parts[5])
-                }
-              })
-            } else {
-              logger.warn('[fundDetail] 获取股票行情失败，跳过', { url: qtUrl })
+            // [M9] 改用统一 http 封装，获得超时 / 重试 / 统一错误日志，避免裸 fetch
+            const qtText = await http.text(qtUrl)
+            const qtRegex = /v_s_(sh|sz|bj|hk|us)(\w+)="([^"]+)"/g
+            let m: RegExpExecArray | null
+            const qtData: Record<string, string> = {}
+            while ((m = qtRegex.exec(qtText)) !== null) {
+              const prefix = m[1]
+              const code = m[2]
+              const dataStr = m[3]
+              if (!dataStr) continue
+              let key = ''
+              if (prefix === 'sh' || prefix === 'sz' || prefix === 'bj') key = `${prefix}${code}`
+              else if (prefix === 'hk') key = `hk${code}`
+              else if (prefix === 'us') key = `us${code}`
+              if (key) qtData[key] = dataStr
             }
-          } catch {
-            // 静默忽略行情获取失败
+            needQuotes.forEach((h) => {
+              const cd = String(h.code || '')
+              let lookup = ''
+              if (/^\d{6}$/.test(cd)) {
+                const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz')
+                lookup = `${pfx}${cd}`
+              } else if (/^\d{5}$/.test(cd)) {
+                lookup = `hk${cd}`
+              } else if (/^[A-Z]{1,6}$/.test(cd)) {
+                lookup = `us${cd}`
+              } else return
+              const dataStr = qtData[lookup]
+              if (dataStr) {
+                const parts = dataStr.split('~')
+                if (parts.length > 5 && parts[5]) h.change = parseFloat(parts[5])
+              }
+            })
+          } catch (err) {
+            // [M9] 行情获取失败时记录日志并跳过，不再静默吞掉错误
+            logger.warn('[fundDetail] 获取股票行情失败，跳过', { url: qtUrl, error: err })
           }
         }
       }
@@ -200,6 +197,67 @@ export async function fetchFundBasicInfo(code: string): Promise<{
 
 // ========== 综合数据获取（多源验证） ==========
 
+/** [M14] 根据多源数据自动选择「当前推荐净值来源」
+ * 统一 QDII / 非 QDII 的判定逻辑，消除原实现中近 60 行重复分支与深度嵌套。
+ * 规则：
+ *  - QDII：净值只认昨日/今日（QDII 净值延迟公布），盘中不使用估值
+ *  - 普通基金：优先今日公布净值 → 盘中实时估值 → 今日估值 → stale 净值 → 任意估值 → 单位净值兜底
+ */
+function resolveAccurateValue(params: {
+  isQDII: boolean
+  nav: number
+  navChange: number
+  estimate: number
+  estimateChange: number
+  dwjz: number
+  isNavFromToday: boolean
+  isNavFromYesterday: boolean
+  inTradingTime: boolean
+  isEstimateFromToday: boolean
+}): { currentValue: number; dayChange: number; dataSource: FundAccurateData['dataSource'] } {
+  const navOk = params.nav > 0
+  const estOk = params.estimate > 0
+
+  if (params.isQDII) {
+    // QDII 净值延迟公布，只认昨日/今日，盘中不使用估值
+    if ((params.isNavFromYesterday || params.isNavFromToday) && navOk) {
+      return { currentValue: params.nav, dayChange: params.navChange, dataSource: 'nav' }
+    }
+    if (estOk && params.isEstimateFromToday) {
+      return { currentValue: params.estimate, dayChange: params.estimateChange, dataSource: 'estimate' }
+    }
+    if (estOk) {
+      return { currentValue: params.estimate, dayChange: params.estimateChange, dataSource: 'estimate' }
+    }
+  } else {
+    // 普通基金：优先今日公布净值
+    if (params.isNavFromToday && navOk) {
+      return { currentValue: params.nav, dayChange: params.navChange, dataSource: 'nav' }
+    }
+    // 交易时间内优先采用实时估值
+    if (params.inTradingTime && estOk) {
+      return { currentValue: params.estimate, dayChange: params.estimateChange, dataSource: 'estimate' }
+    }
+    // 估值若为今日更新，也可作为当前值
+    if (estOk && params.isEstimateFromToday) {
+      return { currentValue: params.estimate, dayChange: params.estimateChange, dataSource: 'estimate' }
+    }
+    // 回退到历史净值（即使非今日）
+    if (navOk) {
+      return { currentValue: params.nav, dayChange: params.navChange, dataSource: 'nav' }
+    }
+    if (estOk) {
+      return { currentValue: params.estimate, dayChange: params.estimateChange, dataSource: 'estimate' }
+    }
+  }
+
+  // 兜底：使用单位净值（dwjz）
+  if (params.dwjz > 0) {
+    return { currentValue: params.dwjz, dayChange: 0, dataSource: 'fallback' }
+  }
+  return { currentValue: 0, dayChange: 0, dataSource: 'fallback' }
+}
+
 export async function fetchFundAccurateData(code: string, isQDII: boolean = false): Promise<FundAccurateData> {
   const cacheKey = `accurate_${code}`
   if (!isQDII) {
@@ -214,6 +272,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
 
   const now = new Date()
   const today = now.toISOString().split('T')[0]!
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
 
@@ -248,66 +307,26 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   }
 
   const isNavFromToday = navData?.date === today
-  const isEstimateFromToday = estimateData?.gztime?.startsWith(today.replace(/-/g, '-'))
+  // [M10] 修正 no-op 正则：原 `today.replace(/-/g, '-')` 不改变字符串，应去掉连字符
+  const isEstimateFromToday = estimateData?.gztime?.startsWith(today.replace(/-/g, ''))
 
-  if (isQDII) {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const isNavFromYesterday = navData?.date === yesterday
-
-    if (isNavFromYesterday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (isNavFromToday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (result.estimate > 0 && isEstimateFromToday) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else {
-      const dwjz = parseFloat(estimateData?.dwjz || '0')
-      if (dwjz > 0) {
-        result.currentValue = dwjz
-        result.dayChange = 0
-        result.dataSource = 'fallback'
-      }
-    }
-  } else {
-    if (isNavFromToday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (inTradingTime && result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.estimate > 0 && isEstimateFromToday) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else {
-      const dwjz = parseFloat(estimateData?.dwjz || '0')
-      if (dwjz > 0) {
-        result.currentValue = dwjz
-        result.dayChange = 0
-        result.dataSource = 'fallback'
-      }
-    }
-  }
+  // [M14] 通过抽取后的辅助函数统一选择当前值，消除原深度嵌套与 QDII/非 QDII 重复分支
+  const dwjz = parseFloat(estimateData?.dwjz || '0')
+  const resolved = resolveAccurateValue({
+    isQDII,
+    nav: result.nav,
+    navChange: result.navChange,
+    estimate: result.estimate,
+    estimateChange: result.estimateChange,
+    dwjz,
+    isNavFromToday,
+    isNavFromYesterday: navData?.date === yesterday,
+    inTradingTime,
+    isEstimateFromToday
+  })
+  result.currentValue = resolved.currentValue
+  result.dayChange = resolved.dayChange
+  result.dataSource = resolved.dataSource
 
   const ttl = isQDII ? 10000 : (inTradingTime ? 30000 : 300000)
   cache.set(cacheKey, result, ttl)
@@ -374,7 +393,7 @@ export async function fetchFundManagerInfo(fundCode: string): Promise<FundManage
   const manager = await queueGlobalVarScript<FundManagerInfo | null>(
     `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`,
     () => {
-      const managerData = (window as any).Data_currentFundManager || []
+      const managerData = window.Data_currentFundManager || []
       if (managerData.length === 0) return null
 
       const main = managerData[0]
@@ -421,7 +440,7 @@ export async function fetchManagerProfit(fundCode: string): Promise<ManagerProfi
   const result = await queueGlobalVarScript<ManagerProfitPoint[]>(
     `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`,
     () => {
-      const grandTotal = (window as any).Data_grandTotal || []
+      const grandTotal = window.Data_grandTotal || []
       if (!Array.isArray(grandTotal) || grandTotal.length === 0) return []
 
       const step = Math.max(1, Math.floor(grandTotal.length / 200))
@@ -473,7 +492,7 @@ export async function fetchIndustryAllocation(code: string): Promise<IndustryAll
   const result = await queueGlobalVarScript<IndustryAllocation[]>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const data = (window as any).Data_IndustryAllocation
+      const data = window.Data_IndustryAllocation
       if (!data?.series?.[0]?.data) return []
 
       return data.series[0].data
@@ -501,7 +520,7 @@ export async function fetchAssetAllocation(code: string): Promise<AssetAllocatio
   const result = await queueGlobalVarScript<AssetAllocation | null>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const data = (window as any).Data_assetAllocation
+      const data = window.Data_assetAllocation
       if (!data?.series) return null
 
       const getSeries = (name: string) => {
@@ -533,9 +552,9 @@ export async function fetchFundRating(code: string): Promise<FundRating | null> 
   const result = await queueGlobalVarScript<FundRating | null>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const rateInSimilar = (window as any).Data_rateInSimilarType || []
-      const performanceData = (window as any).Data_rateInSimilarPers498 || []
-      const fluctuation = (window as any).Data_fluctuationScale || {}
+      const rateInSimilar = window.Data_rateInSimilarType || []
+      const performanceData = window.Data_rateInSimilarPers498 || []
+      const fluctuation = window.Data_fluctuationScale || {}
 
       let rating = 3
       if (rateInSimilar.length > 0) {

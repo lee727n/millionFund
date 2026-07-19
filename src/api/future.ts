@@ -7,7 +7,7 @@ import { http } from '@/utils/http'
 import type { FutureQuote } from '@/types/future'
 import { logger } from '@/utils/logger'
 
-const CACHE_TTL = 5 // 缓存 5 秒（期货行情变化较快）
+const MODULE_CACHE_TTL = 5 // 缓存 5 秒（期货行情变化较快）
 
 // ========== 新浪财经 API 响应解析 ==========
 
@@ -111,7 +111,7 @@ export async function fetchFutureBatch(symbols: string[]): Promise<FutureQuote[]
     const results = parseSinaFutureResponse(text, symbols)
 
     // 缓存 5 秒
-    setCache(cacheKey, results, CACHE_TTL)
+    setCache(cacheKey, results, MODULE_CACHE_TTL)
 
     return results
   } catch (err) {
@@ -161,7 +161,7 @@ export async function fetchFutureRanking(type: 'rise' | 'fall'): Promise<FutureQ
         }
       }).filter((q: FutureQuote) => q.symbol)
 
-      setCache(cacheKey, results, CACHE_TTL)
+      setCache(cacheKey, results, MODULE_CACHE_TTL)
       return results
     }
 

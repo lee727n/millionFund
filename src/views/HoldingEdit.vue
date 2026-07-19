@@ -2,7 +2,7 @@
 // [WHY] 持仓录入/编辑页面 - 支持多资产类别
 // [WHAT] 支持基金、A股、港股、美股、加密货币、可转债等全品种
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useHoldingStore } from '@/stores/holding'
@@ -62,7 +62,7 @@ const codePlaceholder = computed(() => {
     gold: '请输入黄金品种（如：黄金ETF）',
     commodity: '请输入大宗商品代码'
   }
-  return placeholders.value[form.value.assetClass] || t('holding_edit.code_symbol_default')
+  return placeholders[form.value.assetClass] || t('holding_edit.code_symbol_default')
 })
 
 // [WHAT] 名称输入框的 placeholder
@@ -127,6 +127,11 @@ function onSearchInput() {
     }
   }, 300)
 }
+
+// [WHAT] 组件卸载时清除搜索防抖定时器，避免回调在组件销毁后执行
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 // [WHAT] 选择基金（基金类别专用）
 async function selectFund(code: string, name: string) {

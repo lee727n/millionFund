@@ -5,7 +5,7 @@
 import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 
-const CACHE_TTL = {
+const MODULE_CACHE_TTL = {
   NEWS: 60,
   FLASH: 30,
   CALENDAR: 300,
@@ -85,7 +85,7 @@ export async function fetchNewsList(page = 1, pageSize = 20, category = 'all'): 
         category: item.type || 'general',
         tags: item.tags || [],
       }))
-      setCache(cacheKey, newsList, CACHE_TTL.NEWS)
+      setCache(cacheKey, newsList, MODULE_CACHE_TTL.NEWS)
       return newsList
     }
 
@@ -117,7 +117,7 @@ export async function fetchFlashNews(): Promise<FlashItem[]> {
         time: item.time || '',
         type: item.is_important ? 'important' : item.is_warning ? 'warning' : 'normal',
       }))
-      setCache(cacheKey, flashList, CACHE_TTL.FLASH)
+      setCache(cacheKey, flashList, MODULE_CACHE_TTL.FLASH)
       return flashList
     }
 
@@ -154,7 +154,7 @@ export async function fetchEconomicCalendar(date: string = ''): Promise<Calendar
         previous: item.previous || undefined,
         currency: item.currency || undefined,
       }))
-      setCache(cacheKey, calendarList, CACHE_TTL.CALENDAR)
+      setCache(cacheKey, calendarList, MODULE_CACHE_TTL.CALENDAR)
       return calendarList
     }
 

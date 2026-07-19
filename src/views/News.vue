@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 // 金十数据
 import { fetchNewsList, fetchFlashNews, fetchEconomicCalendar, getNewsCategories, type NewsItem, type FlashItem, type CalendarItem } from '@/api/jin10'
@@ -69,7 +69,8 @@ const sourceOptions = [
 // ========== 交叉验证状态 (Task #11: Jaccard 相似度) ==========
 const crossValidation = ref({
   enabled: false,
-  newsMap: new Map<string, Set<string>>()
+  // [M1] 使用 reactive() 包裹 Map，确保 .set / .delete 能触发响应式更新
+  newsMap: reactive(new Map<string, Set<string>>())
 })
 
 // 交叉验证新闻列表

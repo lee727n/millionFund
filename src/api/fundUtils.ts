@@ -64,7 +64,12 @@ export function queueGlobalVarScript<T>(
 
       const timeout = setTimeout(() => finish(emptyResult), timeoutMs)
 
+      // [FIX] 幂等保护：超时与正常完成可能都调用 finish，避免 resolve 被调用两次
+      let finished = false
+
       async function finish(data: T) {
+        if (finished) return
+        finished = true
         clearTimeout(timeout)
         // 请求结束后清掉自己占的全局变量
         cleanupVars.forEach((v) => {

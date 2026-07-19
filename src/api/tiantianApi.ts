@@ -37,6 +37,8 @@ const FALLBACK_HOLIDAYS: Record<string, string[]> = {
 
 const holidaySet = new Set<string>()
 let holidayInitialized = false
+// [FIX] 并发锁：初始化进行中时复用同一 Promise，避免重复初始化
+let holidayInitPromise: Promise<void> | null = null
 
 function initFallbackHolidays(): void {
   const thisYear = String(new Date().getFullYear())
@@ -112,14 +114,28 @@ async function fetchYearHolidaysFromApi(year: number): Promise<void> {
 }
 
 export async function initHolidayData(): Promise<void> {
+  // [FIX] 并发锁：正在初始化时直接复用同一 Promise，避免重复初始化
+  if (holidayInitPromise) return holidayInitPromise
   if (holidayInitialized) return
-  holidayInitialized = true
-  initFallbackHolidays()
-  const thisYear = new Date().getFullYear()
-  await Promise.all([
-    fetchYearHolidaysFromApi(thisYear),
-    fetchYearHolidaysFromApi(thisYear + 1),
-  ])
+
+  // [FIX] 用 Promise 持有初始化过程，供并发调用复用
+  holidayInitPromise = (async () => {
+    initFallbackHolidays()
+    const thisYear = new Date().getFullYear()
+    await Promise.all([
+      fetchYearHolidaysFromApi(thisYear),
+      fetchYearHolidaysFromApi(thisYear + 1),
+    ])
+    // [FIX] 数据就绪后再置位，避免并发调用在初始化完成前就直接返回
+    holidayInitialized = true
+  })()
+
+  try {
+    await holidayInitPromise
+  } finally {
+    // 初始化结束后清空锁（无论成功失败），失败时可重试
+    holidayInitPromise = null
+  }
 }
 
 function isStockHoliday(date: Date): boolean {

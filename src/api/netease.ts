@@ -3,6 +3,8 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { parseRssItems } from '@/utils/rss'
+import { logger } from '@/utils/logger'
 
 /**
  * 网易财经 RSS Feed URLs（多个备用）
@@ -20,7 +22,7 @@ export async function fetchNeteaseNews(page = 1, pageSize = 20): Promise<ApiNews
   // 尝试所有 RSS URL
   for (const rssUrl of NETEASE_RSS_URLS) {
     try {
-      console.log(`[网易财经] 尝试 RSS: ${rssUrl}`)
+      logger.info(`[网易财经] 尝试 RSS: ${rssUrl}`)
       const response = await Http.get({
         url: rssUrl,
         headers: {
@@ -29,47 +31,24 @@ export async function fetchNeteaseNews(page = 1, pageSize = 20): Promise<ApiNews
       })
       
       if (response.status === 200 && response.data) {
-        console.log(`[网易财经] ✓ RSS 抓取成功: ${rssUrl}`)
-        const items = parseRSS(response.data)
+        logger.info(`[网易财经] ✓ RSS 抓取成功: ${rssUrl}`)
+        // [M15] 使用统一 RSS 解析工具
+        const items = parseRssItems(response.data, '网易财经', 'netease', 'https://money.163.com/')
         if (items.length > 0) {
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[网易财经] RSS 抓取失败: ${rssUrl}`, e)
+      logger.warn(`[网易财经] RSS 抓取失败: ${rssUrl}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[网易财经] 所有 RSS 抓取失败，使用模拟数据')
+  logger.warn('[网易财经] 所有 RSS 抓取失败，使用模拟数据')
   return generateMockNeteaseNews(page, pageSize)
 }
 
-function parseRSS(xml: string): ApiNewsItem[] {
-  const items: ApiNewsItem[] = []
-  const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || []
-  
-  itemMatches.forEach((item, index) => {
-    const titleMatch = item.match(/<title>(.*?)<\/title>/)
-    const linkMatch = item.match(/<link>(.*?)<\/link>/)
-    const pubDateMatch = item.match(/<pubDate>(.*?)<\/pubDate>/)
-    const descriptionMatch = item.match(/<description>(.*?)<\/description>/)
-    
-    if (titleMatch && linkMatch) {
-      items.push({
-        id: `netease_${index}`,
-        title: titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1'),
-        summary: descriptionMatch ? descriptionMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1').substring(0, 100) : '',
-        source: '网易财经',
-        publishedAt: pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString(),
-        url: linkMatch[1],
-        image: undefined
-      })
-    }
-  })
-  
-  return items
-}
+// [M15] 解析逻辑已抽取至 @/utils/rss 的 parseRssItems，避免各数据源重复实现
 
 function generateMockNeteaseNews(page: number, pageSize: number): ApiNewsItem[] {
   const mockNews = [

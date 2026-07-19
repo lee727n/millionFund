@@ -67,7 +67,7 @@ type WebSocketEventHandler<T = any> = (data: T) => void
  * WebSocket composable
  * [WHAT] 管理 WebSocket 连接，提供自动重连、心跳、事件监听等功能
  */
-export function useWebSocket(config?: WebSocketConfig) {
+export function useWebSocket(config?: WebSocketConfig, options?: { autoCleanup?: boolean }) {
   // ========== 状态 ==========
   
   /** 连接状态 */
@@ -383,9 +383,12 @@ export function useWebSocket(config?: WebSocketConfig) {
   }
   
   // 组件卸载时自动清理
-  onUnmounted(() => {
-    cleanup()
-  })
+  // [FIX] 单例模式（useDefaultWebSocket）下由引用计数统一管理断开，此处不注册自动清理
+  if (options?.autoCleanup !== false) {
+    onUnmounted(() => {
+      cleanup()
+    })
+  }
   
   // ========== 返回 ==========
   
@@ -413,11 +416,26 @@ export function useWebSocket(config?: WebSocketConfig) {
  * [WHAT] 提供一个全局 WebSocket 实例，供多个组件共享
  */
 let defaultWebSocketInstance: ReturnType<typeof useWebSocket> | null = null
+// [FIX] 引用计数：多个组件共享单例时，仅最后一个使用者卸载才真正断开
+let wsRefCount = 0
 
 export function useDefaultWebSocket(config?: WebSocketConfig): ReturnType<typeof useWebSocket> {
   if (!defaultWebSocketInstance) {
-    defaultWebSocketInstance = useWebSocket(config)
+    // [FIX] 单例内部不自动清理，交由引用计数管理
+    defaultWebSocketInstance = useWebSocket(config, { autoCleanup: false })
   }
+  wsRefCount++
+
+  // [FIX] 每个使用者卸载时减少引用计数，最后一个才真正断开，避免首个组件卸载就断开所有
+  onUnmounted(() => {
+    wsRefCount--
+    if (wsRefCount <= 0) {
+      wsRefCount = 0
+      defaultWebSocketInstance?.cleanup()
+      defaultWebSocketInstance = null
+    }
+  })
+
   return defaultWebSocketInstance
 }
 
@@ -430,4 +448,5 @@ export function resetDefaultWebSocket(): void {
     defaultWebSocketInstance.cleanup()
     defaultWebSocketInstance = null
   }
+  wsRefCount = 0
 }

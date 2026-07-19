@@ -6,7 +6,7 @@ import { getCache, setCache } from '@/api/cache'
 import { http } from '@/utils/http'
 import type { ConvertibleBond } from '@/types/convertible'
 
-const CACHE_TTL = {
+const MODULE_CACHE_TTL = {
   CONVERTIBLE: 60,
   LOF_PREMIUM: 60,
   REITS: 120,
@@ -108,7 +108,7 @@ export async function fetchConvertibleBonds(count = 20): Promise<ConvertibleBond
           ytm: parseFloat(cell.ytm_rt || '0'),
         }
       })
-      setCache(cacheKey, list, CACHE_TTL.CONVERTIBLE)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.CONVERTIBLE)
       return list
     }
     // 兜底数据也限制数量
@@ -188,7 +188,7 @@ export async function fetchConvertibleQuote(codes: string[]): Promise<Convertibl
         })
         .filter((item): item is ConvertibleBond => item !== null)
 
-      setCache(cacheKey, list, CACHE_TTL.CONVERTIBLE)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.CONVERTIBLE)
       return list
     }
     return fallbackConvertibleQuotes(codes)
@@ -221,7 +221,7 @@ export async function fetchLofPremiums(): Promise<LofPremium[]> {
         volume: parseFloat(row.cell?.volume || '0') / 10000,
         type: 'stock' as const,
       })).filter(f => f.name).slice(0, 15)
-      setCache(cacheKey, list, CACHE_TTL.LOF_PREMIUM)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.LOF_PREMIUM)
       return list
     }
     return fallbackLofPremiums()
@@ -254,7 +254,7 @@ export async function fetchReitsData(): Promise<ReitData[]> {
         totalReturn: parseFloat(row.cell?.total_return || '0'),
         daysListed: parseInt(row.cell?.days_listed || '0'),
       })).filter(r => r.name).slice(0, 15)
-      setCache(cacheKey, list, CACHE_TTL.REITS)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.REITS)
       return list
     }
     return fallbackReitsData()
@@ -288,7 +288,7 @@ export async function fetchFundLadder(): Promise<FundLadder[]> {
         total: parseInt(row.cell?.total || '0'),
         type: row.cell?.fund_type || '',
       })).filter(f => f.name)
-      setCache(cacheKey, list, CACHE_TTL.FUND_LADDER)
+      setCache(cacheKey, list, MODULE_CACHE_TTL.FUND_LADDER)
       return list
     }
     return fallbackFundLadder()

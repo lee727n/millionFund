@@ -66,7 +66,12 @@ export const useThemeStore = defineStore('theme', () => {
    */
   function setTheme(newMode: ThemeMode) {
     mode.value = newMode
-    localStorage.setItem(STORAGE_KEY, newMode)
+    try {
+      localStorage.setItem(STORAGE_KEY, newMode)
+    } catch (e) {
+      // [FIX] 存储满或被禁用时静默失败，不阻断主题切换
+      console.warn('[theme] 保存主题失败', e)
+    }
     applyTheme(newMode)
     actualTheme.value = newMode === 'auto' ? getSystemTheme() : newMode
   }

@@ -91,6 +91,12 @@
             <van-loading size="24">{{ t('market.loading_future') }}</van-loading>
           </div>
 
+          <!-- [M4] 期货加载失败提示（不再用假数据掩盖故障） -->
+          <div v-else-if="futureError" class="empty-state">
+            <van-icon name="warning-o" size="40" />
+            <div class="empty-text">期货数据加载失败，请稍后重试</div>
+          </div>
+
           <!-- 期货列表 -->
           <div v-else class="future-list">
             <div
@@ -147,6 +153,8 @@ const currentTime = ref(new Date())
 // 期货数据
 const futures = ref<FutureQuote[]>([])
 const isLoadingFutures = ref(false)
+// [M4] 期货数据加载失败标记，用于在页面展示错误提示（不再用假数据掩盖）
+const futureError = ref(false)
 
 let timer: number | undefined
 
@@ -197,43 +205,19 @@ async function refreshData() {
 async function loadFutures() {
   if (isLoadingFutures.value) return
   isLoadingFutures.value = true
+  futureError.value = false
   try {
     // 默认加载常用期货品种
     const symbols = ['GC2506', 'CL2506', 'HG2506', 'ZS2506', 'T2506']
     const results = await fetchFutureBatch(symbols)
     futures.value = results
+    futureError.value = false
     logger.info('[Market] 期货数据加载成功', { count: results.length })
   } catch (err) {
+    // [M4] 不再用硬编码假数据掩盖故障，清空数据并暴露错误状态由页面提示
     logger.error('[Market] 期货数据加载失败', err)
-    // 使用兜底数据
-    futures.value = [
-      {
-        symbol: 'GC2506',
-        name: '黄金2506',
-        price: 2350.50,
-        change: 10.50,
-        changeRate: 0.45,
-        open: 2340.00,
-        high: 2355.00,
-        low: 2335.00,
-        volume: 100000,
-        openInterest: 500000,
-        updatedAt: new Date().toISOString()
-      },
-      {
-        symbol: 'CL2506',
-        name: '原油2506',
-        price: 78.50,
-        change: 0.85,
-        changeRate: 1.09,
-        open: 77.50,
-        high: 79.00,
-        low: 77.00,
-        volume: 50000,
-        openInterest: 200000,
-        updatedAt: new Date().toISOString()
-      }
-    ]
+    futures.value = []
+    futureError.value = true
   } finally {
     isLoadingFutures.value = false
   }

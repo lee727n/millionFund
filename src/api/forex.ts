@@ -6,7 +6,7 @@ import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 import { getCache, setCache } from '@/api/cache'
 
-const CACHE_TTL = 300 // 缓存 5 分钟（外汇汇率变化较慢）
+const MODULE_CACHE_TTL = 300 // 缓存 5 分钟（外汇汇率变化较慢）
 
 /**
  * 外汇行情数据
@@ -67,7 +67,7 @@ export async function fetchForexRate(pair: string): Promise<ForexQuote | null> {
           changePercent: 0,
           updateTime: response.time_last_update_utc || new Date().toISOString()
         }
-        setCache(cacheKey, result, CACHE_TTL)
+        setCache(cacheKey, result, MODULE_CACHE_TTL)
         return result
       }
     }
@@ -109,34 +109,36 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
     })
 
     // 并发请求未缓存的货币对
-    for (const [base, pairList] of Object.entries(baseGroups)) {
-      const url = `https://open.er-api.com/v6/latest/${base}`
+    await Promise.all(
+      Object.entries(baseGroups).map(async ([base, pairList]) => {
+        const url = `https://open.er-api.com/v6/latest/${base}`
 
-      try {
-        const response = await http.get<any>(url)
+        try {
+          const response = await http.get<any>(url)
 
-        if (response && response.rates) {
-          pairList.forEach(pair => {
-            const rate = response.rates['CNY']
-            if (rate) {
-              const result: ForexQuote = {
-                pair,
-                base,
-                quote: 'CNY',
-                rate,
-                change: 0,
-                changePercent: 0,
-                updateTime: response.time_last_update_utc || new Date().toISOString()
+          if (response && response.rates) {
+            pairList.forEach(pair => {
+              const rate = response.rates['CNY']
+              if (rate) {
+                const result: ForexQuote = {
+                  pair,
+                  base,
+                  quote: 'CNY',
+                  rate,
+                  change: 0,
+                  changePercent: 0,
+                  updateTime: response.time_last_update_utc || new Date().toISOString()
+                }
+                results.push(result)
+                setCache(`${CACHE_PREFIX}${pair}`, result, MODULE_CACHE_TTL)
               }
-              results.push(result)
-              setCache(`${CACHE_PREFIX}${pair}`, result, CACHE_TTL)
-            }
-          })
+            })
+          }
+        } catch (err) {
+          logger.warn('[forex] 获取汇率失败', { base, error: err })
         }
-      } catch (err) {
-        logger.warn('[forex] 获取汇率失败', { base, error: err })
-      }
-    }
+      })
+    )
 
     return results
   } catch (error) {

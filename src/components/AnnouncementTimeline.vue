@@ -93,9 +93,14 @@ function getTypeLabel(type: string): string {
   return typeMap[type] || '公告'
 }
 
-// 获取公告类型对应的CSS类名
+// 获取公告类型对应的CSS类名（使用英文/拼音类名，避免中文字符作 class 名）
 function getTypeClass(type: string): string {
-  return type === '公告' ? 'default' : type
+  const typeClassMap: Record<string, string> = {
+    '分红公告': 'dividend',
+    '定期报告': 'report',
+    '人事变动': 'personnel',
+  }
+  return typeClassMap[type] || 'default'
 }
 </script>
 
@@ -318,17 +323,17 @@ function getTypeClass(type: string): string {
   text-align: center;
 }
 
-.card-type.分红公告 {
+.card-type.dividend {
   background: rgba(255, 107, 107, 0.15);
   color: #ff6b6b;
 }
 
-.card-type.定期报告 {
+.card-type.report {
   background: rgba(66, 165, 245, 0.15);
   color: #42a5f5;
 }
 
-.card-type.人事变动 {
+.card-type.personnel {
   background: rgba(255, 167, 38, 0.15);
   color: #ffa726;
 }

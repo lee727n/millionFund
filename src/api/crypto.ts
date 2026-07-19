@@ -63,7 +63,7 @@ export async function fetchCryptoPrice(ids: string[]): Promise<Map<string, Crypt
       logger.error('[crypto] 批量查询加密货币价格失败', { ids, error: err })
       throw err // 直接抛出错误，不降级
     }
-  }, 3)
+  })
 }
 
 /**

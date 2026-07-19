@@ -1,10 +1,12 @@
 // [WHY] 统一管理组件内 setTimeout / setInterval / requestAnimationFrame 的生命周期
-// [WHAT] 在 onUnmounted 时自动清除所有注册的定时器，防止内存泄漏
+// [WHAT] 在 onScopeDispose 时自动清除所有注册的定时器，防止内存泄漏
 // [USAGE]
-//   const { setTimeout: safeTimeout, setInterval: safeInterval, onUnmounted } = useTimer()
+//   const { setTimeout: safeTimeout, setInterval: safeInterval } = useTimer()
 //   safeTimeout(() => doSomething(), 1000)
 //   safeInterval(() => pollData(), 5000)
 //   // --> 组件卸载时自动清理，无需手动调 clearTimeout/clearInterval
+
+import { onScopeDispose } from 'vue'
 
 export function useTimer() {
   const timeouts = new Set<ReturnType<typeof setTimeout>>()
@@ -61,6 +63,9 @@ export function useTimer() {
     animationFrames.forEach(cancelAnimationFrame)
     animationFrames.clear()
   }
+
+  // [WHY] 组件/作用域卸载时自动清理所有注册的定时器，防止内存泄漏
+  onScopeDispose(cleanup)
 
   return {
     safeTimeout,
