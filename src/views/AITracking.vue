@@ -125,7 +125,7 @@
       </div>
     </div>
 
-    <van-empty v-else ::description="t('aitracking.no_data')" />
+    <van-empty v-else :description="t('aitracking.no_data')" />
 
     <van-dialog
       v-model:show="showAddModal"

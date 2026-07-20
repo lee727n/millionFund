@@ -122,8 +122,8 @@ export async function fetchHKStockQuote(symbols: string[]): Promise<HKStockQuote
 
       const results = parseSinaHKResponse(text, formattedSymbols)
 
-      // 缓存 3 秒（股票行情变化快）
-      cache.set(cacheKey, results, 3)
+      // 缓存 3 秒（股票行情变化快），TTL 单位为毫秒，故传 3000
+      cache.set(cacheKey, results, 3000)
 
       return results
     } catch (err) {

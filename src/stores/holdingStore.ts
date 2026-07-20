@@ -157,6 +157,9 @@ export const useHoldingStore = defineStore('holding', () => {
    * 刷新所有持仓的估值和收益
    */
   async function refreshEstimates() {
+    // [WHY] 并发刷新守卫：正在刷新时直接返回，避免重复并发刷新
+    if (isRefreshing.value) return
+
     if (holdings.value.length === 0) {
       isRefreshing.value = false
       return

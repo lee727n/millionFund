@@ -98,8 +98,8 @@ export async function fetchUSStockQuote(symbols: string[]): Promise<USStockQuote
     throw errors[0]
   }
 
-  // 缓存 3 秒（股票行情变化快）
-  cache.set(cacheKey, results, 3)
+  // 缓存 3 秒（股票行情变化快），TTL 单位为毫秒，故传 3000
+  cache.set(cacheKey, results, 3000)
 
   return results
 }

@@ -66,7 +66,11 @@ export const useThemeStore = defineStore('theme', () => {
    */
   function setTheme(newMode: ThemeMode) {
     mode.value = newMode
-    localStorage.setItem(STORAGE_KEY, newMode)
+    try {
+      localStorage.setItem(STORAGE_KEY, newMode)
+    } catch {
+      // 隐私模式/配额满时静默忽略
+    }
     applyTheme(newMode)
     actualTheme.value = newMode === 'auto' ? getSystemTheme() : newMode
   }

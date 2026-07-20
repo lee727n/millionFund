@@ -96,6 +96,9 @@ export const useFundStore = defineStore('fund', () => {
    * [WHAT] 使用多源数据获取，提高成功率
    */
   async function refreshEstimates() {
+    // [WHY] 并发刷新守卫：正在刷新时直接返回，避免重复并发刷新
+    if (isRefreshing.value) return
+
     if (watchlist.value.length === 0) {
       // [EDGE] 没有自选时也需要重置刷新状态
       isRefreshing.value = false

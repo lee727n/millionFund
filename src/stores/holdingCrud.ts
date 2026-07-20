@@ -3,7 +3,7 @@
 
 import { ref } from 'vue'
 import type { HoldingRecord, HoldingWithProfit } from '@/types/fund'
-import { getHoldings, saveHoldings } from '@/utils/storage'
+import { getHoldings, saveHoldings, removeHolding as removeHoldingFromStorage } from '@/utils/storage'
 import { useHoldingCalc } from './holdingCalc'
 import { useHoldingFilter } from './holdingFilter'
 
@@ -136,8 +136,7 @@ export function useHoldingCrud() {
   function removeHolding(code: string): void {
     holdings.value = holdings.value.filter(h => h.code !== code)
     // 同时从本地存储删除
-    const { removeHolding: removeFromStorage } = require('@/utils/storage')
-    removeFromStorage(code)
+    removeHoldingFromStorage(code)
   }
   
   /**

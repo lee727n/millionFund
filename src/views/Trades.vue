@@ -75,7 +75,7 @@
           <van-field
             v-model="form.type"
             name="type"
-            label="t('trades.type')"
+            :label="t('trades.type')"
             :rules="[{ required: true, message: t('trades.select_type') }]"
           >
             <template #input>
@@ -91,8 +91,8 @@
             v-model="form.amount"
             type="number"
             name="amount"
-            label="t('trades.amount')"
-            placeholder="t('trades.enter_amount')"
+            :label="t('trades.amount')"
+            :placeholder="t('trades.enter_amount')"
             :rules="[{ required: true, message: t('trades.enter_amount') }]"
           />
 

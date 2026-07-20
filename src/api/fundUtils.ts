@@ -64,7 +64,11 @@ export function queueGlobalVarScript<T>(
 
       const timeout = setTimeout(() => finish(emptyResult), timeoutMs)
 
+      let finished = false
       async function finish(data: T) {
+        // [H4] 幂等：超时定时器与异步完成都可能调用 finish，确保只 resolve 一次
+        if (finished) return
+        finished = true
         clearTimeout(timeout)
         // 请求结束后清掉自己占的全局变量
         cleanupVars.forEach((v) => {

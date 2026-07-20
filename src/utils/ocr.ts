@@ -3,7 +3,7 @@
 // [DEPS] 依赖 tesseract.js 库
 // [REF] v1.10: OCR增强 - 多平台模板支持（支付宝/天天基金/微信/京东金融）
 
-import Tesseract, { type Worker } from 'tesseract.js'
+import type { Worker } from 'tesseract.js'
 import { logger } from './logger'
 
 export type OcrPlatform =
@@ -149,6 +149,8 @@ async function getSharedWorker(): Promise<Worker> {
 
   workerInitPromise = (async () => {
     try {
+      // [H12] 动态导入，避免首屏加载巨大 wasm 包
+      const Tesseract = await import('tesseract.js')
       const worker = await Tesseract.createWorker(WORKER_LANG, 1, {
         logger: () => {}
       })

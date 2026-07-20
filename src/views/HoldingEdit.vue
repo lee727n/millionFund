@@ -62,7 +62,7 @@ const codePlaceholder = computed(() => {
     gold: '请输入黄金品种（如：黄金ETF）',
     commodity: '请输入大宗商品代码'
   }
-  return placeholders.value[form.value.assetClass] || t('holding_edit.code_symbol_default')
+  return placeholders[form.value.assetClass] || t('holding_edit.code_symbol_default')
 })
 
 // [WHAT] 名称输入框的 placeholder

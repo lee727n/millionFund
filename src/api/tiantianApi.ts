@@ -111,15 +111,29 @@ async function fetchYearHolidaysFromApi(year: number): Promise<void> {
   logger.warn(`[holiday] 所有 API 源均失败 ${year}，使用兜底数据`)
 }
 
+let holidayInitPromise: Promise<void> | null = null
+
 export async function initHolidayData(): Promise<void> {
+  // [WHY] 并发初始化去重：多个调用者共享同一个 in-flight Promise，
+  //       避免竞态下重复执行；初始化成功（await 之后）才置 holidayInitialized = true
+  if (holidayInitPromise) return holidayInitPromise
   if (holidayInitialized) return
-  holidayInitialized = true
-  initFallbackHolidays()
-  const thisYear = new Date().getFullYear()
-  await Promise.all([
-    fetchYearHolidaysFromApi(thisYear),
-    fetchYearHolidaysFromApi(thisYear + 1),
-  ])
+
+  holidayInitPromise = (async () => {
+    initFallbackHolidays()
+    const thisYear = new Date().getFullYear()
+    await Promise.all([
+      fetchYearHolidaysFromApi(thisYear),
+      fetchYearHolidaysFromApi(thisYear + 1),
+    ])
+    holidayInitialized = true
+  })()
+
+  try {
+    await holidayInitPromise
+  } finally {
+    holidayInitPromise = null
+  }
 }
 
 function isStockHoliday(date: Date): boolean {

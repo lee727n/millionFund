@@ -6,6 +6,8 @@
 //   safeInterval(() => pollData(), 5000)
 //   // --> 组件卸载时自动清理，无需手动调 clearTimeout/clearInterval
 
+import { onScopeDispose, onUnmounted, getCurrentScope, getCurrentInstance } from 'vue'
+
 export function useTimer() {
   const timeouts = new Set<ReturnType<typeof setTimeout>>()
   const intervals = new Set<ReturnType<typeof setInterval>>()
@@ -60,6 +62,15 @@ export function useTimer() {
     intervals.clear()
     animationFrames.forEach(cancelAnimationFrame)
     animationFrames.clear()
+  }
+
+  // [WHY] 自动清理：组件卸载/作用域销毁时清除所有定时器，避免内存泄漏。
+  // [WHAT] 优先用 onScopeDispose（任何 effect scope 内可用，含组件 setup）；
+  //        若处于非组件作用域（无活跃 scope）但有组件实例，则退化为 onUnmounted。
+  if (getCurrentScope()) {
+    onScopeDispose(cleanup)
+  } else if (getCurrentInstance()) {
+    onUnmounted(cleanup)
   }
 
   return {

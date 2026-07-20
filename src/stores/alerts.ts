@@ -32,7 +32,11 @@ export const useAlertsStore = defineStore('alerts', () => {
   }
 
   function saveRules() {
-    localStorage.setItem('alert_rules', JSON.stringify(rules.value))
+    try {
+      localStorage.setItem('alert_rules', JSON.stringify(rules.value))
+    } catch {
+      // 隐私模式/配额满时静默忽略
+    }
   }
 
   function addRule(rule: Omit<AlertRule, 'id' | 'createdAt'>) {

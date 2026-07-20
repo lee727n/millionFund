@@ -127,8 +127,8 @@ export async function fetchIntradayData(code: string, forceRefresh = false): Pro
         }
       })
 
-      // [WHY] 交易时间缓存30秒，非交易时间缓存5分钟
-      cache.set(cacheKey, points, isTradingTime ? 30 : 300)
+      // [WHY] 交易时间缓存30秒，非交易时间缓存5分钟；TTL 单位为毫秒，故传 30000 / 300000
+      cache.set(cacheKey, points, isTradingTime ? 30000 : 300000)
       return points
     }
     return null

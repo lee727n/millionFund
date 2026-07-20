@@ -40,7 +40,11 @@ export const useAISettingsStore = defineStore('aiSettings', () => {
   }
 
   function save() {
-    localStorage.setItem('ai-settings', JSON.stringify(config.value))
+    try {
+      localStorage.setItem('ai-settings', JSON.stringify(config.value))
+    } catch {
+      // 隐私模式/配额满时静默忽略
+    }
   }
 
   async function test(): Promise<boolean> {

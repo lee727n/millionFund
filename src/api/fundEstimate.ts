@@ -36,52 +36,47 @@ export async function fetchFundEstimateFast(code: string): Promise<FundEstimate>
     return Promise.resolve(persisted)
   }
 
-  return requestConcurrency.execute(() => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // [M6] 使用 fetch + 正则解析，替代 JSONP
-        // 直接请求外部 API，避免代理 404
-        const url = `https://fundgz.eastmoney.com/js/${code}.js?rt=${Date.now()}`
-        const text = await http.text(url)
+  return requestConcurrency.execute(async () => {
+    try {
+      // [M6] 使用 fetch + 正则解析，替代 JSONP
+      // 直接请求外部 API，避免代理 404
+      const url = `https://fundgz.eastmoney.com/js/${code}.js?rt=${Date.now()}`
+      const text = await http.text(url)
 
-        // 解析 jsonpgz({...}) 格式
-        const match = text.match(/jsonpgz\(([\s\S]*)\)/)
-        if (!match) {
-          // [EDGE] 解析失败时返回持久化缓存或 reject
-          if (persisted) {
-            cache.set(cacheKey, persisted, CACHE_TTL.ESTIMATE)
-            resolve(persisted)
-            return
-          }
-          reject(new Error(`解析估值数据失败: ${code}`))
-          return
-        }
-
-        const jsonStr = match[1] as string
-        const data = JSON.parse(jsonStr)
-        const result: FundEstimate = {
-          fundcode: data.fundcode || code,
-          name: data.name || '',
-          gsz: data.gsz || '0',
-          gszzl: data.gszzl || '0',
-          gztime: data.gztime || '',
-          dwjz: data.dwjz || '0',
-          jzrq: data.jzrq || '',
-        }
-
-        cache.set(cacheKey, result, CACHE_TTL.ESTIMATE)
-        persistCache.set(cacheKey, result)
-        resolve(result)
-      } catch (err) {
-        // [EDGE] 失败时返回持久化缓存
+      // 解析 jsonpgz({...}) 格式
+      const match = text.match(/jsonpgz\(([\s\S]*)\)/)
+      if (!match) {
+        // [EDGE] 解析失败时返回持久化缓存或抛出错误
         if (persisted) {
           cache.set(cacheKey, persisted, CACHE_TTL.ESTIMATE)
-          resolve(persisted)
-          return
+          return persisted
         }
-        reject(err)
+        throw new Error(`解析估值数据失败: ${code}`)
       }
-    })
+
+      const jsonStr = match[1] as string
+      const data = JSON.parse(jsonStr)
+      const result: FundEstimate = {
+        fundcode: data.fundcode || code,
+        name: data.name || '',
+        gsz: data.gsz || '0',
+        gszzl: data.gszzl || '0',
+        gztime: data.gztime || '',
+        dwjz: data.dwjz || '0',
+        jzrq: data.jzrq || '',
+      }
+
+      cache.set(cacheKey, result, CACHE_TTL.ESTIMATE)
+      persistCache.set(cacheKey, result)
+      return result
+    } catch (err) {
+      // [EDGE] 失败时返回持久化缓存
+      if (persisted) {
+        cache.set(cacheKey, persisted, CACHE_TTL.ESTIMATE)
+        return persisted
+      }
+      throw err
+    }
   })
 }
 
