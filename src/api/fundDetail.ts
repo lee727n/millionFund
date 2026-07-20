@@ -195,7 +195,7 @@ export async function fetchFundBasicInfo(code: string): Promise<{
 
 // ========== 综合数据获取（多源验证） ==========
 
-function setAccurateSource(
+export function setAccurateSource(
   result: FundAccurateData,
   source: 'nav' | 'estimate' | 'fallback',
   fallbackValue = 0
@@ -219,7 +219,7 @@ function setAccurateSource(
  * 根据多源数据（净值/估值/备用净值）解析基金当前值，消除 QDII 与非 QDII 分支的重复逻辑。
  * 优先级：昨日净值(QDII) > 今日净值 > 交易时段估值 > 今日估值 > 净值 > 估值 > 备用净值(dwjz)
  */
-function resolveAccurateValue(
+export function resolveAccurateValue(
   result: FundAccurateData,
   opts: {
     isQDII: boolean
