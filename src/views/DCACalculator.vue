@@ -3,7 +3,7 @@
 // [WHAT] 输入基金代码、每期金额、频率、期限，计算定投收益，可视化收益曲线
 // [REF] Task #19 需求文档
 
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDCASimulation, type DCASimulationInput, type DCAFrequency } from '@/composables/useDCASimulation'
@@ -77,6 +77,11 @@ async function doSearch(keyword: string) {
 
 // [WHAT] 防抖搜索
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// [H1] 组件卸载时清理定时器，防止内存泄漏
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 watch(() => searchKeyword.value, (val) => {
   if (searchTimer) clearTimeout(searchTimer)

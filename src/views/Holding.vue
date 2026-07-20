@@ -3,7 +3,7 @@
 // [WHAT] 显示持仓列表、汇总统计，支持添加/编辑/删除持仓
 // [WHAT] 支持 A类/C类基金费用计算
 
-import { ref, onMounted, computed, watch, onErrorCaptured } from 'vue'
+import { ref, onMounted, computed, watch, onErrorCaptured, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
@@ -232,6 +232,11 @@ function resetForm() {
 
 // [WHAT] 搜索基金
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// [H1] 组件卸载时清理定时器，防止内存泄漏
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)

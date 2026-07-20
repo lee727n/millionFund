@@ -42,6 +42,18 @@ export default defineConfig({
   esbuild: {
     drop: ['debugger'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // [H11] 代码分包：将体积较大的第三方库拆分为独立 chunk，减小主包体积、提升加载性能
+        manualChunks: {
+          tesseract: ['tesseract.js'],
+          chart: ['chart.js'],
+          vue: ['vue', 'vue-router', 'pinia'],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

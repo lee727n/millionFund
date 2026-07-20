@@ -144,10 +144,13 @@ export async function fetchIndexValuation(code: string): Promise<IndexValuation 
 // ========== 批量指数估值 ==========
 
 export async function fetchBatchIndexValuation(codes: string[]): Promise<IndexValuation[]> {
+  // [H7] 并发请求所有指数估值，避免串行等待
+  const settled = await Promise.allSettled(codes.map(code => fetchIndexValuation(code)))
   const results: IndexValuation[] = []
-  for (const code of codes) {
-    const val = await fetchIndexValuation(code)
-    if (val) results.push(val)
+  for (const item of settled) {
+    if (item.status === 'fulfilled' && item.value) {
+      results.push(item.value)
+    }
   }
   return results
 }

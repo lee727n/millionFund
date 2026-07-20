@@ -2,7 +2,7 @@
 // [WHY] 搜索页 - 搜索基金并添加到自选
 // [WHAT] 输入基金代码或名称搜索，点击进入详情，支持添加到自选
 
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { searchFund } from '@/api/fundFast'
@@ -41,6 +41,11 @@ const isSearching = ref(false)
 
 // [WHAT] 防抖搜索 - 输入停止 300ms 后触发
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// [H1] 组件卸载时清理定时器，防止内存泄漏
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 watch(keyword, (val) => {
   if (searchTimer) {

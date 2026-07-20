@@ -26,7 +26,7 @@ export const APP_INFO = {
 /**
  * 各平台下载链接
  * [NOTE] 文件名必须与 CI/CD build-all.yml 中的产物名称一致
- * - Android: 见 assembleDebug 步骤 → AI百万资产-Android-debug.apk
+ * - Android: 见 assembleRelease 步骤 → millionasset-Android-release.apk
  * - Windows: electron-builder → AI百万资产 Setup x.y.z.exe / AI百万资产 x.y.z.exe
  */
 export const DOWNLOAD_URLS = {

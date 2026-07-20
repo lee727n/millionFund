@@ -2,7 +2,7 @@
 // [WHY] 持仓录入/编辑页面 - 支持多资产类别
 // [WHAT] 支持基金、A股、港股、美股、加密货币、可转债等全品种
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useHoldingStore } from '@/stores/holding'
@@ -42,6 +42,11 @@ const searchKeyword = ref('')
 const searchResults = ref<{ code: string; name: string }[]>([])
 const isSearching = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// [H1] 组件卸载时清理定时器，防止内存泄漏
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 // [WHAT] 资产类别选项
 const assetClassOptions = Object.entries(ASSET_CLASS_CONFIG).map(([value, config]) => ({

@@ -108,35 +108,37 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
       baseGroups[base].push(pair)
     })
 
-    // 并发请求未缓存的货币对
-    for (const [base, pairList] of Object.entries(baseGroups)) {
-      const url = `https://open.er-api.com/v6/latest/${base}`
+    // [H7] 并发请求各基础货币的汇率（按 base 分组，每组一次 API 调用，组间并行）
+    await Promise.all(
+      Object.entries(baseGroups).map(async ([base, pairList]) => {
+        const url = `https://open.er-api.com/v6/latest/${base}`
 
-      try {
-        const response = await http.get<any>(url)
+        try {
+          const response = await http.get<any>(url)
 
-        if (response && response.rates) {
-          pairList.forEach(pair => {
-            const rate = response.rates['CNY']
-            if (rate) {
-              const result: ForexQuote = {
-                pair,
-                base,
-                quote: 'CNY',
-                rate,
-                change: 0,
-                changePercent: 0,
-                updateTime: response.time_last_update_utc || new Date().toISOString()
+          if (response && response.rates) {
+            pairList.forEach(pair => {
+              const rate = response.rates['CNY']
+              if (rate) {
+                const result: ForexQuote = {
+                  pair,
+                  base,
+                  quote: 'CNY',
+                  rate,
+                  change: 0,
+                  changePercent: 0,
+                  updateTime: response.time_last_update_utc || new Date().toISOString()
+                }
+                results.push(result)
+                setCache(`${CACHE_PREFIX}${pair}`, result, LOCAL_CACHE_TTL)
               }
-              results.push(result)
-              setCache(`${CACHE_PREFIX}${pair}`, result, LOCAL_CACHE_TTL)
-            }
-          })
+            })
+          }
+        } catch (err) {
+          logger.warn('[forex] 获取汇率失败', { base, error: err })
         }
-      } catch (err) {
-        logger.warn('[forex] 获取汇率失败', { base, error: err })
-      }
-    }
+      })
+    )
 
     return results
   } catch (error) {

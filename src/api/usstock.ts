@@ -79,20 +79,20 @@ export async function fetchUSStockQuote(symbols: string[]): Promise<USStockQuote
   const cached = cache.get<USStockQuote[]>(cacheKey)
   if (cached) return cached
 
-  // 批量查询：为每个股票发起请求
-  const results: USStockQuote[] = []
+  // 批量查询：并发请求所有股票（[H7] 使用 Promise.all 并行，避免串行等待；结果按输入顺序保留）
   const errors: Error[] = []
-
-  for (const symbol of formattedSymbols) {
-    try {
-      const quote = await fetchSingleUSStockInternal(symbol)
-      if (quote) {
-        results.push(quote)
-      }
-    } catch (err) {
-      errors.push(err instanceof Error ? err : new Error(String(err)))
-    }
-  }
+  const results = (
+    await Promise.all(
+      formattedSymbols.map(async (symbol) => {
+        try {
+          return await fetchSingleUSStockInternal(symbol)
+        } catch (err) {
+          errors.push(err instanceof Error ? err : new Error(String(err)))
+          return null
+        }
+      })
+    )
+  ).filter((q): q is USStockQuote => q !== null)
 
   if (results.length === 0 && errors.length > 0) {
     throw errors[0]

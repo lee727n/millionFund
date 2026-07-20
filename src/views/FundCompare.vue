@@ -3,7 +3,7 @@
 // [WHAT] 收益对比表格、风险指标对比、持仓对比（重仓股交集/并集）
 // [REF] Task #17 需求文档
 
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fund'
@@ -95,6 +95,11 @@ async function doSearch(keyword: string) {
 
 // [WHAT] 防抖搜索
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// [H1] 组件卸载时清理定时器，防止内存泄漏
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 watch(() => searchKeyword.value, (val) => {
   if (searchTimer) clearTimeout(searchTimer)
