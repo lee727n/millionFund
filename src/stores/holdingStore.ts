@@ -37,6 +37,40 @@ export const useHoldingStore = defineStore('holding', () => {
     batchUpdateHoldings
   }
   
+  /** 持仓列表（从 CRUD 模块） */
+  const holdings = crud.holdings
+
+  // ========== Getters ==========
+
+  /** 持仓汇总统计（从计算模块） */
+  const summary = computed<HoldingSummary>(() => {
+    let totalValue = 0
+    let totalProfit = 0
+    let todayProfit = 0
+
+    holdings.value.forEach((h) => {
+      if (h.marketValue !== undefined) {
+        totalValue += h.marketValue
+      }
+      totalProfit += h.profit || 0
+      if (h.todayProfit !== undefined) {
+        todayProfit += h.todayProfit
+      }
+    })
+
+    const totalProfitRate = totalValue > 0 ? (totalProfit / totalValue) * 100 : 0
+
+    return {
+      totalValue,
+      totalProfit,
+      totalProfitRate,
+      todayProfit
+    }
+  })
+
+  /** 持仓基金代码列表 */
+  const holdingCodes = computed(() => holdings.value.map((h) => h.code))
+
   // 计算模块
   const calc = {
     portfolioSummary: ref<PortfolioSummary | null>(null),
@@ -58,45 +92,11 @@ export const useHoldingStore = defineStore('holding', () => {
   
   // ========== State ==========
   
-  /** 持仓列表（从 CRUD 模块） */
-  const holdings = crud.holdings
-  
   /** 是否正在刷新 */
   const isRefreshing = ref(false)
   
   /** 资产汇总（从计算模块） */
   const portfolioSummary = calc.portfolioSummary
-  
-  // ========== Getters ==========
-  
-  /** 持仓汇总统计（从计算模块） */
-  const summary = computed<HoldingSummary>(() => {
-    let totalValue = 0
-    let totalProfit = 0
-    let todayProfit = 0
-    
-    holdings.value.forEach((h) => {
-      if (h.marketValue !== undefined) {
-        totalValue += h.marketValue
-      }
-      totalProfit += h.profit || 0
-      if (h.todayProfit !== undefined) {
-        todayProfit += h.todayProfit
-      }
-    })
-    
-    const totalProfitRate = totalValue > 0 ? (totalProfit / totalValue) * 100 : 0
-    
-    return {
-      totalValue,
-      totalProfit,
-      totalProfitRate,
-      todayProfit
-    }
-  })
-  
-  /** 持仓基金代码列表 */
-  const holdingCodes = computed(() => holdings.value.map((h) => h.code))
   
   // ========== Actions ==========
   
