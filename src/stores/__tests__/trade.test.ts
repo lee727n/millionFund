@@ -19,7 +19,7 @@ describe('trade.ts', () => {
 
     const { useTradeStore } = await import('@/stores/trade')
     const store = useTradeStore()
-    store.loadTrades()
+    await store.loadTrades()
 
     expect(getTrades).toHaveBeenCalled()
     expect(store.trades.length).toBe(1)

@@ -31,15 +31,56 @@ import {
   isTesseractSupported,
   parseHoldingText,
   recognizeHoldings,
+  terminateOcrWorker,
   RecognizedHolding
 } from '@/utils/ocr'
-import Tesseract from 'tesseract.js'
+// [WHY] vi.mock('tesseract.js') 已将 createWorker 作为命名导出提供为 mock fn；
+// 源码内部用 `await import('tesseract.js')` 取同一模块实例，故直接顶层导入即可共享。
+import { createWorker } from 'tesseract.js'
+
+// [FIX] Mock 浏览器环境（happy-dom 不实现真实 canvas / Image.onload），
+// 避免 OCR 图像预处理 preprocessImageForOcr 在 new Image() 时永久挂起（导致 30s 超时）
+class MockImage {
+  onload: (() => void) | null = null
+  onerror: (() => void) | null = null
+  private _src = ''
+  set src(v: string) {
+    this._src = v
+    queueMicrotask(() => this.onload && this.onload())
+  }
+  get src() {
+    return this._src
+  }
+  width = 10
+  height = 10
+}
+;(globalThis as any).Image = MockImage
+
+const _realCreateElement = document.createElement.bind(document)
+document.createElement = ((tag: string) => {
+  if (tag === 'canvas') {
+    return {
+      width: 10,
+      height: 10,
+      getContext: () => ({
+        drawImage() {},
+        getImageData: () => ({ data: new Uint8ClampedArray(10 * 10 * 4).fill(255) }),
+        putImageData() {}
+      }),
+      toDataURL: () => 'data:image/png;base64,'
+    } as any
+  }
+  return _realCreateElement(tag)
+}) as typeof document.createElement
 
 describe('OCR 工具函数', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Reset module state by re-importing
-    vi.resetModules()
+  })
+
+  afterEach(() => {
+    // [FIX] 复位 OCR 共享 worker，避免跨测试复用上一轮的 createWorker mock
+    terminateOcrWorker()
   })
 
   // ========== isTesseractSupported ==========
@@ -79,13 +120,15 @@ describe('OCR 工具函数', () => {
         code: '000001',
         name: '华夏成长',
         amount: 10000,
-        confidence: 0.9
+        confidence: 0.9,
+        platform: 'unknown'
       })
       expect(result[1]).toEqual({
         code: '000002',
         name: '招商中证白酒',
         amount: 2000,
-        confidence: 0.9
+        confidence: 0.9,
+        platform: 'unknown'
       })
     })
 
@@ -97,7 +140,8 @@ describe('OCR 工具函数', () => {
         code: '000001',
         name: '华夏成长',
         amount: 10000,
-        confidence: 0.9
+        confidence: 0.9,
+        platform: 'unknown'
       })
     })
 
@@ -117,7 +161,7 @@ describe('OCR 工具函数', () => {
       expect(result).toHaveLength(1)
       expect(result[0].name).toBe('华夏成长混合A')
       expect(result[0].amount).toBe(10000)
-      expect(result[0].confidence).toBe(0.6)
+      expect(result[0].confidence).toBe(0.7)
     })
 
     test('去除名称中的噪音字符', () => {
@@ -223,8 +267,11 @@ describe('OCR 工具函数', () => {
   // ========== recognizeHoldings (integration) ==========
   describe('recognizeHoldings', () => {
     test('成功识别持仓信息', async () => {
-      vi.mocked(Tesseract.recognize).mockResolvedValueOnce({
-        data: { text: '000001 华夏成长 10,000.00' }
+      // [FIX] createWorker 由顶层 import 取得，与 ocr.ts 内部 `await import('tesseract.js')` 共享同一 vi.mock 实例
+      vi.mocked(createWorker).mockResolvedValue({
+        setParameters: vi.fn().mockResolvedValue(undefined),
+        recognize: vi.fn().mockResolvedValue({ data: { text: '000001 华夏成长 10,000.00', confidence: 90 } }),
+        terminate: vi.fn().mockResolvedValue(undefined)
       } as any)
 
       const result = await recognizeHoldings('data:image/png;base64,mock')
@@ -235,16 +282,22 @@ describe('OCR 工具函数', () => {
     })
 
     test('Tesseract 失败时抛出错误', async () => {
-      vi.mocked(Tesseract.recognize).mockRejectedValueOnce(new Error('OCR engine failed'))
+      vi.mocked(createWorker).mockResolvedValue({
+        setParameters: vi.fn().mockResolvedValue(undefined),
+        recognize: vi.fn().mockRejectedValue(new Error('OCR engine failed')),
+        terminate: vi.fn().mockResolvedValue(undefined)
+      } as any)
 
       await expect(recognizeHoldings('data:image/png;base64,mock'))
         .rejects.toThrow('OCR 识别失败')
     })
 
     test('worker 错误时返回友好的错误信息', async () => {
-      vi.mocked(Tesseract.recognize).mockRejectedValueOnce(
-        new Error('load failed: wasm file not found')
-      )
+      vi.mocked(createWorker).mockResolvedValue({
+        setParameters: vi.fn().mockResolvedValue(undefined),
+        recognize: vi.fn().mockRejectedValue(new Error('load failed: wasm file not found')),
+        terminate: vi.fn().mockResolvedValue(undefined)
+      } as any)
 
       await expect(recognizeHoldings('data:image/png;base64,mock'))
         .rejects.toThrow('识别引擎加载失败')

@@ -210,7 +210,7 @@ onUnmounted(() => {
           <div class="reference-ma-badge header-ma-badge">
             <span class="reference-ma-label">{{ t('home.reference_ma') }}</span>
             <span class="reference-ma-value" :class="hs300ChangePercent >= 0 ? 'up' : 'down'">
-              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
+              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ (hs300ChangePercent ?? 0).toFixed(2) }}%
             </span>
           </div>
           <div class="top-indices-bar" v-if="topIndices.length > 0">
@@ -234,7 +234,7 @@ onUnmounted(() => {
           <div class="mobile-ma-item">
             <span class="mobile-ma-name">{{ t('home.reference_ma') }}</span>
             <span class="mobile-ma-value">
-              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
+              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ (hs300ChangePercent ?? 0).toFixed(2) }}%
             </span>
           </div>
           <div 
