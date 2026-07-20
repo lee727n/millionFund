@@ -5,8 +5,6 @@
 import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 
-const CACHE_TTL = 10 // 缓存 10 秒（债券行情变化较慢）
-
 /**
  * 债券行情数据
  */

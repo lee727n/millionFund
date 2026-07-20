@@ -3,6 +3,7 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { logger } from '@/utils/logger'
 
 /**
  * 新浪财经 RSS Feed URLs（多个备用）
@@ -20,7 +21,7 @@ export async function fetchSinaNews(page = 1, pageSize = 20): Promise<ApiNewsIte
   // 尝试所有 RSS URL
   for (const rssUrl of SINA_RSS_URLS) {
     try {
-      console.log(`[新浪财经] 尝试 RSS: ${rssUrl}`)
+      logger.info(`[新浪财经] 尝试 RSS: ${rssUrl}`)
       const response = await Http.get({
         url: rssUrl,
         headers: {
@@ -29,19 +30,19 @@ export async function fetchSinaNews(page = 1, pageSize = 20): Promise<ApiNewsIte
       })
       
       if (response.status === 200 && response.data) {
-        console.log(`[新浪财经] ✓ RSS 抓取成功: ${rssUrl}`)
+        logger.info(`[新浪财经] ✓ RSS 抓取成功: ${rssUrl}`)
         const items = parseRSS(response.data)
         if (items.length > 0) {
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[新浪财经] RSS 抓取失败: ${rssUrl}`, e)
+      logger.warn(`[新浪财经] RSS 抓取失败: ${rssUrl}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[新浪财经] 所有 RSS 抓取失败，使用模拟数据')
+  logger.warn('[新浪财经] 所有 RSS 抓取失败，使用模拟数据')
   return generateMockSinaNews(page, pageSize)
 }
 

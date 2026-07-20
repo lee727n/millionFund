@@ -2,6 +2,7 @@
  * 雪球财经API
  */
 import { Http } from '@capacitor-community/http'
+import { logger } from '@/utils/logger'
 
 // 类型定义
 export interface HotDiscussion {
@@ -68,7 +69,7 @@ export async function fetchHotDiscussions(type: 'fund' | 'stock' = 'fund'): Prom
       }))
     }
   } catch (e) {
-    console.warn('[雪球] 获取热门讨论失败，使用模拟数据', e)
+    logger.warn('[雪球] 获取热门讨论失败，使用模拟数据', e)
   }
   
   return generateMockDiscussions(type)

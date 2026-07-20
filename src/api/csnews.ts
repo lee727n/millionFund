@@ -4,6 +4,7 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { logger } from '@/utils/logger'
 
 /**
  * 中国证券报 RSS URL 列表（多个备份）
@@ -21,7 +22,7 @@ export async function fetchCSNews(page = 1, pageSize = 20): Promise<ApiNewsItem[
   // 尝试所有 RSS URL
   for (const url of CSNEWS_RSS_URLS) {
     try {
-      console.log(`[中国证券报] 尝试 RSS: ${url}`)
+      logger.info(`[中国证券报] 尝试 RSS: ${url}`)
       
       const response = await Http.get({
         url,
@@ -33,17 +34,17 @@ export async function fetchCSNews(page = 1, pageSize = 20): Promise<ApiNewsItem[
       if (response.status === 200 && response.data) {
         const items = parseCSNewsRSSItems(response.data)
         if (items.length > 0) {
-          console.log(`[中国证券报] ✓ RSS 抓取成功: ${items.length} 条`)
+          logger.info(`[中国证券报] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[中国证券报] RSS 抓取失败: ${url}`, e)
+      logger.warn(`[中国证券报] RSS 抓取失败: ${url}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[中国证券报] 所有 RSS 源失败，使用模拟数据')
+  logger.warn('[中国证券报] 所有 RSS 源失败，使用模拟数据')
   return generateMockCSNews(page, pageSize)
 }
 
@@ -93,7 +94,7 @@ function parseCSNewsRSSItems(xmlData: string): ApiNewsItem[] {
     
     return items
   } catch (e) {
-    console.error('[中国证券报] RSS 解析失败', e)
+    logger.error('[中国证券报] RSS 解析失败', e)
     return []
   }
 }

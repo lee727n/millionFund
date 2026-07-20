@@ -3,6 +3,7 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { logger } from '@/utils/logger'
 
 /**
  * 网易财经 RSS Feed URLs（多个备用）
@@ -20,7 +21,7 @@ export async function fetchNeteaseNews(page = 1, pageSize = 20): Promise<ApiNews
   // 尝试所有 RSS URL
   for (const rssUrl of NETEASE_RSS_URLS) {
     try {
-      console.log(`[网易财经] 尝试 RSS: ${rssUrl}`)
+      logger.info(`[网易财经] 尝试 RSS: ${rssUrl}`)
       const response = await Http.get({
         url: rssUrl,
         headers: {
@@ -29,19 +30,19 @@ export async function fetchNeteaseNews(page = 1, pageSize = 20): Promise<ApiNews
       })
       
       if (response.status === 200 && response.data) {
-        console.log(`[网易财经] ✓ RSS 抓取成功: ${rssUrl}`)
+        logger.info(`[网易财经] ✓ RSS 抓取成功: ${rssUrl}`)
         const items = parseRSS(response.data)
         if (items.length > 0) {
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[网易财经] RSS 抓取失败: ${rssUrl}`, e)
+      logger.warn(`[网易财经] RSS 抓取失败: ${rssUrl}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[网易财经] 所有 RSS 抓取失败，使用模拟数据')
+  logger.warn('[网易财经] 所有 RSS 抓取失败，使用模拟数据')
   return generateMockNeteaseNews(page, pageSize)
 }
 

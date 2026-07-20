@@ -15,13 +15,13 @@ export const CURRENT_TAG = `v${APP_VERSION}` as const
 export const APP_INFO = {
   name: 'AI百万资产',
   version: APP_VERSION,
-  releaseDate: '2026-07-01',
+  releaseDate: getBuildTime().slice(0, 10),
   description: '安卓 + Windows 双端全品种资产管理工具 - 基金/股票/加密货币 · 实时估值 · AI调仓追踪',
   author: 'millionAsset',
   license: 'MIT',
   github: GITHUB_URL,
   homepage: `${GITHUB_URL}#readme`,
-} as const
+}
 
 /**
  * 各平台下载链接

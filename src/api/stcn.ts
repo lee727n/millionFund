@@ -4,6 +4,7 @@
  */
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
+import { logger } from '@/utils/logger'
 
 /**
  * 证券时报 RSS URL 列表（多个备份）
@@ -21,7 +22,7 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
   // 尝试所有 RSS URL
   for (const url of STCN_RSS_URLS) {
     try {
-      console.log(`[证券时报] 尝试 RSS: ${url}`)
+      logger.info(`[证券时报] 尝试 RSS: ${url}`)
       
       const response = await Http.get({
         url,
@@ -33,17 +34,17 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
       if (response.status === 200 && response.data) {
         const items = parseSTCNRSSItems(response.data)
         if (items.length > 0) {
-          console.log(`[证券时报] ✓ RSS 抓取成功: ${items.length} 条`)
+          logger.info(`[证券时报] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
       }
     } catch (e) {
-      console.warn(`[证券时报] RSS 抓取失败: ${url}`, e)
+      logger.warn(`[证券时报] RSS 抓取失败: ${url}`, e)
     }
   }
   
   // 所有 RSS 都失败，使用模拟数据
-  console.warn('[证券时报] 所有 RSS 源失败，使用模拟数据')
+  logger.warn('[证券时报] 所有 RSS 源失败，使用模拟数据')
   return generateMockSTCNNews(page, pageSize)
 }
 
@@ -93,7 +94,7 @@ function parseSTCNRSSItems(xmlData: string): ApiNewsItem[] {
     
     return items
   } catch (e) {
-    console.error('[证券时报] RSS 解析失败', e)
+    logger.error('[证券时报] RSS 解析失败', e)
     return []
   }
 }

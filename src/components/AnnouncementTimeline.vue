@@ -93,9 +93,15 @@ function getTypeLabel(type: string): string {
   return typeMap[type] || '公告'
 }
 
-// 获取公告类型对应的CSS类名
+// 获取公告类型对应的CSS类名（使用英文 slug，避免中文字符串作 class）
+const TYPE_CLASS_MAP: Record<string, string> = {
+  '分红公告': 'dividend',
+  '定期报告': 'report',
+  '人事变动': 'personnel',
+  '公告': 'default',
+}
 function getTypeClass(type: string): string {
-  return type === '公告' ? 'default' : type
+  return TYPE_CLASS_MAP[type] || 'default'
 }
 </script>
 

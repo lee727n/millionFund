@@ -6,7 +6,7 @@ import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 import { getCache, setCache } from '@/api/cache'
 
-const CACHE_TTL = 300 // 缓存 5 分钟（外汇汇率变化较慢）
+const LOCAL_CACHE_TTL = 300 // 缓存 5 分钟（外汇汇率变化较慢）
 
 /**
  * 外汇行情数据
@@ -67,7 +67,7 @@ export async function fetchForexRate(pair: string): Promise<ForexQuote | null> {
           changePercent: 0,
           updateTime: response.time_last_update_utc || new Date().toISOString()
         }
-        setCache(cacheKey, result, CACHE_TTL)
+        setCache(cacheKey, result, LOCAL_CACHE_TTL)
         return result
       }
     }
@@ -129,7 +129,7 @@ export async function fetchForexRates(pairs: string[]): Promise<ForexQuote[]> {
                 updateTime: response.time_last_update_utc || new Date().toISOString()
               }
               results.push(result)
-              setCache(`${CACHE_PREFIX}${pair}`, result, CACHE_TTL)
+              setCache(`${CACHE_PREFIX}${pair}`, result, LOCAL_CACHE_TTL)
             }
           })
         }

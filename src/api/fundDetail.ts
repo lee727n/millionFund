@@ -37,7 +37,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   const top10 = await queueGlobalVarScript<HoldingStock[]>(
     `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&_=${Date.now()}`,
     async () => {
-      const html = (window as any).apidata?.content || ''
+      const html = window.apidata?.content || ''
       if (!html) return []
 
       const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || ''
@@ -374,7 +374,7 @@ export async function fetchFundManagerInfo(fundCode: string): Promise<FundManage
   const manager = await queueGlobalVarScript<FundManagerInfo | null>(
     `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`,
     () => {
-      const managerData = (window as any).Data_currentFundManager || []
+      const managerData = window.Data_currentFundManager || []
       if (managerData.length === 0) return null
 
       const main = managerData[0]
@@ -421,7 +421,7 @@ export async function fetchManagerProfit(fundCode: string): Promise<ManagerProfi
   const result = await queueGlobalVarScript<ManagerProfitPoint[]>(
     `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`,
     () => {
-      const grandTotal = (window as any).Data_grandTotal || []
+      const grandTotal = window.Data_grandTotal || []
       if (!Array.isArray(grandTotal) || grandTotal.length === 0) return []
 
       const step = Math.max(1, Math.floor(grandTotal.length / 200))
@@ -473,7 +473,7 @@ export async function fetchIndustryAllocation(code: string): Promise<IndustryAll
   const result = await queueGlobalVarScript<IndustryAllocation[]>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const data = (window as any).Data_IndustryAllocation
+      const data = window.Data_IndustryAllocation
       if (!data?.series?.[0]?.data) return []
 
       return data.series[0].data
@@ -501,7 +501,7 @@ export async function fetchAssetAllocation(code: string): Promise<AssetAllocatio
   const result = await queueGlobalVarScript<AssetAllocation | null>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const data = (window as any).Data_assetAllocation
+      const data = window.Data_assetAllocation
       if (!data?.series) return null
 
       const getSeries = (name: string) => {
@@ -533,9 +533,9 @@ export async function fetchFundRating(code: string): Promise<FundRating | null> 
   const result = await queueGlobalVarScript<FundRating | null>(
     `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`,
     () => {
-      const rateInSimilar = (window as any).Data_rateInSimilarType || []
-      const performanceData = (window as any).Data_rateInSimilarPers498 || []
-      const fluctuation = (window as any).Data_fluctuationScale || {}
+      const rateInSimilar = window.Data_rateInSimilarType || []
+      const performanceData = window.Data_rateInSimilarPers498 || []
+      const fluctuation = window.Data_fluctuationScale || {}
 
       let rating = 3
       if (rateInSimilar.length > 0) {

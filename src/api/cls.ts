@@ -27,7 +27,7 @@ export interface TelegramItem {
 export interface HotTopic {
   id: string
   name: string
- 热度: number
+  heat: number
   change: number
   stocks: string[]
 }
@@ -86,7 +86,7 @@ export async function fetchClsHotTopics(): Promise<HotTopic[]> {
       const list: HotTopic[] = data.data.slice(0, 20).map((item: any) => ({
         id: String(item.id),
         name: item.name || item.title || '',
-       热度: item.hot_value || item.hot || 0,
+       heat: item.hot_value || item.hot || 0,
         change: parseFloat(item.change || '0'),
         stocks: item.stocks?.map?.((s: any) => s.code || s).filter(Boolean) || [],
       }))
@@ -145,11 +145,11 @@ function fallbackTelegramList(): TelegramItem[] {
 
 function fallbackHotTopics(): HotTopic[] {
   return [
-    { id: '1', name: '人工智能', 热度: 980000, change: 2.5, stocks: ['300308', '688256'] },
-    { id: '2', name: '半导体', 热度: 850000, change: 3.2, stocks: ['002371', '688981'] },
-    { id: '3', name: '新能源汽车', 热度: 720000, change: 1.8, stocks: ['300750', '002594'] },
-    { id: '4', name: '低空经济', 热度: 650000, change: 4.1, stocks: ['002085', '300825'] },
-    { id: '5', name: '创新药', 热度: 580000, change: -1.2, stocks: ['600276', '300122'] },
+    { id: '1', name: '人工智能', heat: 980000, change: 2.5, stocks: ['300308', '688256'] },
+    { id: '2', name: '半导体', heat: 850000, change: 3.2, stocks: ['002371', '688981'] },
+    { id: '3', name: '新能源汽车', heat: 720000, change: 1.8, stocks: ['300750', '002594'] },
+    { id: '4', name: '低空经济', heat: 650000, change: 4.1, stocks: ['002085', '300825'] },
+    { id: '5', name: '创新药', heat: 580000, change: -1.2, stocks: ['600276', '300122'] },
   ]
 }
 
