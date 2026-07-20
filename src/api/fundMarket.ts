@@ -4,7 +4,7 @@
 import { cache, CACHE_TTL } from './cache'
 import { logger } from '@/utils/logger'
 import { http } from '@/utils/http'
-import type { MarketIndexSimple, GlobalIndex } from './fundUtils'
+import type { MarketIndexSimple, GlobalIndex } from './fundTypes'
 
 // ========== 大盘指数 ==========
 

@@ -129,6 +129,7 @@ import { fetchFutureBatch, type FutureQuote } from '@/api/future'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { logger } from '@/utils/logger'
 import { useI18n } from 'vue-i18n'
+import { showToast } from 'vant'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -205,35 +206,9 @@ async function loadFutures() {
     logger.info('[Market] 期货数据加载成功', { count: results.length })
   } catch (err) {
     logger.error('[Market] 期货数据加载失败', err)
-    // 使用兜底数据
-    futures.value = [
-      {
-        symbol: 'GC2506',
-        name: '黄金2506',
-        price: 2350.50,
-        change: 10.50,
-        changeRate: 0.45,
-        open: 2340.00,
-        high: 2355.00,
-        low: 2335.00,
-        volume: 100000,
-        openInterest: 500000,
-        updatedAt: new Date().toISOString()
-      },
-      {
-        symbol: 'CL2506',
-        name: '原油2506',
-        price: 78.50,
-        change: 0.85,
-        changeRate: 1.09,
-        open: 77.50,
-        high: 79.00,
-        low: 77.00,
-        volume: 50000,
-        openInterest: 200000,
-        updatedAt: new Date().toISOString()
-      }
-    ]
+    // 不返回假数据，避免掩盖错误；置空并提示用户
+    futures.value = []
+    showToast('期货数据加载失败，请稍后重试')
   } finally {
     isLoadingFutures.value = false
   }

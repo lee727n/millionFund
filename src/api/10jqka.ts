@@ -5,6 +5,7 @@
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
+import { parseRssItems } from '@/utils/rss'
 
 /**
  * 同花顺 RSS URL 列表（多个备份）
@@ -32,7 +33,7 @@ export async function fetch10jqkaNews(page = 1, pageSize = 20): Promise<ApiNewsI
       })
       
       if (response.status === 200 && response.data) {
-        const items = parse10jqkaRSSItems(response.data)
+        const items = parseRssItems(response.data, { sourceName: '同花顺', idPrefix: '10jqka', defaultUrl: 'https://news.10jqka.com.cn/' })
         if (items.length > 0) {
           logger.info(`[同花顺] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
@@ -52,49 +53,5 @@ export async function fetch10jqkaNews(page = 1, pageSize = 20): Promise<ApiNewsI
  * 解析同花顺 RSS XML 数据
  */
 function parse10jqkaRSSItems(xmlData: string): ApiNewsItem[] {
-  try {
-    const items: ApiNewsItem[] = []
-    
-    // 匹配 <item> 标签
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g
-    let match
-    
-    while ((match = itemRegex.exec(xmlData)) !== null) {
-      const itemContent = match[1]
-      
-      // 提取标题
-      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      
-      // 提取链接
-      const linkMatch = /<link>(.*?)<\/link>/.exec(itemContent)
-      const url = linkMatch ? linkMatch[1].trim() : ''
-      
-      // 提取描述
-      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>/.exec(itemContent)
-      const summary = descMatch ? descMatch[1].trim() : ''
-      
-      // 提取发布时间
-      const dateMatch = /<pubDate>(.*?)<\/pubDate>/.exec(itemContent)
-      const dateStr = dateMatch ? dateMatch[1].trim() : ''
-      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
-      
-      if (title) {
-        items.push({
-          id: `10jqka_${Date.now()}_${items.length}`,
-          title,
-          summary: summary || title,
-          source: '同花顺',
-          publishedAt,
-          url: url || 'https://news.10jqka.com.cn/',
-          image: undefined
-        })
-      }
-    }
-    
-    return items
-  } catch (e) {
-    logger.error('[同花顺] RSS 解析失败', e)
-    return []
-  }
+  return parseRssItems(xmlData, { sourceName: '同花顺', idPrefix: '10jqka', defaultUrl: 'https://news.10jqka.com.cn/' })
 }

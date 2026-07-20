@@ -283,7 +283,7 @@ export async function fetchNews(
     limit?: number
     count?: number
   }
-): Promise<any> {
+): Promise<unknown> {
   switch (source) {
     case 'jin10':
       if (options?.type === 'flash') {

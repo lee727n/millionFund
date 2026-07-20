@@ -33,10 +33,10 @@ export default defineConfig({
       
       // CI 环境中放宽覆盖率要求（仅报告，不阻塞）
       thresholds: {
-        lines: 0,
-        functions: 0,
-        branches: 0,
-        statements: 0
+        lines: 70,
+        functions: 70,
+        branches: 60,
+        statements: 70
       }
     },
   },

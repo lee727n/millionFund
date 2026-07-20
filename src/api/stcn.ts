@@ -5,6 +5,7 @@
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
+import { parseRssItems } from '@/utils/rss'
 
 /**
  * 证券时报 RSS URL 列表（多个备份）
@@ -32,7 +33,7 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
       })
       
       if (response.status === 200 && response.data) {
-        const items = parseSTCNRSSItems(response.data)
+        const items = parseRssItems(response.data, { sourceName: '证券时报', idPrefix: 'stcn', defaultUrl: 'http://www.stcn.com/' })
         if (items.length > 0) {
           logger.info(`[证券时报] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
@@ -52,49 +53,5 @@ export async function fetchSTCNNews(page = 1, pageSize = 20): Promise<ApiNewsIte
  * 解析证券时报 RSS XML 数据
  */
 function parseSTCNRSSItems(xmlData: string): ApiNewsItem[] {
-  try {
-    const items: ApiNewsItem[] = []
-    
-    // 匹配 <item> 标签
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g
-    let match
-    
-    while ((match = itemRegex.exec(xmlData)) !== null) {
-      const itemContent = match[1]
-      
-      // 提取标题
-      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      
-      // 提取链接
-      const linkMatch = /<link>(.*?)<\/link>/.exec(itemContent)
-      const url = linkMatch ? linkMatch[1].trim() : ''
-      
-      // 提取描述
-      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>/.exec(itemContent)
-      const summary = descMatch ? descMatch[1].trim() : ''
-      
-      // 提取发布时间
-      const dateMatch = /<pubDate>(.*?)<\/pubDate>/.exec(itemContent)
-      const dateStr = dateMatch ? dateMatch[1].trim() : ''
-      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
-      
-      if (title) {
-        items.push({
-          id: `stcn_${Date.now()}_${items.length}`,
-          title,
-          summary: summary || title,
-          source: '证券时报',
-          publishedAt,
-          url: url || 'http://www.stcn.com/',
-          image: undefined
-        })
-      }
-    }
-    
-    return items
-  } catch (e) {
-    logger.error('[证券时报] RSS 解析失败', e)
-    return []
-  }
+  return parseRssItems(xmlData, { sourceName: '证券时报', idPrefix: 'stcn', defaultUrl: 'http://www.stcn.com/' })
 }

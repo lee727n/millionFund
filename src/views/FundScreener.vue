@@ -163,16 +163,10 @@ function sortFunds(funds: FundInfo[]): FundInfo[] {
         cmp = a.name.localeCompare(b.name)
         break
       case 'return':
-        // 默认按代码排序（收益需要异步获取）
-        cmp = a.code.localeCompare(b.code)
-        break
       case 'rating':
-        // 默认按代码排序（评级需要异步获取）
-        cmp = a.code.localeCompare(b.code)
-        break
       case 'risk':
-        // 默认按代码排序
-        cmp = a.code.localeCompare(b.code)
+        // 收益/评级/风险需异步获取，FundInfo 本身不含这些字段，保持原始顺序
+        cmp = 0
         break
     }
 

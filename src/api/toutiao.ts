@@ -5,6 +5,7 @@
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
+import { parseRssItems } from '@/utils/rss'
 
 /**
  * RSSHub 路由列表（多个备份）
@@ -32,7 +33,7 @@ export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNews
       })
       
       if (response.status === 200 && response.data) {
-        const items = parseRSSItems(response.data)
+        const items = parseRssItems(response.data, { sourceName: '今日头条', idPrefix: 'toutiao', defaultUrl: 'https://www.toutiao.com/' })
         if (items.length > 0) {
           logger.info(`[今日头条] ✓ RSS 抓取成功: ${items.length} 条`)
           return items.slice((page - 1) * pageSize, page * pageSize)
@@ -51,53 +52,7 @@ export async function fetchToutiaoNews(page = 1, pageSize = 20): Promise<ApiNews
 /**
  * 解析 RSS XML 数据
  */
-function parseRSSItems(xmlData: string): ApiNewsItem[] {
-  try {
-    const items: ApiNewsItem[] = []
-    
-    // 匹配 <item> 或 <entry> 标签
-    const itemRegex = /<item>([\s\S]*?)<\/item>|<entry>([\s\S]*?)<\/entry>/g
-    let match
-    
-    while ((match = itemRegex.exec(xmlData)) !== null) {
-      const itemContent = match[1] || match[2]
-      
-      // 提取标题
-      const titleMatch = /<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/.exec(itemContent)
-      const title = titleMatch ? titleMatch[1].trim() : ''
-      
-      // 提取链接
-      const linkMatch = /<link>(.*?)<\/link>|<guid>(.*?)<\/guid>/.exec(itemContent)
-      const url = linkMatch ? (linkMatch[1] || linkMatch[2]).trim() : ''
-      
-      // 提取描述
-      const descMatch = /<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>|<summary>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/summary>/.exec(itemContent)
-      const summary = descMatch ? (descMatch[1] || descMatch[2]).trim() : ''
-      
-      // 提取发布时间
-      const dateMatch = /<pubDate>(.*?)<\/pubDate>|<published>(.*?)<\/published>|<updated>(.*?)<\/updated>/.exec(itemContent)
-      const dateStr = dateMatch ? (dateMatch[1] || dateMatch[2] || dateMatch[3]).trim() : ''
-      const publishedAt = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
-      
-      if (title) {
-        items.push({
-          id: `toutiao_${Date.now()}_${items.length}`,
-          title,
-          summary: summary || title,
-          source: '今日头条',
-          publishedAt,
-          url: url || 'https://www.toutiao.com/',
-          image: undefined
-        })
-      }
-    }
-    
-    return items
-  } catch (e) {
-    logger.error('[今日头条] RSS 解析失败', e)
-    return []
-  }
-}
+// RSS 解析逻辑已迁移至 @/utils/rss 的 parseRssItems；调用处直接使用导入的 parseRssItems
 
 function generateMockToutiaoNews(page: number, pageSize: number): ApiNewsItem[] {
   const mockNews = [

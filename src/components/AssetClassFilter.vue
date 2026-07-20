@@ -19,7 +19,7 @@ function filterByAssetClass(assetClass: AssetClass | '') {
 </script>
 
 <template>
-  <div class="asset-class-filter" v-if="true">
+  <div class="asset-class-filter">
     <div class="filter-tabs">
       <span 
         class="filter-tab" 

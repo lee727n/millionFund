@@ -32,7 +32,7 @@
         <van-field
           v-model="config.apiKey"
           label="API Key"
-          type="password"
+          :type="apiKeyVisible ? 'text' : 'password'"
           placeholder="输入你的 API Key"
           @blur="onConfigChange"
         >
@@ -143,6 +143,7 @@ const testResult = computed(() => store.testResult)
 // UI 状态
 const showProviderPicker = ref(false)
 const activeHelp = ref<string[]>([])
+const apiKeyVisible = ref(false)
 
 // 温度值转换 (0-100 -> 0.0-2.0)
 const temperatureValue = ref(Math.round((config.value.temperature || 0.7) * 50))
@@ -185,8 +186,7 @@ function onTempChange(value: number) {
 }
 
 function toggleApiKeyVisible() {
-  // 切换 API Key 可见性（简单实现）
-  showToast('请查看输入框')
+  apiKeyVisible.value = !apiKeyVisible.value
 }
 
 async function testConnection() {

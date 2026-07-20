@@ -6,7 +6,7 @@ import { cache, CACHE_TTL } from './cache'
 import { http } from '@/utils/http'
 import { logger } from '@/utils/logger'
 import type { NetValueRecord } from '@/types/fund'
-import type { SimpleKLineData, PeriodReturn } from './fundTypes'
+import type { SimpleKLineData, PeriodReturn, IntradayPoint } from './fundTypes'
 import { queueGlobalVarScript } from './fundUtils'
 
 // ========== 历史净值API ==========

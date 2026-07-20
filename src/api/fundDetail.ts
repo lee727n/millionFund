@@ -108,9 +108,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
         if (tencentCodes) {
           try {
             const qtUrl = `https://qt.gtimg.cn/q?q=${tencentCodes}`
-            const qtRes = await fetch(qtUrl)
-            if (qtRes.ok) {
-              const qtText = await qtRes.text()
+            const qtText = await http.text(qtUrl)
               const qtRegex = /v_s_(sh|sz|bj|hk|us)(\w+)="([^"]+)"/g
               let m: RegExpExecArray | null
               const qtData: Record<string, string> = {}
@@ -142,9 +140,6 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
                   if (parts.length > 5 && parts[5]) h.change = parseFloat(parts[5])
                 }
               })
-            } else {
-              logger.warn('[fundDetail] 获取股票行情失败，跳过', { url: qtUrl })
-            }
           } catch {
             // 静默忽略行情获取失败
           }
@@ -200,6 +195,86 @@ export async function fetchFundBasicInfo(code: string): Promise<{
 
 // ========== 综合数据获取（多源验证） ==========
 
+function setAccurateSource(
+  result: FundAccurateData,
+  source: 'nav' | 'estimate' | 'fallback',
+  fallbackValue = 0
+): void {
+  if (source === 'nav') {
+    result.currentValue = result.nav
+    result.dayChange = result.navChange
+    result.dataSource = 'nav'
+  } else if (source === 'estimate') {
+    result.currentValue = result.estimate
+    result.dayChange = result.estimateChange
+    result.dataSource = 'estimate'
+  } else {
+    result.currentValue = fallbackValue
+    result.dayChange = 0
+    result.dataSource = 'fallback'
+  }
+}
+
+/**
+ * 根据多源数据（净值/估值/备用净值）解析基金当前值，消除 QDII 与非 QDII 分支的重复逻辑。
+ * 优先级：昨日净值(QDII) > 今日净值 > 交易时段估值 > 今日估值 > 净值 > 估值 > 备用净值(dwjz)
+ */
+function resolveAccurateValue(
+  result: FundAccurateData,
+  opts: {
+    isQDII: boolean
+    isNavFromToday: boolean
+    isNavFromYesterday: boolean
+    isEstimateFromToday: boolean
+    inTradingTime: boolean
+    dwjz: number
+  }
+): void {
+  const { isQDII, isNavFromToday, isNavFromYesterday, isEstimateFromToday, inTradingTime, dwjz } = opts
+  const navPositive = result.nav > 0
+  const estimatePositive = result.estimate > 0
+
+  // QDII：海外净值 T+1，优先使用昨日净值
+  if (isQDII && isNavFromYesterday && navPositive) {
+    setAccurateSource(result, 'nav')
+    return
+  }
+  if (navPositive && isNavFromToday) {
+    setAccurateSource(result, 'nav')
+    return
+  }
+  if (isQDII) {
+    if (estimatePositive && isEstimateFromToday) {
+      setAccurateSource(result, 'estimate')
+      return
+    }
+    if (estimatePositive) {
+      setAccurateSource(result, 'estimate')
+      return
+    }
+  } else {
+    if (inTradingTime && estimatePositive) {
+      setAccurateSource(result, 'estimate')
+      return
+    }
+    if (estimatePositive && isEstimateFromToday) {
+      setAccurateSource(result, 'estimate')
+      return
+    }
+  }
+  if (navPositive) {
+    setAccurateSource(result, 'nav')
+    return
+  }
+  if (estimatePositive) {
+    setAccurateSource(result, 'estimate')
+    return
+  }
+  if (dwjz > 0) {
+    setAccurateSource(result, 'fallback', dwjz)
+  }
+}
+
 export async function fetchFundAccurateData(code: string, isQDII: boolean = false): Promise<FundAccurateData> {
   const cacheKey = `accurate_${code}`
   if (!isQDII) {
@@ -248,66 +323,20 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   }
 
   const isNavFromToday = navData?.date === today
-  const isEstimateFromToday = estimateData?.gztime?.startsWith(today.replace(/-/g, '-'))
+  const isEstimateFromToday = estimateData?.gztime?.startsWith(today)
 
-  if (isQDII) {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const isNavFromYesterday = navData?.date === yesterday
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const isNavFromYesterday = navData?.date === yesterday
+  const dwjz = parseFloat(estimateData?.dwjz || '0')
 
-    if (isNavFromYesterday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (isNavFromToday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (result.estimate > 0 && isEstimateFromToday) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else {
-      const dwjz = parseFloat(estimateData?.dwjz || '0')
-      if (dwjz > 0) {
-        result.currentValue = dwjz
-        result.dayChange = 0
-        result.dataSource = 'fallback'
-      }
-    }
-  } else {
-    if (isNavFromToday && result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (inTradingTime && result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.estimate > 0 && isEstimateFromToday) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else if (result.nav > 0) {
-      result.currentValue = result.nav
-      result.dayChange = result.navChange
-      result.dataSource = 'nav'
-    } else if (result.estimate > 0) {
-      result.currentValue = result.estimate
-      result.dayChange = result.estimateChange
-      result.dataSource = 'estimate'
-    } else {
-      const dwjz = parseFloat(estimateData?.dwjz || '0')
-      if (dwjz > 0) {
-        result.currentValue = dwjz
-        result.dayChange = 0
-        result.dataSource = 'fallback'
-      }
-    }
-  }
+  resolveAccurateValue(result, {
+    isQDII,
+    isNavFromToday,
+    isNavFromYesterday,
+    isEstimateFromToday,
+    inTradingTime,
+    dwjz
+  })
 
   const ttl = isQDII ? 10000 : (inTradingTime ? 30000 : 300000)
   cache.set(cacheKey, result, ttl)

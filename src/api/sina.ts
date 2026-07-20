@@ -4,6 +4,7 @@
 import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
+import { parseRssItems } from '@/utils/rss'
 
 /**
  * 新浪财经 RSS Feed URLs（多个备用）
@@ -31,7 +32,7 @@ export async function fetchSinaNews(page = 1, pageSize = 20): Promise<ApiNewsIte
       
       if (response.status === 200 && response.data) {
         logger.info(`[新浪财经] ✓ RSS 抓取成功: ${rssUrl}`)
-        const items = parseRSS(response.data)
+        const items = parseRssItems(response.data, { sourceName: '新浪财经', idPrefix: 'sina', defaultUrl: 'https://finance.sina.com.cn/' })
         if (items.length > 0) {
           return items.slice((page - 1) * pageSize, page * pageSize)
         }
@@ -47,29 +48,7 @@ export async function fetchSinaNews(page = 1, pageSize = 20): Promise<ApiNewsIte
 }
 
 function parseRSS(xml: string): ApiNewsItem[] {
-  const items: ApiNewsItem[] = []
-  const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || []
-  
-  itemMatches.forEach((item, index) => {
-    const titleMatch = item.match(/<title>(.*?)<\/title>/)
-    const linkMatch = item.match(/<link>(.*?)<\/link>/)
-    const pubDateMatch = item.match(/<pubDate>(.*?)<\/pubDate>/)
-    const descriptionMatch = item.match(/<description>(.*?)<\/description>/)
-    
-    if (titleMatch && linkMatch) {
-      items.push({
-        id: `sina_${index}`,
-        title: titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1'),
-        summary: descriptionMatch ? descriptionMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1').substring(0, 100) : '',
-        source: '新浪财经',
-        publishedAt: pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString(),
-        url: linkMatch[1],
-        image: undefined
-      })
-    }
-  })
-  
-  return items
+  return parseRssItems(xml, { sourceName: '新浪财经', idPrefix: 'sina', defaultUrl: 'https://finance.sina.com.cn/' })
 }
 
 function generateMockSinaNews(page: number, pageSize: number): ApiNewsItem[] {
