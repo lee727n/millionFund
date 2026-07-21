@@ -416,6 +416,17 @@ export const useHoldingStore = defineStore('holding', () => {
     })
   }
 
+  /**
+   * 清除所有基金的持仓缓存
+   * [WHY] 用户手动触发更新持仓数据时调用
+   */
+  function clearHoldingsCache() {
+    holdings.value.forEach(h => {
+      localStorage.removeItem(`fund_topholdings_persist_${h.code}`)
+      localStorage.removeItem(`fund_topholdings_${h.code}`)
+    })
+  }
+
   return {
     // State
     holdings,
@@ -430,6 +441,7 @@ export const useHoldingStore = defineStore('holding', () => {
     removeHolding,
     hasHolding,
     getHoldingByCode,
-    updateHoldingDays
+    updateHoldingDays,
+    clearHoldingsCache
   }
 })

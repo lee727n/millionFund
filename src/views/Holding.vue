@@ -803,6 +803,22 @@ async function refreshHoldings() {
     closeToast()
   }
 }
+
+// 更新持仓数据（清除缓存后重新获取）
+async function refreshHoldingsCache() {
+  showLoadingToast('正在更新持仓数据...')
+  
+  try {
+    holdingStore.clearHoldingsCache()
+    await holdingStore.refreshEstimates()
+    showToast('持仓数据已更新')
+  } catch (error) {
+    console.error('更新持仓数据失败:', error)
+    showToast('更新失败，请重试')
+  } finally {
+    closeToast()
+  }
+}
 </script>
 
 <template>
@@ -811,6 +827,7 @@ async function refreshHoldings() {
     <div class="custom-nav-bar">
       <!-- 第一行：标题 -->
       <div class="nav-title-row">
+        <div class="version-badge">v3.5</div>
         <div class="nav-title">我的持仓</div>
       </div>
       <!-- 第二行：按钮 -->
@@ -846,7 +863,8 @@ async function refreshHoldings() {
             @click="handleSort('down')"
             alt="降序" 
           />
-          <van-button size="small" @click="showImportDialog = true" class="mobile-hide">截图</van-button>
+          <van-icon name="edit" size="20" @click="refreshHoldingsCache" class="refresh-icon" />
+          <van-button size="small" @click="showImportDialog = true">截图</van-button>
           <van-button size="small" @click="openBatchDialog">批量</van-button>
           <van-button size="small" @click="restoreHoldings">恢复</van-button>
           <van-button size="small" @click="clearAllHoldings" type="danger" class="mobile-hide">清空</van-button>
@@ -867,6 +885,7 @@ async function refreshHoldings() {
             @click="themeStore.setTheme('dark')"
           >深</span>
         </div>
+        <van-icon name="edit" size="20" @click="refreshHoldingsCache" class="refresh-icon" />
         <van-icon name="replay" size="20" @click="refreshHoldings" class="refresh-icon" />
         <van-button size="small" @click="showImportDialog = true" class="nav-btn">截图</van-button>
         <van-button size="small" @click="openBatchDialog" class="nav-btn">批量</van-button>
@@ -1441,6 +1460,17 @@ async function refreshHoldings() {
   align-items: center;
   width: 100%;
   justify-content: center;
+  gap: 8px;
+}
+
+.version-badge {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--primary-color);
 }
 
 .nav-btn {

@@ -110,7 +110,7 @@ export function fetchFundEstimate(code: string): Promise<FundEstimate> {
     const script = document.createElement('script')
     script.id = scriptId
     // [DEPS] 天天基金公开接口，返回格式：jsonpgz({...})
-    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js`
     script.onerror = () => {
       cleanup()
       const index = pendingRequests.findIndex(req => req.code === code)
@@ -767,7 +767,7 @@ export async function fetchTimeShareData(code: string): Promise<TimeShareData[]>
     const script = document.createElement('script')
     script.id = callbackName
     // [DEPS] 天天基金分时估值接口
-    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js`
     script.onerror = () => {
       cleanup()
       resolve([])
@@ -1224,6 +1224,3 @@ export async function fetchAccumulatedReturn(
     document.body.appendChild(script)
   })
 }
-
-// [WHAT] 导出净值请求队列供 fundFast.ts 使用
-export { pendingNetValueRequests }

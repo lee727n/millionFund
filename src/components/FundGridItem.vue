@@ -171,7 +171,11 @@ function getRatioStyle(ratio: number) {
         <div class="fund-name-middle">
           <span v-if="fund.isQDII" class="qdii-tag">QD</span>
         </div>
-        <div class="fund-name-right" :class="getFundNameClass(fund, tradingSession)">{{ fund.name }}</div>
+        <div 
+          class="fund-name-right" 
+          :class="getFundNameClass(fund, tradingSession)"
+          @click.stop="emit('openTopHoldings', $event)"
+        >{{ fund.name }}</div>
         <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
           {{ fund.ratio.toFixed(1) }}%
         </div>
@@ -237,7 +241,11 @@ function getRatioStyle(ratio: number) {
           <div class="fund-name-middle">
             <span v-if="fund.isQDII" class="qdii-tag">QD</span>
           </div>
-          <div class="fund-name-right" :class="getFundNameClass(fund, tradingSession)">{{ fund.name }}</div>
+          <div 
+          class="fund-name-right" 
+          :class="getFundNameClass(fund, tradingSession)"
+          @click.stop="emit('openTopHoldings', $event)"
+        >{{ fund.name }}</div>
           <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
             {{ fund.ratio.toFixed(1) }}%
           </div>

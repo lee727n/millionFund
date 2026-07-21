@@ -916,6 +916,12 @@ function resetSort() {
   sortDirection.value = 'none'
 }
 
+// [WHAT] 打开持仓总览新标签页
+function openPortfolio() {
+  const url = router.resolve({ name: 'portfolio' }).href
+  window.open(url, '_blank')
+}
+
 // [WHAT] 公告列表（默认 + 远程）
 const defaultNotices = [
   '基金投资有风险，入市需谨慎',
@@ -1078,6 +1084,12 @@ function openNewsUrl() {
 // [WHAT] 跳转到基金详情页
 function goToDetail(code: string) {
   router.push(`/detail/${code}`)
+}
+
+// [WHAT] 点击基金名称显示重仓股弹窗
+function handleNameClick(code: string, name: string) {
+  const fund = { code, name }
+  openTopHoldings(fund, { stopPropagation: () => {} } as Event)
 }
 
 </script>
@@ -1249,6 +1261,13 @@ function goToDetail(code: string) {
               <span v-if="jdUpdateStatus" class="jd-update-status" :class="jdUpdateStatus.class">
                 {{ jdUpdateStatus.text }}
               </span>
+              <van-button 
+                size="small" 
+                class="source-button portfolio-btn"
+                @click="openPortfolio"
+              >
+                持仓总览
+              </van-button>
             </div>
           </div>
           <div class="holding-stats">
@@ -1539,6 +1558,7 @@ function goToDetail(code: string) {
           :fund="fund"
           @delete="handleDelete"
           @click="goToDetail"
+          @name-click="handleNameClick"
         />
       </template>
 

@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   delete: [code: string]
   click: [code: string]
+  nameClick: [code: string, name: string]
   longpress: []
 }>()
 
@@ -85,7 +86,10 @@ function onTouchMove() {
     >
       <!-- 左侧：基金信息 -->
       <div class="fund-info">
-        <div class="fund-name">{{ fund.name || '加载中...' }}</div>
+        <div 
+          class="fund-name" 
+          @click.stop="emit('nameClick', fund.code, fund.name || '')"
+        >{{ fund.name || '加载中...' }}</div>
         <div class="fund-code">{{ fund.code }}</div>
       </div>
       

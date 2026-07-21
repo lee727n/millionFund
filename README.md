@@ -11,10 +11,10 @@
 ## 功能特点
 
 ### 网盘APK快速开始
-- **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平台
+- **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平
 
-通过网盘分享的文件：app-V3.2.apk
-链接: https://pan.baidu.com/s/1fe0zi-loD0sIG1zd9s5K3w 提取码: vptp
+通过网盘分享的文件：app-v3.5.apk
+链接: https://pan.baidu.com/s/1fUMSRRgHKCvJk609PxT9MQ 提取码: t3er
 
 ### 核心功能
 - **实时估值** - 秒级刷新基金实时估值数据

@@ -3,7 +3,7 @@
 // [DEPS] 天天基金公开接口
 
 import { cache, CACHE_TTL } from './cache'
-import { isTradingTime, persistCache } from './tiantianApi'
+import { isTradingTime, persistCache, fetchETFRank } from './tiantianApi'
 import type { FundEstimate, NetValueRecord } from '@/types/fund'
 import { getPrevWorkdaySync, isHolidaySync, clearHolidayCache } from '../utils/holiday'
 
@@ -118,79 +118,318 @@ function initJsonpCallback() {
     }
 }
 
+function extractIndustryKeywords(fundName: string): string[] {
+  const keywords: string[] = []
+
+  const industryPatterns = [
+    '半导体', '芯片', '集成电路', '电子设备', '电子制造', '电子元器件',
+    '新能源', '光伏', '锂电', '电池', '储能', '风电', '氢能',
+    '医药', '医疗', '生物', '健康', '创新药', '医疗器械',
+    '消费', '食品', '饮料', '白酒', '零售', '家电',
+    '科技', '互联网', '通信', '计算机', '软件', '云计算', 'AI', '人工智能',
+    '金融', '银行', '证券', '保险', '券商',
+    '军工', '国防', '航天', '航空',
+    '地产', '房地产', '建筑', '建材',
+    '汽车', '新能源汽车', '智能汽车',
+    '环保', '碳中和', '碳达峰',
+    '稀土', '有色', '钢铁', '煤炭', '石油', '化工',
+    '农业', '种业', '养殖',
+    '物流', '运输', '航空', '铁路',
+    '传媒', '娱乐', '游戏', '教育',
+    '银行', '证券', '保险', '金融科技',
+    '黄金', '贵金属',
+    '港股', '美股', '海外', '全球',
+    '沪深300', '上证50', '创业板', '中证500', '中证1000', '科创',
+    '红利', '价值', '成长', '质量', '低波',
+    '基建', '央企', '国企',
+    '消费电子', '面板', 'LED', 'OLED',
+    '机械', '高端制造', '智能制造',
+    '电力', '电网', '特高压',
+    '元宇宙', 'NFT', '区块链',
+    '半导体材料', '半导体设备',
+    '物联网', '车联网',
+    '大数据', '数据中心', 'IDC',
+    '半导体芯片', '芯片设计', '芯片制造',
+    '医药健康', '医疗健康',
+    '食品饮料', '餐饮旅游',
+    '文化传媒', '体育',
+    '环保工程', '水务', '固废',
+    '光伏设备', '光伏材料',
+    '锂电池', '动力电池',
+    '新能源发电', '新能源材料',
+    '通信设备', '5G', '光通信',
+    '计算机应用', '软件开发', '信息技术',
+    '电子元件', 'PCB', '半导体封测',
+    '仪器仪表', '检测服务',
+    '汽车零部件', '汽车电子',
+    '工程机械', '工业机械',
+    '化工原料', '化工新材料',
+    '煤炭开采', '有色金属', '钢铁行业',
+    '银行板块', '证券板块', '保险板块',
+    '房地产开发', '物业管理',
+    '交通运输', '物流仓储',
+    '商业贸易', '电商',
+    '纺织服装', '服装家纺',
+    '家用电器', '智能家居',
+    '农林牧渔', '农产品',
+    '国防军工', '军工电子',
+    '公用事业', '电力热力',
+    '综合', '其他'
+  ]
+
+  for (const pattern of industryPatterns) {
+    if (fundName.includes(pattern)) {
+      keywords.push(pattern)
+    }
+  }
+
+  return keywords
+}
+
+function findMatchedETF(etfList: any[], keywords: string[]): any | null {
+  let bestMatch: any = null
+  let bestScore = 0
+
+  for (const etf of etfList) {
+    let score = 0
+    for (const keyword of keywords) {
+      if (etf.name.includes(keyword)) {
+        score += keyword.length
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score
+      bestMatch = etf
+    }
+  }
+
+  return bestMatch
+}
+
 // ========== 实时估值API（优化版） ==========
 
 /**
  * 获取基金实时估值（带缓存）
  * [NOTE] 开盘前使用缓存数据，开盘后获取实时数据
  */
-export function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
+export async function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
   const cacheKey = `estimate_${code}`
 
-  // [WHAT] 检查内存缓存
-  // const cached = cache.get<FundEstimate>(cacheKey)
-  // if (cached) return Promise.resolve(cached)
-
-  // [WHAT] 获取持久化缓存
   const persisted = persistCache.get<FundEstimate>(cacheKey)
 
-  // [WHAT] 非交易时间直接返回持久化缓存
-  // if (!isTradingTime() && persisted) {
-  //   cache.set(cacheKey, persisted, CACHE_TTL.ESTIMATE)
-  //   return Promise.resolve(persisted)
-  // }
+  try {
+    const holdings = await fetchTopHoldings(code)
 
-  return withConcurrencyControl(() => {
-    return new Promise((resolve, reject) => {
-      initJsonpCallback()
-
-      const scriptId = `fund_${code}_${Date.now()}`
-      const timeout = setTimeout(() => {
-        cleanup()
-        const idx = pendingRequests.findIndex(r => r.code === code)
-        if (idx !== -1) pendingRequests.splice(idx, 1)
-        // [EDGE] 超时时使用持久化缓存
-        reject(new Error(`超时: ${code}`))
-      }, 8000)
-
-      pendingRequests.push({
-        code,
-        resolve: (data) => {
-          cache.set(cacheKey, data, CACHE_TTL.ESTIMATE)
-          persistCache.set(cacheKey, data) // 保存到持久化缓存
-          resolve(data)
-        },
-        reject: (err) => {
-          // [EDGE] 失败时使用持久化缓存
-          reject(err)
-        },
-        timeout
-      })
-
-      function cleanup() {
-        const s = document.getElementById(scriptId)
-        if (s) document.body.removeChild(s)
+    if (holdings.length === 0) {
+      if (persisted) {
+        return persisted
       }
+      throw new Error('No holdings data')
+    }
 
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
-      script.onerror = () => {
-        // [NOTE] 静默处理脚本加载失败，某些基金类型不支持估值
-        cleanup()
-        const idx = pendingRequests.findIndex(r => r.code === code)
-        if (idx !== -1) {
-          clearTimeout(pendingRequests[idx]!.timeout)
-          pendingRequests.splice(idx, 1)
-        }
-        // [EDGE] 失败时使用持久化缓存
-        reject(new Error(`失败: ${code}`))
+    const isQDII = await checkIsQDII(code)
+
+    let totalWeight = 0
+    let weightedChange = 0
+    let validHoldingsCount = 0
+
+    holdings.forEach(h => {
+      const weight = parseFloat(h.weight.replace('%', '')) || 0
+      const change = h.change || 0
+
+      if (weight > 0 && change !== null && change !== undefined && !isNaN(change)) {
+        totalWeight += weight
+        weightedChange += weight * change
+        validHoldingsCount++
       }
-      script.onload = () => {
-        setTimeout(cleanup, 100)
-      }
-      document.body.appendChild(script)
     })
+
+    let estimatedChange: number
+    if (totalWeight > 0) {
+      estimatedChange = weightedChange / 100
+    } else if (validHoldingsCount > 0) {
+      const avgChange = weightedChange / validHoldingsCount / 10
+      estimatedChange = avgChange
+    } else {
+      estimatedChange = 0
+    }
+
+    if (isQDII) {
+      const fxAdjustment = await getFXAdjustment()
+      estimatedChange = estimatedChange + fxAdjustment
+    }
+
+    const nameCacheKey = `fund_name_${code}`
+    const cachedName = cache.get<string>(nameCacheKey)
+
+    const historyResult = await fetchNetValueHistoryFast(code, 1)
+    const prevNav = historyResult.records.length > 0 ? historyResult.records[0].netValue : 0
+    const fundName = cachedName || historyResult.fundName || ''
+
+    if (/ETF/i.test(fundName)) {
+      const validChanges = holdings
+        .map(h => h.change)
+        .filter(c => c !== null && c !== undefined && !isNaN(c))
+
+      if (validChanges.length > 0) {
+        const avgChange = validChanges.reduce((sum, c) => sum + c, 0) / validChanges.length
+        estimatedChange = avgChange
+      }
+    }
+
+    const estimatedNav = prevNav * (1 + estimatedChange / 100)
+
+    const now = new Date()
+    const estimateTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+
+    const result: FundEstimate = {
+      fundcode: code,
+      name: fundName,
+      dwjz: prevNav.toFixed(4),
+      gsz: estimatedNav.toFixed(4),
+      gszzl: estimatedChange.toFixed(2),
+      gztime: estimateTime
+    }
+
+    cache.set(cacheKey, result, CACHE_TTL.ESTIMATE)
+    persistCache.set(cacheKey, result)
+
+    return result
+  } catch (err) {
+    if (persisted) {
+      return persisted
+    }
+    throw err
+  }
+}
+
+async function checkIsQDII(code: string): Promise<boolean> {
+  const cacheKey = `is_qdii_${code}`
+  const cached = cache.get<boolean>(cacheKey)
+  if (cached !== undefined) return cached
+
+  return new Promise((resolve) => {
+    const scriptId = `qdii_check_${code}_${Date.now()}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+      resolve(false)
+    }, 8000)
+
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+    script.onload = () => {
+      cleanup()
+      try {
+        const fundType = (window as any).Data_fundType || ''
+        const isQDII = fundType.includes('QDII') ||
+          fundType.includes('qdii') ||
+          fundType.includes('海外') ||
+          fundType.includes('全球')
+        cache.set(cacheKey, isQDII, CACHE_TTL.FUND_INFO)
+        resolve(isQDII)
+      } catch {
+        cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+        resolve(false)
+      }
+    }
+    script.onerror = () => {
+      cleanup()
+      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+      resolve(false)
+    }
+
+    function cleanup() {
+      clearTimeout(timeout)
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
+    }
+
+    document.body.appendChild(script)
+  })
+}
+
+async function getFXAdjustment(): Promise<number> {
+  const cacheKey = 'fx_adjustment'
+  const cached = cache.get<{ value: number; timestamp: number }>(cacheKey)
+  if (cached && Date.now() - cached.timestamp < 300000) {
+    return cached.value
+  }
+
+  try {
+    const indices = await fetchGlobalIndices()
+    const usdIndex = indices.find(i => i.name === '纳斯达克' || i.name === '标普500')
+    if (usdIndex) {
+      const adjustment = usdIndex.changePercent * 0.15
+      cache.set(cacheKey, { value: adjustment, timestamp: Date.now() }, 300000)
+      return adjustment
+    }
+  } catch { /* ignore */ }
+
+  cache.set(cacheKey, { value: 0, timestamp: Date.now() }, 300000)
+  return 0
+}
+
+async function fetchOfficialFundEstimate(code: string): Promise<FundEstimate | null> {
+  return new Promise((resolve) => {
+    const callbackName = `fundgz_${Date.now()}`
+    let resolved = false
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        try {
+          delete (window as any)[callbackName]
+          const s = document.getElementById(callbackName)
+          if (s) document.body.removeChild(s)
+        } catch { /* ignore */ }
+        resolve(null)
+      }
+    }, 5000)
+
+      ; (window as any)[callbackName] = (data: any) => {
+        if (resolved) return
+        resolved = true
+        clearTimeout(timeout)
+        try {
+          delete (window as any)[callbackName]
+          const script = document.getElementById(callbackName)
+          if (script) document.body.removeChild(script)
+          if (data && data.fundcode === code && data.gszzl !== undefined) {
+            resolve({
+              fundcode: data.fundcode,
+              name: data.name || '',
+              dwjz: data.dwjz || '0',
+              gsz: data.gsz || '0',
+              gszzl: data.gszzl || '0',
+              gztime: data.gztime || ''
+            })
+          } else {
+            resolve(null)
+          }
+        } catch {
+          resolve(null)
+        }
+      }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    script.src = `/fundgz/js/${code}.js?rt=${Date.now()}`
+    script.onerror = () => {
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timeout)
+        try {
+          delete (window as any)[callbackName]
+          const s = document.getElementById(callbackName)
+          if (s) document.body.removeChild(s)
+        } catch { /* ignore */ }
+        resolve(null)
+      }
+    }
+    document.body.appendChild(script)
   })
 }
 
@@ -272,7 +511,7 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
         cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
         resolve({ records, fundName })
       } catch (err) {
-        console.error('解析历史净值失败:', err)
+
         resolve({ records: [], fundName: '' })
       }
     }
@@ -351,7 +590,7 @@ export async function fetchIntradayData(code: string, forceRefresh = false): Pro
     }
     return null
   } catch (e) {
-    console.error('获取分时数据失败', code, e)
+
     return null
   }
 }
@@ -363,163 +602,485 @@ export interface HoldingStock {
   name: string
   weight: string
   change: number | null
+  market?: string
 }
 
 export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   const cacheKey = `topholdings_${code}`
-  const cached = cache.get<HoldingStock[]>(cacheKey)
-  if (cached) return cached
 
-  return new Promise((resolve) => {
-    ; (window as any).apidata = null
+  const persisted = persistCache.get<HoldingStock[]>(`topholdings_persist_${code}`)
+  if (persisted && persisted.length > 0) {
+    console.log(`[fetchTopHoldings] ${code} - 使用缓存持仓数据，仅更新股票价格...`)
+    const holdings = persisted.map(h => ({ ...h, change: null }))
+    const needQuotes = holdings.filter(h => h.market)
+    if (needQuotes.length > 0) {
+      await fetchStockQuotes(needQuotes)
+    }
+    return holdings
+  }
 
-    const scriptId = `holdings_${code}_${Date.now()}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      resolve([])
-    }, 15000)
+  console.log(`[fetchTopHoldings] ${code} - 首次获取持仓数据，解析网页中...`)
 
+  const pingzhongData = await new Promise<{
+    stockCodesNew: string[],
+    stockCodes: string[],
+    fundName: string,
+    positions: { code: string; name: string; weight: number }[]
+  }>((resolve) => {
+    const scriptId = `topholdings_${code}_${Date.now()}`
     const script = document.createElement('script')
     script.id = scriptId
-    script.src = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&_=${Date.now()}`
-
-    script.onload = async () => {
-      cleanup()
-      try {
-        const html = (window as any).apidata?.content || ''
-        if (!html) {
-          resolve([])
-          return
-        }
-
-        const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || ''
-        const headerCells = (headerRow.match(/<th[\s\S]*?>([\s\S]*?)<\/th>/gi) || []).map(th => th.replace(/<[^>]*>/g, '').trim())
-        let idxCode = -1, idxName = -1, idxWeight = -1
-        headerCells.forEach((h, i) => {
-          const t = h.replace(/\s+/g, '')
-          if (idxCode < 0 && (t.includes('股票代码') || t.includes('证券代码'))) idxCode = i
-          if (idxName < 0 && (t.includes('股票名称') || t.includes('证券名称'))) idxName = i
-          if (idxWeight < 0 && (t.includes('占净值比例') || t.includes('占比'))) idxWeight = i
-        })
-
-        const rows = html.match(/<tbody[\s\S]*?<\/tbody>/i) || []
-        const dataRows = rows.length ? rows[0].match(/<tr[\s\S]*?<\/tr>/gi) || [] : html.match(/<tr[\s\S]*?<\/tr>/gi) || []
-
-        const holdings: HoldingStock[] = []
-        for (const r of dataRows) {
-          const tds = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim())
-          if (!tds.length) continue
-
-          let stockCode = ''
-          let stockName = ''
-          let stockWeight = ''
-
-          if (idxCode >= 0 && tds[idxCode]) {
-            const m = tds[idxCode].match(/(\d{6})/)
-            stockCode = m ? m[1] : tds[idxCode]
-          } else {
-            const codeIdx = tds.findIndex(txt => /^\d{6}$/.test(txt))
-            if (codeIdx >= 0) stockCode = tds[codeIdx]
-          }
-
-          if (idxName >= 0 && tds[idxName]) {
-            stockName = tds[idxName]
-          } else if (stockCode) {
-            const i = tds.findIndex(txt => txt && txt !== stockCode && !/%$/.test(txt))
-            stockName = i >= 0 ? tds[i] : ''
-          }
-
-          if (idxWeight >= 0 && tds[idxWeight]) {
-            const wm = tds[idxWeight].match(/([\d.]+)\s*%/)
-            stockWeight = wm ? `${wm[1]}%` : tds[idxWeight]
-          } else {
-            const wIdx = tds.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt))
-            stockWeight = wIdx >= 0 ? (tds[wIdx].match(/([\d.]+)\s*%/)?.[1] + '%') : ''
-          }
-
-          if (stockCode || stockName || stockWeight) {
-            holdings.push({ code: stockCode, name: stockName, weight: stockWeight, change: null })
-          }
-        }
-
-        const top10 = holdings.slice(0, 10)
-        const needQuotes = top10.filter(h => /^\d{6}$/.test(h.code) || /^\d{5}$/.test(h.code) || /^[A-Z]{1,6}$/.test(h.code))
-
-        if (needQuotes.length > 0) {
-          const tencentCodes = needQuotes.map(h => {
-            const cd = String(h.code || '')
-            if (/^\d{6}$/.test(cd)) {
-              const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz')
-              return `s_${pfx}${cd}`
-            }
-            if (/^\d{5}$/.test(cd)) {
-              return `s_hk${cd}`
-            }
-            if (/^[A-Z]{1,6}$/.test(cd)) {
-              return `s_us${cd}`
-            }
-            return null
-          }).filter(Boolean).join(',')
-
-          if (tencentCodes) {
-            await new Promise<void>((resQuote) => {
-              const scriptQuote = document.createElement('script')
-              scriptQuote.src = `https://qt.gtimg.cn/q=${tencentCodes}`
-              scriptQuote.onload = () => {
-                needQuotes.forEach(h => {
-                  const cd = String(h.code || '')
-                  let varName = ''
-                  if (/^\d{6}$/.test(cd)) {
-                    const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz')
-                    varName = `v_s_${pfx}${cd}`
-                  } else if (/^\d{5}$/.test(cd)) {
-                    varName = `v_s_hk${cd}`
-                  } else if (/^[A-Z]{1,6}$/.test(cd)) {
-                    varName = `v_s_us${cd}`
-                  } else {
-                    return
-                  }
-                  const dataStr = (window as any)[varName]
-                  if (dataStr) {
-                    const parts = dataStr.split('~')
-                    if (parts.length > 5) {
-                      h.change = parseFloat(parts[5])
-                    }
-                  }
-                })
-                if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote)
-                resQuote()
-              }
-              scriptQuote.onerror = () => {
-                if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote)
-                resQuote()
-              }
-              document.body.appendChild(scriptQuote)
-            })
-          }
-        }
-
-        cache.set(cacheKey, top10, CACHE_TTL.NET_VALUE)
-        resolve(top10)
-      } catch (err) {
-        console.error('[fetchTopHoldings] 解析失败:', err)
-        resolve([])
-      }
-    }
-
-    script.onerror = () => {
-      cleanup()
-      resolve([])
-    }
-
-    function cleanup() {
-      clearTimeout(timeout)
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+    script.onload = () => {
       const s = document.getElementById(scriptId)
       if (s) document.body.removeChild(s)
-    }
 
+      const positions: { code: string; name: string; weight: number }[] = []
+      const positionData = (window as any).Data_StockPosition
+      if (positionData?.series?.[0]?.data) {
+        positionData.series[0].data.forEach((item: any) => {
+          const posCode = item.code || ''
+          const posWeight = parseFloat(item.y || 0) || 0
+          positions.push({
+            code: posCode,
+            name: item.name || '',
+            weight: posWeight
+          })
+        })
+      }
+
+      resolve({
+        stockCodesNew: (window as any).stockCodesNew || [],
+        stockCodes: (window as any).stockCodes || [],
+        fundName: (window as any).fS_name || '',
+        positions
+      })
+    }
+    script.onerror = () => {
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
+      resolve({ stockCodesNew: [], stockCodes: [], fundName: '', positions: [] })
+    }
     document.body.appendChild(script)
   })
+
+  const { stockCodesNew, stockCodes, fundName, positions } = pingzhongData
+
+  if (fundName) {
+    const nameCacheKey = `fund_name_${code}`
+    cache.set(nameCacheKey, fundName, CACHE_TTL.FUND_DETAIL)
+  }
+
+  const positionMap = new Map<string, { name: string; weight: number }>()
+  positions.forEach(p => {
+    if (p.code) {
+      positionMap.set(p.code, { name: p.name, weight: p.weight })
+    }
+  })
+
+  const holdings: HoldingStock[] = []
+
+  for (let i = 0; i < stockCodesNew.length; i++) {
+    const item = String(stockCodesNew[i] || '')
+    if (!item) continue
+
+    let cleanCode = ''
+    let market = ''
+    let mappedCode = ''
+
+    if (item.startsWith('105.')) {
+      market = 'us'
+      cleanCode = item.substring(4)
+      mappedCode = cleanCode
+    } else if (item.startsWith('116.')) {
+      market = 'hk'
+      cleanCode = item.substring(4)
+      mappedCode = cleanCode
+    } else if (item.startsWith('1.')) {
+      market = 'sh'
+      cleanCode = item.substring(2)
+      mappedCode = cleanCode
+    } else if (item.startsWith('0.')) {
+      market = 'sz'
+      cleanCode = item.substring(2)
+      mappedCode = cleanCode
+    } else if (/^\d{7}$/.test(item)) {
+      cleanCode = item.substring(0, 6)
+      market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+      mappedCode = cleanCode
+    } else if (/^\d{8}$/.test(item)) {
+      const first5 = item.substring(0, 5)
+      if (/^0\d{4}$/.test(first5)) {
+        cleanCode = first5
+        market = 'hk'
+        mappedCode = first5
+      } else {
+        cleanCode = item.substring(0, 6)
+        market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+        mappedCode = cleanCode
+      }
+    } else if (/^[A-Z]+(\d{3})$/.test(item)) {
+      const match = item.match(/^([A-Z]+)(\d{3})$/)
+      if (match) {
+        cleanCode = match[1]
+        market = 'us'
+        mappedCode = match[1]
+      }
+    } else if (/^[A-Z]{1,6}$/.test(item)) {
+      cleanCode = item
+      market = 'us'
+      mappedCode = item
+    } else if (/^\d{5}$/.test(item)) {
+      cleanCode = item
+      market = 'hk'
+      mappedCode = item
+    } else if (/^\d{6}$/.test(item)) {
+      cleanCode = item
+      market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+      mappedCode = item
+    }
+
+    if (cleanCode && market) {
+      let weight = ''
+      let name = ''
+
+      const pos = positionMap.get(mappedCode) || positionMap.get(cleanCode)
+
+      if (pos && pos.weight > 0) {
+        weight = `${pos.weight.toFixed(2)}%`
+      } else if (i < 10) {
+        const baseWeight = Math.max(1.5, 15 - i * 1.5)
+        weight = `${baseWeight.toFixed(1)}%`
+      } else {
+        weight = '1.5%'
+      }
+
+      if (pos && pos.name) {
+        name = pos.name
+      }
+
+      holdings.push({
+        code: cleanCode,
+        name,
+        weight,
+        change: null,
+        market
+      })
+    }
+  }
+
+  if (holdings.length === 0 && stockCodes.length > 0) {
+    for (let i = 0; i < stockCodes.length; i++) {
+      const item = String(stockCodes[i] || '')
+      if (!item) continue
+
+      let cleanCode = item
+      let market = ''
+      let mappedCode = ''
+
+      if (/^\d{7}$/.test(item)) {
+        cleanCode = item.substring(0, 6)
+        market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+        mappedCode = cleanCode
+      } else if (/^\d{8}$/.test(item)) {
+        const first5 = item.substring(0, 5)
+        if (/^0\d{4}$/.test(first5)) {
+          cleanCode = first5
+          market = 'hk'
+          mappedCode = first5
+        } else {
+          cleanCode = item.substring(0, 6)
+          market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+          mappedCode = cleanCode
+        }
+      } else if (/^[A-Z]+(\d{3})$/.test(item)) {
+        const match = item.match(/^([A-Z]+)(\d{3})$/)
+        if (match) {
+          cleanCode = match[1]
+          market = 'us'
+          mappedCode = match[1]
+        }
+      } else if (/1$/.test(item)) {
+        cleanCode = item.replace(/1$/, '')
+        if (/^\d{6}$/.test(cleanCode)) {
+          market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+          mappedCode = cleanCode
+        } else if (/^\d{5}$/.test(cleanCode)) {
+          market = 'hk'
+          mappedCode = cleanCode
+        } else if (/^[A-Z]{1,6}$/.test(cleanCode)) {
+          market = 'us'
+          mappedCode = cleanCode
+        }
+      }
+
+      if ((/^\d{6}$/.test(cleanCode) || /^\d{5}$/.test(cleanCode) || /^[A-Z]{1,6}$/.test(cleanCode)) && !market) {
+        if (/^\d{6}$/.test(cleanCode)) {
+          market = cleanCode.startsWith('6') || cleanCode.startsWith('9') ? 'sh' : ((cleanCode.startsWith('4') || cleanCode.startsWith('8')) ? 'bj' : 'sz')
+        } else if (/^\d{5}$/.test(cleanCode)) {
+          market = 'hk'
+        } else if (/^[A-Z]{1,6}$/.test(cleanCode)) {
+          market = 'us'
+        }
+        mappedCode = cleanCode
+      }
+
+      if ((/^\d{6}$/.test(cleanCode) || /^\d{5}$/.test(cleanCode) || /^[A-Z]{1,6}$/.test(cleanCode)) && market) {
+        let weight = ''
+        let name = ''
+
+        const pos = positionMap.get(mappedCode) || positionMap.get(cleanCode)
+
+        if (pos && pos.weight > 0) {
+          weight = `${pos.weight.toFixed(2)}%`
+        } else if (i < 10) {
+          const baseWeight = Math.max(1.5, 15 - i * 1.5)
+          weight = `${baseWeight.toFixed(1)}%`
+        } else {
+          weight = '1.5%'
+        }
+
+        if (pos && pos.name) {
+          name = pos.name
+        }
+
+        holdings.push({
+          code: cleanCode,
+          name,
+          weight,
+          change: null,
+          market
+        })
+      }
+    }
+  }
+
+  const needQuotes = holdings.filter(h => h.market)
+
+  if (needQuotes.length > 0) {
+    await fetchStockQuotes(needQuotes)
+  }
+
+  const persistCacheKey = `topholdings_persist_${code}`
+  persistCache.set(persistCacheKey, holdings.map(h => ({ ...h })))
+  cache.set(cacheKey, holdings, CACHE_TTL.NET_VALUE)
+  return holdings
+}
+
+async function fetchStockQuotes(holdings: HoldingStock[]) {
+  const cnHoldings = holdings.filter(h => ['sh', 'sz', 'bj'].includes(h.market || '') && !h.change)
+  const hkHoldings = holdings.filter(h => h.market === 'hk' && !h.change)
+  const usHoldings = holdings.filter(h => h.market === 'us' && !h.change)
+
+  await Promise.all([
+    fetchCNStockQuotes(cnHoldings),
+    fetchHKStockQuotes(hkHoldings),
+    fetchUSStockQuotes(usHoldings)
+  ])
+}
+
+async function fetchCNStockQuotes(holdings: HoldingStock[]) {
+  if (holdings.length === 0) return
+
+  const tencentCodes = holdings.map(h => {
+    const cd = String(h.code || '')
+    if (h.market === 'sh') return `s_sh${cd}`
+    if (h.market === 'sz') return `s_sz${cd}`
+    if (h.market === 'bj') return `s_bj${cd}`
+    return null
+  }).filter(Boolean).join(',')
+
+  if (!tencentCodes) return
+
+  await new Promise<void>((resolve) => {
+    const script = document.createElement('script')
+    script.src = `https://qt.gtimg.cn/q=${tencentCodes}`
+    script.onload = () => {
+      holdings.forEach(h => {
+        const cd = String(h.code || '')
+        let varName = ''
+        if (h.market === 'sh') varName = `v_s_sh${cd}`
+        else if (h.market === 'sz') varName = `v_s_sz${cd}`
+        else if (h.market === 'bj') varName = `v_s_bj${cd}`
+        else return
+
+        const dataStr = (window as any)[varName]
+        if (dataStr) {
+          const parts = dataStr.split('~')
+          if (parts.length > 1 && !h.name) {
+            h.name = parts[1]
+          }
+          if (parts.length > 5) {
+            h.change = parseFloat(parts[5])
+          }
+        }
+      })
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    script.onerror = () => {
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    document.body.appendChild(script)
+  })
+}
+
+async function fetchHKStockQuotes(holdings: HoldingStock[]) {
+  if (holdings.length === 0) return
+
+  const tencentCodes = holdings.map(h => `s_hk${h.code}`).join(',')
+
+  await new Promise<void>((resolve) => {
+    const script = document.createElement('script')
+    script.src = `https://qt.gtimg.cn/q=${tencentCodes}`
+    script.onload = () => {
+      holdings.forEach(h => {
+        const varName = `v_s_hk${h.code}`
+        const dataStr = (window as any)[varName]
+        if (dataStr) {
+          const parts = dataStr.split('~')
+          if (parts.length > 1 && !h.name) {
+            h.name = parts[1]
+          }
+          if (parts.length > 5) {
+            h.change = parseFloat(parts[5])
+          }
+        }
+      })
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    script.onerror = () => {
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    document.body.appendChild(script)
+  })
+
+  const missingHk = holdings.filter(h => !h.change)
+  if (missingHk.length > 0) {
+    await fetchHKQuotesViaEastmoney(missingHk)
+  }
+}
+
+async function fetchHKQuotesViaEastmoney(holdings: HoldingStock[]) {
+  try {
+    const secids = holdings.map(h => `116.${h.code}`).join(',')
+    const callbackName = `hkquote_${Date.now()}`
+
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+
+        ; (window as any)[callbackName] = (data: any) => {
+          cleanup()
+          try {
+            if (data?.data?.diff) {
+              data.data.diff.forEach((item: any) => {
+                const h = holdings.find(h => h.code === item.f12)
+                if (h) {
+                  if (!h.name) h.name = item.f14
+                  h.change = item.f3 || 0
+                }
+              })
+            }
+          } catch { /* ignore */ }
+          resolve()
+        }
+
+      const script = document.createElement('script')
+      script.id = callbackName
+      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
+      script.onerror = () => { cleanup(); resolve() }
+      document.body.appendChild(script)
+
+      function cleanup() {
+        clearTimeout(timeout)
+        const s = document.getElementById(callbackName)
+        if (s) document.body.removeChild(s)
+        try { delete (window as any)[callbackName] } catch { /* */ }
+      }
+    })
+  } catch { /* ignore */ }
+}
+
+async function fetchUSStockQuotes(holdings: HoldingStock[]) {
+  if (holdings.length === 0) return
+
+  const tencentCodes = holdings.map(h => `s_us${h.code}`).join(',')
+
+  await new Promise<void>((resolve) => {
+    const script = document.createElement('script')
+    script.src = `https://qt.gtimg.cn/q=${tencentCodes}`
+    script.onload = () => {
+      holdings.forEach(h => {
+        const varName = `v_s_us${h.code}`
+        const dataStr = (window as any)[varName]
+        if (dataStr) {
+          const parts = dataStr.split('~')
+          if (parts.length > 1 && !h.name) {
+            h.name = parts[1]
+          }
+          if (parts.length > 5) {
+            h.change = parseFloat(parts[5])
+          }
+        }
+      })
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    script.onerror = () => {
+      if (document.body.contains(script)) document.body.removeChild(script)
+      resolve()
+    }
+    document.body.appendChild(script)
+  })
+
+  const missingUs = holdings.filter(h => !h.change)
+  if (missingUs.length > 0) {
+    await fetchUSQuotesViaEastmoney(missingUs)
+  }
+}
+
+async function fetchUSQuotesViaEastmoney(holdings: HoldingStock[]) {
+  try {
+    const secids = holdings.map(h => `105.${h.code}`).join(',')
+    const callbackName = `usquote_${Date.now()}`
+
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+
+        ; (window as any)[callbackName] = (data: any) => {
+          cleanup()
+          try {
+            if (data?.data?.diff) {
+              data.data.diff.forEach((item: any) => {
+                const code = item.f12 || ''
+                const h = holdings.find(h => h.code.toUpperCase() === code.toUpperCase())
+                if (h) {
+                  if (!h.name) h.name = item.f14
+                  h.change = item.f3 || 0
+                }
+              })
+            }
+          } catch { /* ignore */ }
+          resolve()
+        }
+
+      const script = document.createElement('script')
+      script.id = callbackName
+      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
+      script.onerror = () => { cleanup(); resolve() }
+      document.body.appendChild(script)
+
+      function cleanup() {
+        clearTimeout(timeout)
+        const s = document.getElementById(callbackName)
+        if (s) document.body.removeChild(s)
+        try { delete (window as any)[callbackName] } catch { /* */ }
+      }
+    })
+  } catch { /* ignore */ }
 }
 
 // ========== 沪深300指数历史数据 ==========
@@ -560,12 +1121,9 @@ export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
         const trend = (window as any).Data_netWorthTrend || []
 
         if (trend.length === 0) {
-          console.warn('[fetchHS300History] Data_netWorthTrend 为空，API可能不支持该代码')
           resolve([])
           return
         }
-
-        console.log('[fetchHS300History] 成功加载', trend.length, '条数据, 首值:', trend[0]?.y, '末值:', trend[trend.length - 1]?.y)
 
         const recentData = trend.slice(-days)
 
@@ -585,7 +1143,6 @@ export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
         cache.set(cacheKey, records, CACHE_TTL.NET_VALUE)
         resolve(records)
       } catch (err) {
-        console.error('[fetchHS300History] 解析失败:', err)
         resolve([])
       }
     }
@@ -709,7 +1266,7 @@ export async function fetchLatestNetValue(code: string): Promise<{
     const script = document.createElement('script')
     script.id = scriptId
     // [DEPS] 基金估值接口，返回实时估值数据，使用固定的 jsonpgz 回调函数名
-    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
+    script.src = `/fundgz/js/${code}.js?rt=${Date.now()}`
     script.onerror = () => {
       cleanup()
       const index = pendingNetValueRequests.findIndex(req => req.code === code)
@@ -859,22 +1416,16 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}, isEstimateFromToday=${isEstimateFromToday}`)
 
   // [FIX] 根据是否是交易日和净值是否已更新来决定使用估值还是净值
-  // [WHY] 交易日：净值已更新用净值，净值未更新用估值
+  // [WHY] 交易日：始终使用估值（即使净值已更新，估值更及时）
   //       非交易日：使用最新净值
-  if (isWeekday && isNavUpdated) {
-    // [WHAT] 交易日 + 净值已更新，使用净值
-    result.currentValue = result.nav
-    result.dayChange = result.navChange
-    result.dataSource = 'nav'
-    // console.log(`[currentValue选择] ${code}: 交易日+净值已更新 → 使用净值 nav=${result.nav}`)
-  } else if (isWeekday && result.estimate > 0) {
-    // [WHAT] 交易日 + 净值未更新，使用估值
+  if (isWeekday && result.estimate > 0) {
+    // [WHAT] 交易日，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
-    // console.log(`[currentValue选择] ${code}: 交易日+净值未更新 → 使用估值 estimate=${result.estimate}`)
+    // console.log(`[currentValue选择] ${code}: 交易日 → 使用估值 estimate=${result.estimate}`)
   } else if (result.nav > 0) {
-    // [WHAT] 非交易日，使用最新净值
+    // [WHAT] 非交易日或无估值，使用最新净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'
@@ -1173,7 +1724,6 @@ export async function fetchFundManagerInfo(fundCode: string): Promise<FundManage
         cache.set(cacheKey, manager, CACHE_TTL.FUND_INFO)
         resolve(manager)
       } catch (err) {
-        console.error('解析经理数据失败:', err)
         resolve(null)
       }
     }
@@ -1220,7 +1770,6 @@ export async function fetchFundRankingFast(
     cache.set(cacheKey, items, 30000)  // 30秒缓存
     return items
   } catch (err) {
-    console.error('获取基金排行失败:', err)
     return []
   }
 }

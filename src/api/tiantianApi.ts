@@ -1717,7 +1717,7 @@ export async function fetchFundScale(fundCode: string): Promise<FundScale> {
   try {
     // [WHAT] 使用JSONP获取基金基本信息（包含规模）
     const cbName = `scale_cb_${Date.now()}`
-    const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js?rt=${Date.now()}`
+    const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js`
     
     // [WHAT] 尝试从估值接口获取规模信息
     // 该接口返回的是js变量赋值，不是标准JSONP，需要特殊处理

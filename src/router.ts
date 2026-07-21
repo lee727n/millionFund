@@ -10,7 +10,7 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: () => import('@/views/Home.vue'),
-      meta: { title: '自选' }
+      meta: { title: '自选', keepAlive: true }
     },
     {
       path: '/holding',
@@ -34,13 +34,19 @@ const router = createRouter({
       path: '/market',
       name: 'market',
       component: () => import('@/views/Market.vue'),
-      meta: { title: '市场指数' }
+      meta: { title: '市场指数', keepAlive: true }
     },
     {
       path: '/ai-tracking',
       name: 'ai-tracking',
       component: () => import('@/views/AITracking.vue'),
       meta: { title: 'AI追踪', keepAlive: true }
+    },
+    {
+      path: '/portfolio',
+      name: 'portfolio',
+      component: () => import('@/views/Portfolio.vue'),
+      meta: { title: '持仓总览', keepAlive: true }
     },
     {
       path: '/ai-tracking/detail/:sellCode/:sellName/:buyCode/:buyName/:sellNav/:buyNav/:sellPrice/:buyPrice/:sellChange/:buyChange/:date/:sellNavEstimated/:buyNavEstimated',
