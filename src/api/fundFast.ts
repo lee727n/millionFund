@@ -701,6 +701,7 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 
         const positions: { code: string; name: string; weight: number }[] = []
         const positionData = (window as any).Data_StockPosition
+
         if (positionData?.series?.[0]?.data) {
           positionData.series[0].data.forEach((item: any) => {
             const posCode = item.code || ''
@@ -730,6 +731,11 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   })
 
   const { stockCodesNew, stockCodes, fundName, positions } = pingzhongData
+
+  console.log(`[fetchTopHoldings] ${code} - pingzhongdata返回: stockCodesNew=${stockCodesNew.length}, positions=${positions.length}`)
+  if (positions.length > 0) {
+    console.log(`[fetchTopHoldings] ${code} - pingzhongdata权重示例: ${positions.slice(0, 3).map(p => `${p.name}(${p.code}) ${p.weight}%`).join(', ')}`)
+  }
 
   if (fundName) {
     const nameCacheKey = `fund_name_${code}`
@@ -931,18 +937,28 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 async function fetchTopHoldingsFromApi(code: string): Promise<HoldingStock[]> {
   try {
     console.log(`[fetchTopHoldingsFromApi] ${code} - 通过fetch获取持仓页面...`)
+
     const isDev = import.meta.env.DEV
-    const url = isDev
-      ? `/fund-detail/${code}.html`
-      : `https://fund.eastmoney.com/${code}.html`
-    const response = await fetch(url, {
-      headers: { 'Accept': 'text/html' }
+    const url = `https://fund.eastmoney.com/${code}.html`
+    const fetchUrl = isDev ? `/fund-detail/${code}.html` : url
+
+    console.log(`[fetchTopHoldingsFromApi] ${code} - 请求URL: ${fetchUrl}`)
+
+    const response = await fetch(fetchUrl, {
+      headers: {
+        'Accept': 'text/html',
+        'Referer': 'https://fund.eastmoney.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
     })
     if (!response.ok) {
       console.log(`[fetchTopHoldingsFromApi] ${code} - fetch失败: ${response.status}`)
       return []
     }
     const html = await response.text()
+
+    console.log(`[fetchTopHoldingsFromApi] ${code} - HTML长度: ${html.length}`)
+
     if (!html || html.length < 100) {
       console.log(`[fetchTopHoldingsFromApi] ${code} - HTML为空`)
       return []
