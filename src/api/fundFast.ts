@@ -335,45 +335,57 @@ async function checkIsQDII(code: string): Promise<boolean> {
   const cached = cache.get<boolean>(cacheKey)
   if (cached !== undefined) return cached
 
-  return new Promise((resolve) => {
-    const scriptId = `qdii_check_${code}_${Date.now()}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
-      resolve(false)
-    }, 8000)
+  const persistCached = persistCache.get<boolean>(cacheKey)
+  if (persistCached !== null) {
+    cache.set(cacheKey, persistCached, CACHE_TTL.FUND_INFO)
+    return persistCached
+  }
 
-    const script = document.createElement('script')
-    script.id = scriptId
-    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
-    script.onload = () => {
-      cleanup()
-      try {
-        const fundType = (window as any).Data_fundType || ''
-        const isQDII = fundType.includes('QDII') ||
-          fundType.includes('qdii') ||
-          fundType.includes('海外') ||
-          fundType.includes('全球')
-        cache.set(cacheKey, isQDII, CACHE_TTL.FUND_INFO)
-        resolve(isQDII)
-      } catch {
+  return new Promise((resolve) => {
+    schedulePingzhongRequest(() => {
+      const scriptId = `qdii_check_${code}_${Date.now()}`
+      const timeout = setTimeout(() => {
+        cleanup()
         cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+        persistCache.set(cacheKey, false)
+        resolve(false)
+      }, 8000)
+
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+      script.onload = () => {
+        cleanup()
+        try {
+          const fundType = (window as any).Data_fundType || ''
+          const isQDII = fundType.includes('QDII') ||
+            fundType.includes('qdii') ||
+            fundType.includes('海外') ||
+            fundType.includes('全球')
+          cache.set(cacheKey, isQDII, CACHE_TTL.FUND_INFO)
+          persistCache.set(cacheKey, isQDII)
+          resolve(isQDII)
+        } catch {
+          cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+          persistCache.set(cacheKey, false)
+          resolve(false)
+        }
+      }
+      script.onerror = () => {
+        cleanup()
+        cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+        persistCache.set(cacheKey, false)
         resolve(false)
       }
-    }
-    script.onerror = () => {
-      cleanup()
-      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
-      resolve(false)
-    }
 
-    function cleanup() {
-      clearTimeout(timeout)
-      const s = document.getElementById(scriptId)
-      if (s) document.body.removeChild(s)
-    }
+      function cleanup() {
+        clearTimeout(timeout)
+        const s = document.getElementById(scriptId)
+        if (s) document.body.removeChild(s)
+      }
 
-    document.body.appendChild(script)
+      document.body.appendChild(script)
+    })
   })
 }
 
@@ -490,6 +502,12 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
   const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
   if (cached) return cached
 
+  const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+  if (persistCached && persistCached.records.length > 0) {
+    cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+    return persistCached
+  }
+
   return new Promise((resolve) => {
     schedulePingzhongRequest(() => {
       ; (window as any).Data_netWorthTrend = []
@@ -531,6 +549,7 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
           records.reverse()
 
           cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
+          persistCache.set(cacheKey, { records, fundName })
           resolve({ records, fundName })
         } catch (err) {
           resolve({ records: [], fundName: '' })
