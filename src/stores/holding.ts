@@ -8,6 +8,14 @@ import { ref, computed } from 'vue'
 import type { HoldingRecord, HoldingSummary } from '@/types/fund'
 import { getHoldings, saveHoldings } from '@/utils/storage'
 import { getPrevWorkdaySync } from '@/utils/holiday'
+
+function getTradingDateStr(date: Date = new Date()): string {
+  const hour = date.getHours()
+  if (hour < 9) {
+    date = new Date(date.getTime() - 24 * 60 * 60 * 1000)
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 import {
   upsertHolding,
   removeHolding as removeFromStorage,
@@ -286,7 +294,7 @@ export const useHoldingStore = defineStore('holding', () => {
     }
 
     // [WHAT] 判断是否已更新：根据净值日期判断（QDII 基金允许晚一天更新）
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTradingDateStr()
 
     // 检查是否有今日净值数据
     const hasTodayNav = data.nav > 0 && data.navDate === today

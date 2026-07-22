@@ -33,7 +33,7 @@ const holdingStore = useHoldingStore()
 const fundCode = computed(() => route.params.code as string)
 
 // 数据状态
-const fundInfo = ref<(FundEstimate & { dataSource?: string }) | null>(null)
+const fundInfo = ref<(FundEstimate & { dataSource?: string; navDate?: string }) | null>(null)
 const isLoading = ref(true)
 
 // [WHAT] 趋势预测
@@ -167,7 +167,8 @@ async function loadFundData() {
         gsz: accurateData.currentValue.toString(),
         gszzl: accurateData.dayChange.toString(),
         gztime: accurateData.estimateTime || accurateData.navDate,
-        dataSource: accurateData.dataSource
+        dataSource: accurateData.dataSource,
+        navDate: accurateData.navDate
       }
     } else {
       const { searchFund } = await import('@/api/fund')
@@ -564,7 +565,7 @@ function formatPercent(num: number): string {
         <div class="nav-title">
           <div class="fund-name">{{ fundInfo?.name || '加载中...' }}</div>
           <div class="fund-info-row">
-            <span class="fund-code">{{ fundCode }}</span>
+            <span class="fund-code">净值日期 {{ fundInfo?.navDate || '--' }}</span>
             <span class="info-divider">|</span>
             <span class="estimate-tag" :class="isUp ? 'up' : 'down'">
               {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}

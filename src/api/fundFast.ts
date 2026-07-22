@@ -7,6 +7,14 @@ import { isTradingTime, persistCache, fetchETFRank } from './tiantianApi'
 import type { FundEstimate, NetValueRecord } from '@/types/fund'
 import { getPrevWorkdaySync, isHolidaySync, clearHolidayCache } from '../utils/holiday'
 
+function getTradingDateStr(date: Date = new Date()): string {
+  const hour = date.getHours()
+  if (hour < 9) {
+    date = new Date(date.getTime() - 24 * 60 * 60 * 1000)
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 // [WHAT] 清除指定基金的缓存数据
 export function clearFundCache(code: string): void {
   const keys = ['estimate', 'netvalue', 'kline', 'period']
@@ -500,12 +508,41 @@ export async function fetchFundEstimatesBatch(codes: string[]): Promise<Map<stri
 export async function fetchNetValueHistoryFast(code: string, days = 30): Promise<{ records: NetValueRecord[], fundName: string }> {
   const cacheKey = `netvalue_${code}_${days}`
   const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
-  if (cached) return cached
+  if (cached) {
+    const tradingDate = getTradingDateStr()
+    const latestDate = cached.records[0]?.date
+    // console.log(`[净值缓存检查] ${code} - 内存缓存命中, latestDate=${latestDate}, tradingDate=${tradingDate}`)
+    if (latestDate === tradingDate) {
+      // console.log(`[净值缓存检查] ${code} - 已有交易日净值，跳过请求`)
+      return cached
+    }
+    const hour = new Date().getHours()
+    if (hour >= 9 && hour < 18) {
+      // console.log(`[净值缓存检查] ${code} - 盘中时段，使用缓存`)
+      return cached
+    }
+    // console.log(`[净值缓存检查] ${code} - 需要刷新净值`)
+  }
 
   const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
   if (persistCached && persistCached.records.length > 0) {
-    cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
-    return persistCached
+    const tradingDate = getTradingDateStr()
+    const latestDate = persistCached.records[0]?.date
+    // console.log(`[净值缓存检查] ${code} - 持久化缓存命中, latestDate=${latestDate}, tradingDate=${tradingDate}`)
+    if (latestDate === tradingDate) {
+      // console.log(`[净值缓存检查] ${code} - 已有交易日净值，跳过请求`)
+      cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+      return persistCached
+    }
+    const hour = new Date().getHours()
+    if (hour >= 9 && hour < 18) {
+      // console.log(`[净值缓存检查] ${code} - 盘中时段，使用缓存`)
+      cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+      return persistCached
+    }
+    // console.log(`[净值刷新] ${code} - 缓存日期=${latestDate}, 交易日=${tradingDate}，请求新数据...`)
+  } else {
+    // console.log(`[净值缓存检查] ${code} - 无持久化缓存，请求新数据...`)
   }
 
   return new Promise((resolve) => {
@@ -1537,7 +1574,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // })
 
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  const today = getTradingDateStr(now)
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
 
