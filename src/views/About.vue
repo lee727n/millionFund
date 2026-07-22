@@ -29,6 +29,9 @@
               <li>{{ t('about.changelog_fix') }}生产环境 API 404 问题</li>
               <li>{{ t('about.li_fetch') }}</li>
               <li>{{ t('about.li_error') }}</li>
+              <li>{{ t('about.changelog_fix') }}资产页 APK 下载链接（对齐 CI 真实产物 millionasset-Android-release.apk）</li>
+              <li>{{ t('about.changelog_new') }}全品种行情页：A股 / 港股 / 美股 / 加密 / 可转债 / 外汇 / 期货 / 大宗商品</li>
+              <li>{{ t('about.changelog_new') }}CI 增加 lint 与类型检查质量红线；覆盖率门禁改为强制</li>
             </ul>
           </div>
 
@@ -115,7 +118,7 @@
           <div class="qr-title">📱 {{ t('about.qr_title') }}</div>
           <img :src="apkQrUrl" alt="APK {{ t('common.download') }}{{ t('common.qr_code') }}" class="qr-image" />
           <div class="qr-url">{{ apkDownloadUrl }}</div>
-          <van-button type="primary" size="small" round @click="downloadApk('debug')">{{ t('about.direct_download') }}</van-button>
+          <van-button type="primary" size="small" round @click="downloadApk('release')">{{ t('about.direct_download') }}</van-button>
           <van-button plain size="small" round style="margin-top: 8px" @click="showApkQr = false">{{ t('about.qr_close') }}</van-button>
         </div>
       </van-overlay>
@@ -163,7 +166,7 @@ const buildTime = ref(getBuildTime())
 
 /** 点击{{ t('common.install') }}/{{ t('common.download') }} APK */
 async function downloadAndInstallApk() {
-  const dlUrl = DOWNLOAD_URLS.android.debug
+  const dlUrl = DOWNLOAD_URLS.android.release
   if (isAndroid()) {
     window.open(dlUrl, '_system')
     showToast(t('about.apk_downloading'))
@@ -179,7 +182,7 @@ async function downloadAndInstallApk() {
 }
 
 const showApkQr = ref(false)
-const apkDownloadUrl = DOWNLOAD_URLS.android.debug
+const apkDownloadUrl = DOWNLOAD_URLS.android.release
 
 const apkQrUrl = computed(() =>
   `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(apkDownloadUrl)}`
@@ -192,10 +195,15 @@ const platformLabel = computed(() => ({
 }[getPlatform()] || 'Web 浏览器'))
 
 const showAndroid = computed(() => !isAndroid())
-const dataSourceCount = 10
+
+// [FIX] 动态统计 src/api 下可用的数据/行情模块数量（排除测试文件与类型声明）
+const apiModules = import.meta.glob('../api/**/*.ts', { eager: true })
+const dataSourceCount = Object.keys(apiModules).filter(
+  (k) => !k.endsWith('.test.ts') && !k.endsWith('.d.ts')
+).length
 
 // ========== {{ t('common.download') }}处理 ==========
-function downloadApk(type: 'debug' | 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast(t('about.downloading_apk') + '...') }
+function downloadApk(type: 'release') { window.open(DOWNLOAD_URLS.android[type], '_blank'); showToast(t('about.downloading_apk') + '...') }
 function downloadWin(type: 'nsis' | 'portable') { window.open(DOWNLOAD_URLS.windows[type], '_blank'); showToast(t('about.downloading_windows') + '...') }
 function openUrl(url: string) { window.open(url, '_blank') }
 </script>

@@ -31,7 +31,8 @@ export const APP_INFO = {
  */
 export const DOWNLOAD_URLS = {
   android: {
-    debug: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/millionasset-Android-debug.apk`,
+    // [NOTE] CI 只构建 release 变体（build-all.yml: mv app-release.apk millionasset-Android-release.apk）
+    // 不存在 debug 产物，故仅保留 release 下载地址
     release: `${RELEASE_DOWNLOAD}/${CURRENT_TAG}/millionasset-Android-release.apk`,
   },
   windows: {

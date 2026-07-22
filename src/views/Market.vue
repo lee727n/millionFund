@@ -22,6 +22,20 @@
     </div>
 
     <div class="scroll-content">
+
+      <!-- 全品种行情快捷入口 -->
+      <div class="asset-nav">
+        <div class="asset-nav-title">全品种行情</div>
+        <div class="asset-nav-grid">
+          <div
+            v-for="a in assetList"
+            :key="a.type"
+            class="asset-nav-item"
+            @click="router.push('/asset/' + a.type)"
+          >{{ a.label }}</div>
+        </div>
+      </div>
+
       <!-- 指数 Tab 内容 -->
       <template v-if="activeTab === 'index'">
         <!-- 交易状态 -->
@@ -127,12 +141,14 @@ import { useRouter } from 'vue-router'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
 import { fetchFutureBatch, type FutureQuote } from '@/api/future'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
+import { ASSET_LIST } from '@/api/assetRegistry'
 import { logger } from '@/utils/logger'
 import { useI18n } from 'vue-i18n'
 import { showToast } from 'vant'
 
 const router = useRouter()
 const { t } = useI18n()
+const assetList = ASSET_LIST
 
 // Tab 切换
 const activeTab = ref<'index' | 'future'>('index')
@@ -268,6 +284,40 @@ onUnmounted(() => {
 .scroll-content {
   padding: 12px 16px;
   padding-bottom: 40px;
+}
+
+/* 全品种行情快捷入口 */
+.asset-nav {
+  background: var(--van-background-2, #fff);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.asset-nav-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--van-text-color, #333);
+  margin-bottom: 10px;
+}
+.asset-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.asset-nav-item {
+  text-align: center;
+  padding: 10px 4px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--van-text-color-2, #555);
+  background: var(--van-background, #f5f5f5);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.asset-nav-item:active {
+  background: #1677ff;
+  color: #fff;
 }
 
 .trading-status-bar {

@@ -72,13 +72,15 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { showToast } from 'vant'
 import pkg from '../../package.json'
+import { DOWNLOAD_URLS } from '@/config/release'
 
 const { t } = useI18n()
 const isDownloading = ref(false)
 
 const version = pkg.version
-const APK_URL = `https://github.com/ghshhf/millionFund/releases/download/android-dev/AI%E7%99%BE%E4%B8%87%E5%AE%9E%E7%9B%98-v${version}.apk`
-const APK_FILENAME = `AI百万实盘-v${version}.apk`
+// [FIX] 对齐 CI 真实产物：tag 为 v{version}，文件名为 millionasset-Android-release.apk
+const APK_URL = DOWNLOAD_URLS.android.release
+const APK_FILENAME = 'millionasset-Android-release.apk'
 
 function downloadAPK() {
   isDownloading.value = true

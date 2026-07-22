@@ -39,9 +39,8 @@ describe('release.ts', () => {
   })
 
   test('DOWNLOAD_URLS 各平台链接格式正确', () => {
-    // Android
-    expect(DOWNLOAD_URLS.android.debug).toContain(RELEASE_DOWNLOAD)
-    expect(DOWNLOAD_URLS.android.debug).toContain('.apk')
+    // Android（CI 仅构建 release 变体，无 debug 产物）
+    expect(DOWNLOAD_URLS.android.release).toContain(RELEASE_DOWNLOAD)
     expect(DOWNLOAD_URLS.android.release).toContain('.apk')
 
     // Windows

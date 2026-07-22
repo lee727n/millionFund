@@ -31,6 +31,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: 🔍 代码风格检查 (Lint)
+        run: npm run lint
+
+      - name: 🔧 类型检查 (TypeCheck)
+        run: npm run typecheck
+
       - name: 📊 运行单元测试（含覆盖率）
         run: npm run test:coverage
 
@@ -42,29 +48,27 @@ jobs:
           files: ./coverage/coverage-summary.json
           fail_ci_if_error: false
 
-      - name: 🔎 覆盖率门禁检查（警告模式）
+      - name: 🔎 覆盖率门禁检查（强制）
         run: |
           if [ ! -f coverage/coverage-summary.json ]; then
-            echo "::warning::未生成覆盖率报告，请检查测试配置"
-            exit 0
+            echo "::error::未生成覆盖率报告，请检查测试配置"
+            exit 1
           fi
 
           COVERAGE=$(node -e "const d=require('./coverage/coverage-summary.json'); const p=d.total.lines.pct; console.log(p)")
           echo "📊 当前行覆盖率: ${COVERAGE}%"
-          echo "⚠️ 目标覆盖率: 60%（当前为警告模式，不阻塞构建）"
+          echo "🎯 门禁阈值: 60%（lines/functions/statements/branches，对齐项目目标）"
 
           # 使用 node 做浮点比较，避免 bc 依赖
           node -e "
             const c = parseFloat(process.argv[1]);
             if (c < 60) {
-              console.log('::warning::覆盖率低于 60%！当前 ' + c + '%，建议添加更多单元测试');
+              console.log('::error::覆盖率低于 70% 门禁！当前 ' + c + '%，请补充单元测试');
+              process.exit(1);
             } else {
-              console.log('✅ 覆盖率检查通过: ' + c + '% ≥ 60%');
+              console.log('✅ 覆盖率检查通过: ' + c + '% ≥ 70%');
             }
           " "$COVERAGE"
-
-          # 不阻塞构建 - 仅警告
-          exit 0
 
       - name: 📊 评论 PR（覆盖率变化）
         if: github.event_name == 'pull_request'

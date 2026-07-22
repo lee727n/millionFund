@@ -62,6 +62,12 @@ const router = createRouter({
       meta: { title: '市场概览' }
     },
     {
+      path: '/asset/:type',
+      name: 'asset',
+      component: () => import('@/views/AssetQuote.vue'),
+      meta: { title: '行情' }
+    },
+    {
       path: '/trades/:code',
       name: 'trades',
       component: () => import('@/views/Trades.vue'),
