@@ -7,7 +7,7 @@ import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
-import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchLatestNetValue } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import FundCard from '@/components/FundCard.vue'
@@ -265,10 +265,22 @@ async function submitCostAdjust() {
   showLoadingToast('正在获取最新净值...')
 
   try {
-    // 从网络获取最新净值
+    // 从网络获取最新净值（直接使用fetchFundAccurateData，JSONP接口已废弃）
     console.log('[调整成本] 开始获取最新净值，基金代码:', holding.code)
-    const latestNetValue = await fetchLatestNetValue(holding.code)
-    console.log('[调整成本] 获取到的最新净值:', latestNetValue ? `净值: ${latestNetValue.netValue}, 日期: ${latestNetValue.date}, 涨跌幅: ${latestNetValue.changeRate}%` : 'null')
+    let latestNetValue: { netValue: number; date: string; changeRate: number } | null = null
+    try {
+      const accurateData = await fetchFundAccurateData(holding.code, holding.isQDII)
+      if (accurateData && accurateData.nav > 0) {
+        latestNetValue = {
+          netValue: accurateData.nav,
+          date: accurateData.navDate,
+          changeRate: accurateData.navChange
+        }
+        console.log('[调整成本] 获取成功:', `净值: ${accurateData.nav}, 日期: ${accurateData.navDate}`)
+      }
+    } catch (e) {
+      console.log('[调整成本] 获取净值失败:', e)
+    }
 
     if (!latestNetValue || latestNetValue.netValue <= 0) {
       console.log('[调整成本] 获取净值失败', latestNetValue)

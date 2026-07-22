@@ -10,7 +10,7 @@ import { showToast } from 'vant'
 const router = useRouter()
 const holdingStore = useHoldingStore()
 
-const uiMode = ref<'simple' | 'full'>('full')
+const uiMode = ref<'simple' | 'full'>('simple')
 const tradingSession = ref('')
 const tradingStatus = ref({ text: '交易中', subText: '', class: '' })
 const isWeekend = ref(false)

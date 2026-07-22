@@ -231,9 +231,13 @@ export const useHoldingStore = defineStore('holding', () => {
     // 不需要判断周末/工作日，直接用公式计算即可
     const profit = (currentValue - buyNav) * shares
 
-    // [FIX] 今日收益 = 市值 × 今日涨幅
-    // 按照份额计算: todayProfit = 份额 × 当前净值 × (今日涨幅 / 100)
-    const todayProfit = shares * currentValue * (data.dayChange / 100)
+    // [FIX] 今日收益 = 份额 × 昨日净值 × 涨幅%
+    // [WHY] 涨幅是基于昨日净值计算的: dayChange = (currentValue - prevNav) / prevNav * 100
+    //       所以 todayProfit = shares * (currentValue - prevNav) = shares * prevNav * dayChange / 100
+    //       如果用 currentValue 代替 prevNav，当涨幅较大时会产生明显误差
+    // prevNav = currentValue / (1 + dayChange/100)
+    const prevNav = data.dayChange !== 0 ? currentValue / (1 + data.dayChange / 100) : currentValue
+    const todayProfit = shares * prevNav * (data.dayChange / 100)
 
     // [DEBUG] 详细打印计算过程
     // console.log(`========== [收益计算-刷新] ${code} ==========`)

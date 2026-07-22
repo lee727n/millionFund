@@ -28,7 +28,7 @@ export function clearAllCache(): void {
 }
 
 // ========== 并发控制 ==========
-const MAX_CONCURRENT = 5  // 最大并发数
+const MAX_CONCURRENT = 5
 let activeRequests = 0
 const requestQueue: (() => void)[] = []
 
@@ -60,6 +60,32 @@ function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
       requestQueue.push(execute)
     }
   })
+}
+
+// ========== pingzhongdata请求节流 ==========
+const PINGZHONG_RATE_LIMIT = 2000
+let lastPingzhongTime = 0
+let pingzhongQueue: (() => void)[] = []
+
+function schedulePingzhongRequest(fn: () => void) {
+  const now = Date.now()
+  const elapsed = now - lastPingzhongTime
+
+  if (elapsed >= PINGZHONG_RATE_LIMIT) {
+    lastPingzhongTime = now
+    fn()
+  } else {
+    pingzhongQueue.push(fn)
+    setTimeout(() => {
+      if (pingzhongQueue.length > 0) {
+        const next = pingzhongQueue.shift()
+        if (next) {
+          lastPingzhongTime = Date.now()
+          next()
+        }
+      }
+    }, PINGZHONG_RATE_LIMIT - elapsed)
+  }
 }
 
 // ========== JSONP请求队列 ==========
@@ -416,7 +442,7 @@ async function fetchOfficialFundEstimate(code: string): Promise<FundEstimate | n
 
     const script = document.createElement('script')
     script.id = callbackName
-    script.src = `/fundgz/js/${code}.js?rt=${Date.now()}`
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
     script.onerror = () => {
       if (!resolved) {
         resolved = true
@@ -465,69 +491,65 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
   if (cached) return cached
 
   return new Promise((resolve) => {
-    // [WHY] 加载前清空全局变量，防止读到上一个脚本残留的数据
-    ; (window as any).Data_netWorthTrend = []
+    schedulePingzhongRequest(() => {
+      ; (window as any).Data_netWorthTrend = []
 
-    const scriptId = `netvalue_${code}_${Date.now()}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      resolve({ records: [], fundName: '' })
-    }, 15000)
+      const scriptId = `netvalue_${code}_${Date.now()}`
+      const timeout = setTimeout(() => {
+        cleanup()
+        resolve({ records: [], fundName: '' })
+      }, 15000)
 
-    const script = document.createElement('script')
-    script.id = scriptId
-    // [WHY] pingzhongdata.js 包含 Data_netWorthTrend 变量和 fS_name 变量
-    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
 
-    script.onload = () => {
-      cleanup()
-      try {
-        // [WHAT] pingzhongdata 设置全局变量 Data_netWorthTrend 和 fS_name
-        const trend = (window as any).Data_netWorthTrend || []
-        const fundName = (window as any).fS_name || ''
+      script.onload = () => {
+        cleanup()
+        try {
+          const trend = (window as any).Data_netWorthTrend || []
+          const fundName = (window as any).fS_name || ''
 
-        if (trend.length === 0) {
-          resolve({ records: [], fundName })
-          return
-        }
-
-        // [WHAT] 取最近N条数据
-        const recentData = trend.slice(-days)
-
-        const records: NetValueRecord[] = recentData.map((item: any) => {
-          const date = new Date(item.x)
-          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-          return {
-            date: dateStr,
-            netValue: item.y || 0,
-            totalValue: item.y || 0,
-            changeRate: item.equityReturn || 0
+          if (trend.length === 0) {
+            resolve({ records: [], fundName })
+            return
           }
-        })
 
-        // [WHY] 反转数组保持跟原API一致：最新的在前
-        records.reverse()
+          const recentData = trend.slice(-days)
 
-        cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
-        resolve({ records, fundName })
-      } catch (err) {
+          const records: NetValueRecord[] = recentData.map((item: any) => {
+            const date = new Date(item.x)
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+            return {
+              date: dateStr,
+              netValue: item.y || 0,
+              totalValue: item.y || 0,
+              changeRate: item.equityReturn || 0
+            }
+          })
 
+          records.reverse()
+
+          cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
+          resolve({ records, fundName })
+        } catch (err) {
+          resolve({ records: [], fundName: '' })
+        }
+      }
+
+      script.onerror = () => {
+        cleanup()
         resolve({ records: [], fundName: '' })
       }
-    }
 
-    script.onerror = () => {
-      cleanup()
-      resolve({ records: [], fundName: '' })
-    }
+      function cleanup() {
+        clearTimeout(timeout)
+        const s = document.getElementById(scriptId)
+        if (s) document.body.removeChild(s)
+      }
 
-    function cleanup() {
-      clearTimeout(timeout)
-      const s = document.getElementById(scriptId)
-      if (s) document.body.removeChild(s)
-    }
-
-    document.body.appendChild(script)
+      document.body.appendChild(script)
+    })
   })
 }
 
@@ -610,16 +632,38 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
 
   const persisted = persistCache.get<HoldingStock[]>(`topholdings_persist_${code}`)
   if (persisted && persisted.length > 0) {
-    console.log(`[fetchTopHoldings] ${code} - 使用缓存持仓数据，仅更新股票价格...`)
-    const holdings = persisted.map(h => ({ ...h, change: null }))
-    const needQuotes = holdings.filter(h => h.market)
-    if (needQuotes.length > 0) {
-      await fetchStockQuotes(needQuotes)
+    const hasDefaultWeights = persisted.some(h => /^(15\.0|13\.5|12\.0|10\.5|9\.0|7\.5|6\.0|4\.5|3\.0|1\.5)%$/.test(h.weight))
+    if (hasDefaultWeights) {
+      console.log(`[fetchTopHoldings] ${code} - 缓存为默认占比，重新从API获取...`)
+      localStorage.removeItem(`fund_topholdings_persist_${code}`)
+    } else {
+      console.log(`[fetchTopHoldings] ${code} - 使用缓存持仓数据，仅更新股票价格...`)
+      const holdings = persisted.map(h => ({ ...h, change: null }))
+      const needQuotes = holdings.filter(h => h.market)
+      if (needQuotes.length > 0) {
+        await fetchStockQuotes(needQuotes)
+      }
+      return holdings
     }
-    return holdings
   }
 
   console.log(`[fetchTopHoldings] ${code} - 首次获取持仓数据，解析网页中...`)
+
+  const holdingsFromApi = await fetchTopHoldingsFromApi(code)
+  if (holdingsFromApi.length > 0) {
+    console.log(`[fetchTopHoldings] ${code} - 从网页解析成功，获取${holdingsFromApi.length}只股票`)
+    persistCache.set(`topholdings_persist_${code}`, holdingsFromApi)
+    const needQuotes = holdingsFromApi.filter(h => h.market)
+    if (needQuotes.length > 0) {
+      await fetchStockQuotes(needQuotes)
+    }
+    const persistCacheKey = `topholdings_persist_${code}`
+    persistCache.set(persistCacheKey, holdingsFromApi.map(h => ({ ...h })))
+    cache.set(cacheKey, holdingsFromApi, CACHE_TTL.NET_VALUE)
+    return holdingsFromApi
+  }
+
+  console.log(`[fetchTopHoldings] ${code} - 网页解析失败，fallback到pingzhongdata...`)
 
   const pingzhongData = await new Promise<{
     stockCodesNew: string[],
@@ -627,41 +671,43 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
     fundName: string,
     positions: { code: string; name: string; weight: number }[]
   }>((resolve) => {
-    const scriptId = `topholdings_${code}_${Date.now()}`
-    const script = document.createElement('script')
-    script.id = scriptId
-    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
-    script.onload = () => {
-      const s = document.getElementById(scriptId)
-      if (s) document.body.removeChild(s)
+    schedulePingzhongRequest(() => {
+      const scriptId = `topholdings_${code}_${Date.now()}`
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+      script.onload = () => {
+        const s = document.getElementById(scriptId)
+        if (s) document.body.removeChild(s)
 
-      const positions: { code: string; name: string; weight: number }[] = []
-      const positionData = (window as any).Data_StockPosition
-      if (positionData?.series?.[0]?.data) {
-        positionData.series[0].data.forEach((item: any) => {
-          const posCode = item.code || ''
-          const posWeight = parseFloat(item.y || 0) || 0
-          positions.push({
-            code: posCode,
-            name: item.name || '',
-            weight: posWeight
+        const positions: { code: string; name: string; weight: number }[] = []
+        const positionData = (window as any).Data_StockPosition
+        if (positionData?.series?.[0]?.data) {
+          positionData.series[0].data.forEach((item: any) => {
+            const posCode = item.code || ''
+            const posWeight = parseFloat(item.y || 0) || 0
+            positions.push({
+              code: posCode,
+              name: item.name || '',
+              weight: posWeight
+            })
           })
+        }
+
+        resolve({
+          stockCodesNew: (window as any).stockCodesNew || [],
+          stockCodes: (window as any).stockCodes || [],
+          fundName: (window as any).fS_name || '',
+          positions
         })
       }
-
-      resolve({
-        stockCodesNew: (window as any).stockCodesNew || [],
-        stockCodes: (window as any).stockCodes || [],
-        fundName: (window as any).fS_name || '',
-        positions
-      })
-    }
-    script.onerror = () => {
-      const s = document.getElementById(scriptId)
-      if (s) document.body.removeChild(s)
-      resolve({ stockCodesNew: [], stockCodes: [], fundName: '', positions: [] })
-    }
-    document.body.appendChild(script)
+      script.onerror = () => {
+        const s = document.getElementById(scriptId)
+        if (s) document.body.removeChild(s)
+        resolve({ stockCodesNew: [], stockCodes: [], fundName: '', positions: [] })
+      }
+      document.body.appendChild(script)
+    })
   })
 
   const { stockCodesNew, stockCodes, fundName, positions } = pingzhongData
@@ -744,19 +790,15 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
       let weight = ''
       let name = ''
 
-      const pos = positionMap.get(mappedCode) || positionMap.get(cleanCode)
-
-      if (pos && pos.weight > 0) {
-        weight = `${pos.weight.toFixed(2)}%`
+      const positionInfo = positionMap.get(cleanCode)
+      if (positionInfo) {
+        weight = `${positionInfo.weight}%`
+        name = positionInfo.name || ''
       } else if (i < 10) {
         const baseWeight = Math.max(1.5, 15 - i * 1.5)
         weight = `${baseWeight.toFixed(1)}%`
       } else {
         weight = '1.5%'
-      }
-
-      if (pos && pos.name) {
-        name = pos.name
       }
 
       holdings.push({
@@ -829,19 +871,15 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
         let weight = ''
         let name = ''
 
-        const pos = positionMap.get(mappedCode) || positionMap.get(cleanCode)
-
-        if (pos && pos.weight > 0) {
-          weight = `${pos.weight.toFixed(2)}%`
+        const positionInfo = positionMap.get(cleanCode)
+        if (positionInfo) {
+          weight = `${positionInfo.weight}%`
+          name = positionInfo.name || ''
         } else if (i < 10) {
           const baseWeight = Math.max(1.5, 15 - i * 1.5)
           weight = `${baseWeight.toFixed(1)}%`
         } else {
           weight = '1.5%'
-        }
-
-        if (pos && pos.name) {
-          name = pos.name
         }
 
         holdings.push({
@@ -865,6 +903,131 @@ export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
   persistCache.set(persistCacheKey, holdings.map(h => ({ ...h })))
   cache.set(cacheKey, holdings, CACHE_TTL.NET_VALUE)
   return holdings
+}
+
+// [WHAT] 通过 fetch 请求基金持仓页面，解析 HTML 获取重仓股真实占比
+// [WHY] pingzhongdata 的 Data_StockPosition 不存在，FundArchivesDatas.aspx 被CORS拦截
+//       只能通过 fetch + DOMParser 解析页面 HTML 获取真实占比
+
+async function fetchTopHoldingsFromApi(code: string): Promise<HoldingStock[]> {
+  try {
+    console.log(`[fetchTopHoldingsFromApi] ${code} - 通过fetch获取持仓页面...`)
+    const isDev = import.meta.env.DEV
+    const url = isDev
+      ? `/fund-detail/${code}.html`
+      : `https://fund.eastmoney.com/${code}.html`
+    const response = await fetch(url, {
+      headers: { 'Accept': 'text/html' }
+    })
+    if (!response.ok) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - fetch失败: ${response.status}`)
+      return []
+    }
+    const html = await response.text()
+    if (!html || html.length < 100) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - HTML为空`)
+      return []
+    }
+
+    const stockHoldingsIndex = html.indexOf('股票持仓')
+    if (stockHoldingsIndex === -1) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - 未找到股票持仓部分`)
+      return []
+    }
+
+    const stockHoldingsSection = html.substring(stockHoldingsIndex, stockHoldingsIndex + 8000)
+    const positionSharesIndex = stockHoldingsSection.indexOf('position_shares')
+    if (positionSharesIndex === -1) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - 未找到position_shares`)
+      return []
+    }
+
+    const tableSection = stockHoldingsSection.substring(positionSharesIndex)
+    const tableStart = tableSection.indexOf('<table')
+    const tableEnd = tableSection.indexOf('</table>')
+    if (tableStart === -1 || tableEnd === -1) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - 未找到表格`)
+      return []
+    }
+
+    const tableHtml = tableSection.substring(tableStart, tableEnd + 8)
+    const cleanTableHtml = tableHtml.replace(/[\r\n\t]+/g, ' ')
+
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(cleanTableHtml, 'text/html')
+    const table = doc.querySelector('table')
+    if (!table) {
+      console.log(`[fetchTopHoldingsFromApi] ${code} - 解析表格失败`)
+      return []
+    }
+
+    const rows = table.querySelectorAll('tr')
+    const holdings: HoldingStock[] = []
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      const cells = row.querySelectorAll('td')
+      if (cells.length < 2) continue
+
+      let stockCode = ''
+      let stockName = ''
+      let stockWeight = ''
+      let market = ''
+
+      const linkCell = cells[0].querySelector('a')
+      if (linkCell) {
+        const href = linkCell.getAttribute('href') || ''
+        const codeMatch = href.match(/\/r\/([^\/]+)$/)
+        if (codeMatch) {
+          const rawCode = codeMatch[1]
+          if (rawCode.startsWith('1.')) {
+            stockCode = rawCode.substring(2)
+            market = 'sh'
+          } else if (rawCode.startsWith('0.')) {
+            stockCode = rawCode.substring(2)
+            market = 'sz'
+          } else if (rawCode.startsWith('116.')) {
+            stockCode = rawCode.substring(4)
+            market = 'hk'
+          } else if (rawCode.startsWith('105.')) {
+            stockCode = rawCode.substring(4)
+            market = 'us'
+          } else {
+            stockCode = rawCode
+          }
+        }
+        stockName = linkCell.textContent?.trim() || ''
+      }
+
+      if (cells.length >= 2) {
+        const weightText = cells[1].textContent?.trim() || ''
+        const weightMatch = weightText.match(/([\d.]+)%/)
+        if (weightMatch) {
+          stockWeight = `${weightMatch[1]}%`
+        }
+      }
+
+      if (!market && stockCode) {
+        if (/^\d{6}$/.test(stockCode)) {
+          market = stockCode.startsWith('6') || stockCode.startsWith('9') ? 'sh' : ((stockCode.startsWith('4') || stockCode.startsWith('8')) ? 'bj' : 'sz')
+        } else if (/^\d{5}$/.test(stockCode)) {
+          market = 'hk'
+        } else if (/^[A-Z]{1,6}$/.test(stockCode)) {
+          market = 'us'
+        }
+      }
+
+      if (stockCode && stockName && stockWeight) {
+        holdings.push({ code: stockCode, name: stockName, weight: stockWeight, change: null, market })
+      }
+    }
+
+    console.log(`[fetchTopHoldingsFromApi] ${code} - 解析结果: ${holdings.length}只股票`, holdings.map(h => `${h.name}(${h.code}) ${h.weight}`).join(', '))
+    return holdings.slice(0, 10)
+  } catch (err: any) {
+    console.log(`[fetchTopHoldingsFromApi] ${code} - fetch异常: ${err.message || err}`)
+    return []
+  }
 }
 
 async function fetchStockQuotes(holdings: HoldingStock[]) {
@@ -1266,7 +1429,7 @@ export async function fetchLatestNetValue(code: string): Promise<{
     const script = document.createElement('script')
     script.id = scriptId
     // [DEPS] 基金估值接口，返回实时估值数据，使用固定的 jsonpgz 回调函数名
-    script.src = `/fundgz/js/${code}.js?rt=${Date.now()}`
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
     script.onerror = () => {
       cleanup()
       const index = pendingNetValueRequests.findIndex(req => req.code === code)
@@ -1416,16 +1579,22 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}, isEstimateFromToday=${isEstimateFromToday}`)
 
   // [FIX] 根据是否是交易日和净值是否已更新来决定使用估值还是净值
-  // [WHY] 交易日：始终使用估值（即使净值已更新，估值更及时）
+  // [WHY] 交易日：净值已更新用净值，净值未更新用估值
   //       非交易日：使用最新净值
-  if (isWeekday && result.estimate > 0) {
-    // [WHAT] 交易日，使用估值
+  if (isWeekday && isNavUpdated) {
+    // [WHAT] 交易日 + 净值已更新，使用净值
+    result.currentValue = result.nav
+    result.dayChange = result.navChange
+    result.dataSource = 'nav'
+    // console.log(`[currentValue选择] ${code}: 交易日+净值已更新 → 使用净值 nav=${result.nav}`)
+  } else if (isWeekday && result.estimate > 0) {
+    // [WHAT] 交易日 + 净值未更新，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
-    // console.log(`[currentValue选择] ${code}: 交易日 → 使用估值 estimate=${result.estimate}`)
+    // console.log(`[currentValue选择] ${code}: 交易日+净值未更新 → 使用估值 estimate=${result.estimate}`)
   } else if (result.nav > 0) {
-    // [WHAT] 非交易日或无估值，使用最新净值
+    // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'

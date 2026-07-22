@@ -46,6 +46,16 @@ export default defineConfig({
         target: 'https://fund.eastmoney.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/pingzhongdata/, '/pingzhongdata')
+      },
+      '/fund-detail': {
+        target: 'https://fund.eastmoney.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/fund-detail/, '')
+      },
+      '/fundf10': {
+        target: 'https://fundf10.eastmoney.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/fundf10/, '')
       }
     }
   }
