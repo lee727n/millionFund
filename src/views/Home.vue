@@ -1278,7 +1278,7 @@ function handleNameClick(code: string, name: string) {
                 class="source-button portfolio-btn"
                 @click="openPortfolio"
               >
-                持仓总览
+                <span class="panorama-text">全景面板</span>
               </van-button>
             </div>
           </div>
@@ -2275,6 +2275,23 @@ function handleNameClick(code: string, name: string) {
 
 .source-button.active {
   box-shadow: 0 0 0 2px #0ea5e9;
+}
+
+.panorama-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--primary-color);
+}
+
+.portfolio-btn {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 .jd-update-status {

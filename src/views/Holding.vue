@@ -827,7 +827,7 @@ async function refreshHoldingsCache() {
     <div class="custom-nav-bar">
       <!-- 第一行：标题 -->
       <div class="nav-title-row">
-        <div class="version-badge">v3.5</div>
+        <div class="version-badge">v3.6</div>
         <div class="nav-title">我的持仓</div>
       </div>
       <!-- 第二行：按钮 -->
