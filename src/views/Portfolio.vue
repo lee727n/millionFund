@@ -94,15 +94,21 @@ const aliHoldings = computed(() => {
     const shares = fund.shares || 0
     return total + (currentValue * shares)
   }, 0)
-  const fundsWithRatio = funds.map(fund => {
-    const ratio = totalValue > 0 ? ((fund.currentValue || 0) * (fund.shares || 0) / totalValue) : 0
+  return sortFunds(funds).map(fund => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    const marketValue = currentValue * shares
+    const ratio = totalValue > 0 ? (marketValue / totalValue) * 100 : 0
     return { ...fund, ratio }
   })
-  return sortFunds(fundsWithRatio)
 })
 
 const aliMarketValue = computed(() => {
-  return aliHoldings.value.reduce((total, fund) => total + (fund.marketValue || 0), 0)
+  return aliHoldings.value.reduce((total, fund) => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    return total + (currentValue * shares)
+  }, 0)
 })
 
 const aliTodayProfit = computed(() => {
@@ -126,15 +132,21 @@ const txHoldings = computed(() => {
     const shares = fund.shares || 0
     return total + (currentValue * shares)
   }, 0)
-  const fundsWithRatio = funds.map(fund => {
-    const ratio = totalValue > 0 ? ((fund.currentValue || 0) * (fund.shares || 0) / totalValue) : 0
+  return sortFunds(funds).map(fund => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    const marketValue = currentValue * shares
+    const ratio = totalValue > 0 ? (marketValue / totalValue) * 100 : 0
     return { ...fund, ratio }
   })
-  return sortFunds(fundsWithRatio)
 })
 
 const txMarketValue = computed(() => {
-  return txHoldings.value.reduce((total, fund) => total + (fund.marketValue || 0), 0)
+  return txHoldings.value.reduce((total, fund) => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    return total + (currentValue * shares)
+  }, 0)
 })
 
 const txTodayProfit = computed(() => {
@@ -158,15 +170,21 @@ const jdHoldings = computed(() => {
     const shares = fund.shares || 0
     return total + (currentValue * shares)
   }, 0)
-  const fundsWithRatio = funds.map(fund => {
-    const ratio = totalValue > 0 ? ((fund.currentValue || 0) * (fund.shares || 0) / totalValue) : 0
+  return sortFunds(funds).map(fund => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    const marketValue = currentValue * shares
+    const ratio = totalValue > 0 ? (marketValue / totalValue) * 100 : 0
     return { ...fund, ratio }
   })
-  return sortFunds(fundsWithRatio)
 })
 
 const jdMarketValue = computed(() => {
-  return jdHoldings.value.reduce((total, fund) => total + (fund.marketValue || 0), 0)
+  return jdHoldings.value.reduce((total, fund) => {
+    const currentValue = fund.currentValue || 0
+    const shares = fund.shares || 0
+    return total + (currentValue * shares)
+  }, 0)
 })
 
 const jdTodayProfit = computed(() => {
