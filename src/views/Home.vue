@@ -1,8 +1,14 @@
+<script lang="ts">
+export default {
+  name: 'home'
+}
+</script>
+
 <script setup lang="ts">
 // [WHY] 首页 - 展示自选基金列表、市场概览和快捷入口
 // [WHAT] 支持下拉刷新、左滑删除、点击跳转搜索添加、设置提醒
 
-import { ref, onMounted, watch, computed, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, watch, computed, onUnmounted, nextTick, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
@@ -947,30 +953,33 @@ const newsLoading = ref(false)
 const showNewsDetail = ref(false)
 const currentNews = ref<NewsItem | null>(null)
 
-// [WHAT] 页面挂载时初始化数据
+// [WHAT] 页面挂载时初始化数据（只执行一次）
 onMounted(async () => {
   fundStore.initWatchlist()
-  // 初始化持仓数据
   holdingStore.initHoldings()
-  // 加载大盘指数和全球指数
   loadIndices()
   loadGlobalIndices()
-  // 初始化交易状态
   updateTradingSession()
-  // 每秒更新交易状态，确保秒钟显示准确
   tradingSessionInterval = window.setInterval(updateTradingSession, 1000)
-  // 如果自动刷新默认开启，则启动定时器
+})
+
+onActivated(() => {
   if (autoRefreshEnabled.value) {
     autoRefreshInterval = window.setInterval(refreshData, 60000)
   }
 })
 
+onDeactivated(() => {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval)
+    autoRefreshInterval = undefined
+  }
+})
+
 onUnmounted(() => {
-  // 清除自动刷新定时器
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval)
   }
-  // 清除交易状态更新定时器
   if (tradingSessionInterval) {
     clearInterval(tradingSessionInterval)
   }

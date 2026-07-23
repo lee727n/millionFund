@@ -110,7 +110,7 @@ function goToAITracking() {
     <!-- [WHY] 使用 keep-alive 缓存指定页面，避免重复加载 -->
     <div class="page-wrapper">
       <router-view v-slot="{ Component }">
-        <keep-alive include="ai-tracking">
+        <keep-alive include="home,ai-tracking,portfolio,market">
           <component :is="Component" />
         </keep-alive>
       </router-view>
