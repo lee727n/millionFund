@@ -4,11 +4,13 @@ import Components from 'unplugin-vue-components/vite'
 import { VantResolver } from '@vant/auto-import-resolver'
 import { fileURLToPath, URL } from 'node:url'
 import fs from 'node:fs'
-import path from 'node:path'
+import { resolve } from 'node:path'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 function getPackageVersion(): string {
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'))
+    const pkg = JSON.parse(fs.readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
     return pkg.version || '0.0.0'
   } catch {
     return '0.0.0'
