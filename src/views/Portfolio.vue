@@ -311,7 +311,7 @@ onUnmounted(() => {
         <div class="title-center">
           <div class="summary-stat">
             <span class="summary-label">持仓市值</span>
-            <span class="summary-value">{{ totalMarketValueAll.toFixed(2) }}元</span>
+            <span class="summary-value">{{ Math.round(totalMarketValueAll) }}元</span>
           </div>
           <div class="summary-stat" :class="isWeekend ? 'closed' : (totalTodayProfitPercentAll >= 0 ? 'up' : 'down')">
             <span class="summary-label">利润率</span>
@@ -349,7 +349,7 @@ onUnmounted(() => {
             </div>
             <div class="web-account-col">
               <span class="web-account-stat-label">持仓市值</span>
-              <span class="web-account-stat-value">{{ aliMarketValue.toFixed(2) }}元</span>
+              <span class="web-account-stat-value">{{ Math.round(aliMarketValue) }}元</span>
             </div>
             <div class="web-account-col" :class="isWeekend ? 'closed' : (aliTodayProfitPercent >= 0 ? 'up' : 'down')">
               <span class="web-account-stat-label">利润率</span>
@@ -386,7 +386,7 @@ onUnmounted(() => {
             </div>
             <div class="web-account-col">
               <span class="web-account-stat-label">持仓市值</span>
-              <span class="web-account-stat-value">{{ txMarketValue.toFixed(2) }}元</span>
+              <span class="web-account-stat-value">{{ Math.round(txMarketValue) }}元</span>
             </div>
             <div class="web-account-col" :class="isWeekend ? 'closed' : (txTodayProfitPercent >= 0 ? 'up' : 'down')">
               <span class="web-account-stat-label">利润率</span>
@@ -423,7 +423,7 @@ onUnmounted(() => {
             </div>
             <div class="web-account-col">
               <span class="web-account-stat-label">持仓市值</span>
-              <span class="web-account-stat-value">{{ jdMarketValue.toFixed(2) }}元</span>
+              <span class="web-account-stat-value">{{ Math.round(jdMarketValue) }}元</span>
             </div>
             <div class="web-account-col" :class="isWeekend ? 'closed' : (jdTodayProfitPercent >= 0 ? 'up' : 'down')">
               <span class="web-account-stat-label">利润率</span>

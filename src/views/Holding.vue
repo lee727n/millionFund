@@ -19,6 +19,14 @@ import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
+import { 
+  saveToGist, 
+  restoreFromGist, 
+  validateGitHubToken,
+  getGitHubToken,
+  saveGitHubToken,
+  hasGitHubToken 
+} from '@/api/gist'
 
 const router = useRouter()
 const holdingStore = useHoldingStore()
@@ -547,8 +555,203 @@ function restoreHoldings() {
     }
   }
   
-  // 触发文件选择对话框
+  // 触发文件选择
   fileInput.click()
+}
+
+// ========== 云端备份相关 ==========
+const showGitHubConfigDialog = ref(false)
+const githubToken = ref('')
+const isTokenValidating = ref(false)
+
+// [WHAT] 保存并验证 GitHub Token
+async function saveGitHubConfig() {
+  const token = githubToken.value.trim()
+  
+  if (!token) {
+    showToast('请输入 GitHub Token')
+    return
+  }
+  
+  isTokenValidating.value = true
+  
+  try {
+    const isValid = await validateGitHubToken(token)
+    
+    if (isValid) {
+      saveGitHubToken(token)
+      showToast('配置成功！')
+      showGitHubConfigDialog.value = false
+      githubToken.value = ''
+    } else {
+      showToast('Token 无效，请检查权限设置')
+    }
+  } catch (error) {
+    showToast('验证失败，请检查网络')
+  } finally {
+    isTokenValidating.value = false
+  }
+}
+
+// [WHAT] 云端备份持仓数据
+async function cloudBackupHoldings() {
+  if (holdingStore.holdings.length === 0 && aiTrackingStore.records.length === 0) {
+    showToast('暂无数据可备份')
+    return
+  }
+  
+  if (!hasGitHubToken()) {
+    showGitHubConfigDialog.value = true
+    return
+  }
+  
+  const loading = showLoadingToast({ message: '备份中...' })
+  
+  try {
+    // 过滤掉运行时字段，只保留恢复数据所需的关键字段
+    const holdingsForBackup = holdingStore.holdings.map(holding => {
+      const { 
+        loading, 
+        currentValue, 
+        marketValue, 
+        profit, 
+        profitRate, 
+        todayChange, 
+        todayProfit,
+        trendPrediction,
+        dataSource,
+        valueDate,
+        isUpdated,
+        ...rest 
+      } = holding
+      return rest
+    })
+    
+    const aiTrackingForBackup = aiTrackingStore.records.map(record => ({
+      id: record.id,
+      sellCode: record.sellCode,
+      sellName: record.sellName,
+      sellNav: record.sellNav,
+      sellNavEstimated: record.sellNavEstimated,
+      buyCode: record.buyCode,
+      buyName: record.buyName,
+      buyNav: record.buyNav,
+      buyNavEstimated: record.buyNavEstimated,
+      date: record.date,
+      createdAt: record.createdAt
+    }))
+    
+    const backupData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      holdings: holdingsForBackup,
+      summary: holdingStore.summary,
+      aiTracking: aiTrackingForBackup,
+      baiduOcrConfig: getBaiduOcrConfig()
+    }
+    
+    const jsonData = JSON.stringify(backupData, null, 2)
+    const token = getGitHubToken()
+    
+    const result = await saveToGist(jsonData, token)
+    
+    closeToast()
+    showToast(result.message)
+  } catch (error) {
+    closeToast()
+    showToast('云端备份失败')
+  }
+}
+
+// [WHAT] 云端恢复持仓数据
+async function cloudRestoreHoldings() {
+  if (!hasGitHubToken()) {
+    showGitHubConfigDialog.value = true
+    return
+  }
+  
+  const loading = showLoadingToast({ message: '恢复中...' })
+  
+  try {
+    const token = getGitHubToken()
+    const result = await restoreFromGist(token)
+    
+    closeToast()
+    
+    if (!result.success) {
+      showToast(result.message)
+      return
+    }
+    
+    if (!result.content) {
+      showToast('备份数据为空')
+      return
+    }
+    
+    try {
+      const jsonData = JSON.parse(result.content)
+      
+      // 验证备份数据格式
+      if (!jsonData.holdings || !Array.isArray(jsonData.holdings)) {
+        showToast('备份文件格式错误')
+        return
+      }
+      
+      // 处理持仓数据，移除运行时字段
+      const processedHoldings = jsonData.holdings.map((holding: any) => {
+        const { 
+          marketValue, 
+          profit, 
+          originProfit, 
+          lastUpdateDate, 
+          todayProfit, 
+          lastTodayProfit, 
+          profitRate,
+          loading,
+          currentValue,
+          todayChange,
+          shareClass,
+          manualProfitRate,
+          serviceFeeRate,
+          serviceFeeDeducted,
+          lastFeeDate,
+          ...rest 
+        } = holding
+        
+        const industrySectors = Array.isArray(rest.industrySectors) 
+          ? rest.industrySectors.join(', ') 
+          : rest.industrySectors
+        
+        return {
+          ...rest,
+          industrySectors
+        }
+      })
+      
+      // 保存处理后的持仓数据到本地存储
+      saveHoldings(processedHoldings)
+      
+      // 刷新持仓状态
+      holdingStore.initHoldings()
+      
+      // 恢复AI追踪数据
+      if (jsonData.aiTracking && Array.isArray(jsonData.aiTracking)) {
+        aiTrackingStore.importRecords(jsonData.aiTracking)
+      }
+      
+      // 恢复百度 OCR 配置
+      if (jsonData.baiduOcrConfig && jsonData.baiduOcrConfig.apiKey && jsonData.baiduOcrConfig.secretKey) {
+        setBaiduOcrConfig(jsonData.baiduOcrConfig)
+      }
+      
+      showToast('云端恢复成功')
+    } catch (error) {
+      showToast('解析备份数据失败')
+    }
+  } catch (error) {
+    closeToast()
+    showToast('云端恢复失败')
+  }
 }
 
 // [WHAT] 清空所有持仓数据
@@ -827,28 +1030,30 @@ async function refreshHoldingsCache() {
     <div class="custom-nav-bar">
       <!-- 第一行：标题 -->
       <div class="nav-title-row">
-        <div class="version-badge">v3.6</div>
+        <div class="version-badge">v3.7</div>
         <div class="nav-title">我的持仓</div>
+        <!-- 移动端云备份/恢复按钮 -->
+        <div class="nav-cloud-actions mobile-only">
+          <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
+          <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
+        </div>
       </div>
       <!-- 第二行：按钮 -->
       <div class="nav-actions-row">
-        <!-- 移动端主题切换按钮 - 最左侧 -->
-        <div class="theme-toggle theme-btn-mobile mobile-only">
-          <span 
-            class="theme-toggle-btn" 
-            :class="{ active: themeStore.actualTheme === 'light' }"
-            @click="themeStore.setTheme('light')"
-          >浅</span>
-          <span 
-            class="theme-toggle-btn" 
-            :class="{ active: themeStore.actualTheme === 'dark' }"
-            @click="themeStore.setTheme('dark')"
-          >深</span>
-        </div>
-        <!-- 占位 - 左侧空间 -->
-        <div class="mobile-only" style="flex: 1;"></div>
-        <!-- 移动端其他按钮 - 最右侧 -->
-        <div class="mobile-actions mobile-only">
+        <!-- 移动端左侧按钮组 -->
+        <div class="mobile-left-actions mobile-only">
+          <div class="theme-toggle theme-btn-mobile">
+            <span 
+              class="theme-toggle-btn" 
+              :class="{ active: themeStore.actualTheme === 'light' }"
+              @click="themeStore.setTheme('light')"
+            >浅</span>
+            <span 
+              class="theme-toggle-btn" 
+              :class="{ active: themeStore.actualTheme === 'dark' }"
+              @click="themeStore.setTheme('dark')"
+            >深</span>
+          </div>
           <img 
             :src="riseW" 
             class="sort-mobile-icon"
@@ -864,6 +1069,9 @@ async function refreshHoldingsCache() {
             alt="降序" 
           />
           <van-icon name="edit" size="20" @click="refreshHoldingsCache" class="refresh-icon" />
+        </div>
+        <!-- 移动端右侧按钮组 -->
+        <div class="mobile-right-actions mobile-only">
           <van-button size="small" @click="showImportDialog = true">截图</van-button>
           <van-button size="small" @click="openBatchDialog">批量</van-button>
           <van-button size="small" @click="restoreHoldings">恢复</van-button>
@@ -890,7 +1098,9 @@ async function refreshHoldingsCache() {
         <van-button size="small" @click="showImportDialog = true" class="nav-btn">截图</van-button>
         <van-button size="small" @click="openBatchDialog" class="nav-btn">批量</van-button>
         <van-button size="small" @click="backupHoldings" class="nav-btn">备份</van-button>
+        <van-button size="small" @click="cloudBackupHoldings" class="nav-btn">云备份</van-button>
         <van-button size="small" @click="restoreHoldings" class="nav-btn">恢复</van-button>
+        <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn">云恢复</van-button>
         <van-button size="small" @click="clearAllHoldings" class="nav-btn" type="danger">清空</van-button>
       </div>
     </div>
@@ -1313,6 +1523,56 @@ async function refreshHoldingsCache() {
         </div>
       </div>
     </van-popup>
+
+    <!-- GitHub Token 配置对话框 -->
+    <van-popup 
+      v-model:show="showGitHubConfigDialog" 
+      position="center" 
+      round 
+      :style="{ width: '85%', maxWidth: '400px', background: 'var(--bg-secondary)' }"
+    >
+      <div class="github-config-popup">
+        <div class="github-config-header">
+          <span class="github-config-icon">☁️</span>
+          <span class="github-config-title">云端备份配置</span>
+        </div>
+        <div class="github-config-desc">
+          <p>请配置 GitHub Token 以使用云端备份功能：</p>
+          <p class="github-config-tip">
+            Token 获取方式：登录 GitHub → Settings → Developer settings → Personal access tokens → Generate new token<br/>
+            勾选权限：gist
+          </p>
+        </div>
+        <div class="github-config-form">
+          <van-field
+            v-model="githubToken"
+            type="text"
+            label="GitHub Token"
+            placeholder="请输入 GitHub Personal Access Token"
+            :disabled="isTokenValidating"
+            clearable
+          />
+        </div>
+        <div class="github-config-actions">
+          <van-button 
+            size="small" 
+            @click="showGitHubConfigDialog = false"
+            class="github-config-btn-cancel"
+          >
+            取消
+          </van-button>
+          <van-button 
+            size="small" 
+            type="primary" 
+            @click="saveGitHubConfig"
+            :loading="isTokenValidating"
+            class="github-config-btn-save"
+          >
+            {{ isTokenValidating ? '验证中...' : '保存并验证' }}
+          </van-button>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -1459,7 +1719,7 @@ async function refreshHoldingsCache() {
   display: flex;
   align-items: center;
   width: 100%;
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -1512,13 +1772,29 @@ async function refreshHoldingsCache() {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     width: 100%;
   }
   
   .nav-title {
     font-size: 20px;
     font-weight: 700;
+  }
+  
+  /* PC端云备份/恢复按钮 */
+  .nav-cloud-actions {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .cloud-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: #fff;
+  }
+  
+  .cloud-btn:active {
+    background: linear-gradient(135deg, #5a6fd6 0%, #6a418f 100%);
   }
   
   /* 第二行按钮容器 */
@@ -1540,7 +1816,18 @@ async function refreshHoldingsCache() {
     display: none !important;
   }
   
-  .mobile-actions {
+  /* 移动端左侧按钮组 */
+  .mobile-left-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    justify-content: flex-start;
+  }
+  
+  /* 移动端右侧按钮组 */
+  .mobile-right-actions {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -2416,5 +2703,97 @@ async function refreshHoldingsCache() {
 .batch-dialog .dialog-footer {
   padding: 16px;
   border-top: 1px solid var(--border-color);
+}
+
+/* GitHub 配置弹窗样式 */
+.github-config-popup {
+  padding: 20px;
+}
+
+.github-config-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.github-config-icon {
+  font-size: 28px;
+}
+
+.github-config-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.github-config-desc {
+  margin-bottom: 16px;
+}
+
+.github-config-desc p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 8px 0;
+}
+
+.github-config-tip {
+  font-size: 12px !important;
+  color: var(--text-tertiary) !important;
+  background: var(--bg-tertiary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-top: 8px !important;
+  word-break: break-all;
+}
+
+.github-config-form {
+  margin-bottom: 20px;
+}
+
+.github-config-form :deep(.van-field__label) {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.github-config-form :deep(.van-field__control) {
+  font-size: 13px;
+}
+
+.github-config-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.github-config-btn-cancel {
+  flex: 1;
+}
+
+.github-config-btn-save {
+  flex: 1;
+}
+
+@media (max-width: 767px) {
+  .github-config-popup {
+    padding: 16px;
+  }
+  
+  .github-config-header {
+    margin-bottom: 12px;
+  }
+  
+  .github-config-title {
+    font-size: 16px;
+  }
+  
+  .github-config-desc p {
+    font-size: 13px;
+  }
+  
+  .github-config-tip {
+    font-size: 11px !important;
+    padding: 8px 10px;
+  }
 }
 </style>
