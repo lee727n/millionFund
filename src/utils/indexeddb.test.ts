@@ -31,9 +31,9 @@ class FakeRequest {
   source: any = null
   transaction: any = null
   readyState = 'pending'
-  onsuccess: ((ev: any) => any) | null = null
-  onerror: ((ev: any) => any) | null = null
-  onupgradeneeded: ((ev: any) => any) | null = null
+  onsuccess: ((_ev: any) => any) | null = null
+  onerror: ((_ev: any) => any) | null = null
+  onupgradeneeded: ((_ev: any) => any) | null = null
 
   _success(result?: any) {
     this.result = result
@@ -121,9 +121,9 @@ class FakeTransaction {
   db: FakeDatabase
   mode: string
   error: any = null
-  oncomplete: ((ev: any) => any) | null = null
-  onerror: ((ev: any) => any) | null = null
-  onabort: ((ev: any) => any) | null = null
+  oncomplete: ((_ev: any) => any) | null = null
+  onerror: ((_ev: any) => any) | null = null
+  onabort: ((_ev: any) => any) | null = null
 
   constructor(db: FakeDatabase, mode: string) {
     this.db = db

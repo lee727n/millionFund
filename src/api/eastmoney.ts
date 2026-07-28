@@ -3,7 +3,7 @@
  */
 import type { NewsItem } from './toutiao'
 
-export async function fetchEastmoneyNews(page = 1, pageSize = 20): Promise<NewsItem[]> {
+export async function fetchEastmoneyNews(page = 1, _pageSize = 20): Promise<NewsItem[]> {
   const mockNews = [
     {
       title: 'A股日成交额连续5日超万亿，市场活跃度高',

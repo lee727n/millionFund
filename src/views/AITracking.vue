@@ -472,7 +472,7 @@ async function refreshPrices() {
   try {
     await fetchCurrentPrices()
     showToast({ message: t('aitracking_toast.refresh_success'), duration: 2000 })
-  } catch (e) {
+  } catch {
     showToast({ message: t('aitracking_toast.refresh_failed'), duration: 2000 })
   } finally {
     isRefreshing.value = false

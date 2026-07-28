@@ -34,7 +34,7 @@ const router = useRouter()
 // [WHY] 处理 Android 返回键，防止直接退出应用
 // [WHAT] 在主页时需要双击才能退出
 let lastBackTime = 0
-let backButtonHandler: ((e: any) => void) | null = null
+let backButtonHandler: ((_e: any) => void) | null = null
 
 onMounted(() => {
   // [WHAT] 仅在 Capacitor 原生环境下处理返回键

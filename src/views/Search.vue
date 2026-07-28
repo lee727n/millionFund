@@ -130,7 +130,7 @@ async function doSearch(kw: string) {
         // 忽略单个基金获取失败
       }
     }))
-  } catch (err) {
+  } catch {
     showToast(t('search.search_failed'))
   } finally {
     isSearching.value = false

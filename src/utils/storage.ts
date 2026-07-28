@@ -160,7 +160,7 @@ interface SchemaMeta {
  *        每次需要迁移数据时，添加一个新的迁移函数
  *        版本号从 1 开始，每新增一个迁移函数就 +1
  */
-type Migration = (data: Record<string, any>) => Record<string, any>
+type Migration = (_data: Record<string, any>) => Record<string, any>
 
 const migrations: Record<number, Migration> = {
   // 版本 1 → 2 的迁移（示例，留给未来使用）

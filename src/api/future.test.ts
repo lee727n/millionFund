@@ -1,9 +1,18 @@
 // [WHY] 期货行情 API 单元测试
 // [WHAT] 测试期货行情 API 的纯函数和边界情况
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { fetchFutureRealtime, fetchFutureBatch, fetchFutureRanking, parseSinaFutureResponse } from '../api/future'
 import type { FutureQuote } from '../types/future'
+
+// 拦截真实网络请求，避免测试超时
+vi.mock('@/utils/http', () => ({
+  http: {
+    text: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+    get: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+    json: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+  }
+}))
 
 // ========== parseSinaFutureResponse 测试 ==========
 

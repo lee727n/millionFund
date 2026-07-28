@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createApiError, isApiError } from '@/types/error'
+import { createApiError } from '@/types/error'
 
 // Mock vant toast
 vi.mock('vant', () => ({

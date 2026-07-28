@@ -21,7 +21,7 @@ import { fetchSTCNNews } from '@/api/stcn'
 import { fetchCSNews } from '@/api/csnews'
 import { fetchYicaiNews } from '@/api/yicai'
 import { showToast, showLoadingToast, closeToast } from 'vant'
-import { logger, copyLogsToClipboard } from '@/utils/logger'
+import { copyLogsToClipboard } from '@/utils/logger'
 import { useI18n } from 'vue-i18n'
 import type { ApiNewsItem } from '@/types/news'
 
@@ -123,8 +123,6 @@ const sinaNewsList = ref<ApiNewsItem[]>([])
 const neteaseNewsList = ref<ApiNewsItem[]>([])
 // 腾讯财经
 const tencentNewsList = ref<ApiNewsItem[]>([])
-// 雪球新闻
-const xueqiuNewsList = ref<ApiNewsItem[]>([])
 // 东方财富新闻
 const eastmoneyNewsList = ref<ApiNewsItem[]>([])
 // 同花顺
@@ -205,7 +203,6 @@ const filteredToutiaoNews = computed(() => filterApiNewsList(toutiaoNewsList.val
 const filteredSinaNews = computed(() => filterApiNewsList(sinaNewsList.value))
 const filteredNeteaseNews = computed(() => filterApiNewsList(neteaseNewsList.value))
 const filteredTencentNews = computed(() => filterApiNewsList(tencentNewsList.value))
-const filteredXueqiuNews = computed(() => filterApiNewsList(xueqiuNewsList.value))
 const filteredEastmoneyNews = computed(() => filterApiNewsList(eastmoneyNewsList.value))
 const filteredJqkaNews = computed(() => filterApiNewsList(jqkaNewsList.value))
 const filteredStcnNews = computed(() => filterApiNewsList(stcnNewsList.value))
@@ -417,15 +414,6 @@ async function loadTencentNews() {
   finally { isLoading.value = false; closeToast() }
 }
 
-async function loadXueqiuNewsList() {
-  if (isLoading.value) return
-  isLoading.value = true
-  showLoadingToast({ message: t('common.loading'), forbidClick: true })
-  try { xueqiuNewsList.value = await fetchXueqiuNews(1, 20) }
-  catch { showToast(t('common.load_failed')) }
-  finally { isLoading.value = false; closeToast() }
-}
-
 async function loadEastmoneyNews() {
   if (isLoading.value) return
   isLoading.value = true
@@ -624,55 +612,6 @@ async function loadAllSourcesWithCrossValidation() {
 }
 
 // ========== 数据源切换 ==========
-
-function onSourceChange(source: DataSource) {
-  activeSource.value = source
-
-  // 如果选择全部来源，启用交叉验证
-  if (source === 'all') {
-    loadAllSourcesWithCrossValidation()
-    return
-  }
-
-  // 首次进入加载
-  if (source === 'jin10') {
-    if (jin10Tab.value === 'news' && newsList.value.length === 0) loadJin10News()
-    else if (jin10Tab.value === 'flash' && flashList.value.length === 0) loadJin10Flash()
-    else if (jin10Tab.value === 'calendar' && calendarList.value.length === 0) loadJin10Calendar()
-  } else if (source === 'cls') {
-    if (clsTab.value === 'telegram' && telegramList.value.length === 0) loadClsTelegram()
-    else if (clsTab.value === 'hotTopics' && hotTopicsList.value.length === 0) loadClsHotTopics()
-    else if (clsTab.value === 'plate' && plateList.value.length === 0) loadClsPlate()
-  } else if (source === 'xueqiu') {
-    if (xueqiuTab.value === 'discussion' && discussionList.value.length === 0) loadXueqiuDiscussions()
-    else if (xueqiuTab.value === 'sentiment' && sentimentList.value.length === 0) loadXueqiuSentiment()
-    else if (xueqiuTab.value === 'views' && userViewsList.value.length === 0) loadXueqiuViews()
-  } else if (source === 'choice') {
-    if (choiceTab.value === 'north' && !northFlow.value) loadChoiceNorth()
-    else if (choiceTab.value === 'sector' && sectorFlows.value.length === 0) loadChoiceSector()
-    else if (choiceTab.value === 'mainforce' && mainForceFlows.value.length === 0) loadChoiceMainForce()
-  }
-  // 新增数据源
-  else if (source === 'toutiao' && toutiaoNewsList.value.length === 0) {
-    loadToutiaoNews()
-  } else if (source === 'sina' && sinaNewsList.value.length === 0) {
-    loadSinaNews()
-  } else if (source === 'netease' && neteaseNewsList.value.length === 0) {
-    loadNeteaseNews()
-  } else if (source === 'tencent' && tencentNewsList.value.length === 0) {
-    loadTencentNews()
-  } else if (source === 'eastmoney' && eastmoneyNewsList.value.length === 0) {
-    loadEastmoneyNews()
-  } else if (source === '10jqka' && jqkaNewsList.value.length === 0) {
-    load10jqkaNews()
-  } else if (source === 'stcn' && stcnNewsList.value.length === 0) {
-    loadSTCNNews()
-  } else if (source === 'csnews' && csNewsList.value.length === 0) {
-    loadCSNews()
-  } else if (source === 'yicai' && yicaiNewsList.value.length === 0) {
-    loadYicaiNews()
-  }
-}
 
 function refreshCurrentSource() {
   // 重置并重新加载当前数据源

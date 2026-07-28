@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useThemeStore, type ThemeMode } from '@/stores/theme'
+import { useThemeStore } from '@/stores/theme'
 
 describe('theme store', () => {
   beforeEach(() => {

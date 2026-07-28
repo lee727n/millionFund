@@ -10,6 +10,32 @@ vi.mock('vue', () => {
   }
 })
 
+// Mock 依赖的 API 模块，避免真实网络请求导致超时
+vi.mock('@/api/fundMarket', () => ({
+  fetchMarketIndicesFast: vi.fn().mockResolvedValue([
+    { code: '000001', name: '上证指数', current: 3150, change: 12.5, changePercent: 0.40 },
+    { code: '399006', name: '创业板指', current: 2050, change: 8.6, changePercent: 0.42 },
+    { code: '000300', name: '沪深300', current: 3780, change: 15.8, changePercent: 0.42 },
+  ]),
+  fetchGlobalIndices: vi.fn().mockResolvedValue([
+    { code: '100.NDX', name: '纳斯达克', region: 'us', price: 15000, change: 100, changePercent: 0.67 },
+    { code: '100.DJIA', name: '道琼斯', region: 'us', price: 38000, change: 200, changePercent: 0.53 },
+  ]),
+}))
+
+vi.mock('@/api/tiantianApi', () => ({
+  getTradingSession: vi.fn().mockReturnValue('closed'),
+}))
+
+vi.mock('@/composables/useWebSocket', () => ({
+  useDefaultWebSocket: vi.fn().mockReturnValue({
+    connectionStatus: { value: 'disconnected' },
+    connect: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+  }),
+}))
+
 describe('useHomeData.ts', () => {
   beforeEach(() => {
     vi.useFakeTimers()

@@ -37,7 +37,7 @@ export interface AssetDef {
   examples: string[]
   currency: string
   /** 单标的查询，返回归一化行情；失败或无数据返回 null */
-  fetchQuote: (code: string) => Promise<NormalizedQuote | null>
+  fetchQuote: (_code: string) => Promise<NormalizedQuote | null>
 }
 
 /** 安全的字段读取：把 API 结果当作未知键值对象读取 */

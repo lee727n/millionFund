@@ -3,13 +3,12 @@
 // [WHAT] 收益对比表格、风险指标对比、持仓对比（重仓股交集/并集）
 // [REF] Task #17 需求文档
 
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fund'
-import { useFundComparison, type PeriodLabel, type FundComparisonItem } from '@/composables/useFundComparison'
+import { useFundComparison, type FundComparisonItem } from '@/composables/useFundComparison'
 import { searchFund, type FundInfo } from '@/api/fundFast'
-import { showToast, showLoadingToast, closeToast, showDialog } from 'vant'
+import { showToast, showDialog } from 'vant'
 import { formatPercent, getReturnClass } from '@/composables/useFundComparison'
 
 const route = useRoute()
@@ -86,7 +85,7 @@ async function doSearch(keyword: string) {
   try {
     const results = await searchFund(keyword, 20)
     searchResults.value = results
-  } catch (err) {
+  } catch {
     showToast('搜索失败')
   } finally {
     isSearching.value = false

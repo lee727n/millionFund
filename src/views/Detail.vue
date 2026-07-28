@@ -97,9 +97,6 @@ const totalDividend = computed(() => {
 // [WHAT] Tab切换
 const activeTab = ref<'chart' | 'performance' | 'profit' | 'trend'>('chart')
 
-// [WHAT] 持仓面板展开状态
-const holdingExpanded = ref(true)
-
 // ========== 调整成本弹窗 ==========
 const showCostDialog = ref(false)
 const costFormData = ref({
@@ -307,35 +304,7 @@ const priceChangePercent = computed(() => {
 
 const isUp = computed(() => priceChangePercent.value >= 0)
 
-// [WHAT] 加载趋势预测
-async function loadTrendPrediction() {
-  if (trendPrediction.value || isTrendLoading.value) return
-  
-  isTrendLoading.value = true
-  try {
-    const historyResult = await fetchNetValueHistoryFast(fundCode.value, 90)
-    const history = historyResult.records || []
-    if (history.length > 0) {
-      const data = history.map(item => ({
-        date: item.date,
-        value: item.netValue,
-        change: item.changeRate
-      }))
-      
-      trendPrediction.value = predictTrend(data)
-      returnAnalysis.value = calculateReturnAnalysis(data)
-      if (returnAnalysis.value) {
-        fundScore.value = calculateFundScore(returnAnalysis.value)
-      }
-    }
-  } catch (err) {
-    logger.error('获取趋势预测失败', err)
-  } finally {
-    isTrendLoading.value = false
-  }
-}
-
-// [WHAT] 页面加载时自动加载趋势预测（合并到上方 onMounted，避免覆盖）
+// [WHAT] 页面加载时自动加载趋势预测（watch immediate 自动触发）
 watch(fundCode, async (newCode) => {
   if (newCode) {
     isTrendLoading.value = true
@@ -442,7 +411,7 @@ async function submitCostAdjust() {
     holdingStore.addOrUpdateHolding(record)
     showToast(t('holding.cost_adjust_success'))
     router.back()
-  } catch (error) {
+  } catch {
     showToast(t('holding.cost_adjust_failed'))
   } finally {
     closeToast()
@@ -607,15 +576,6 @@ function formatNum(num: number, decimals = 2): string {
     return (num / 10000).toFixed(2) + '万'
   }
   return num.toFixed(decimals)
-}
-
-function formatMoney(num: number): string {
-  const prefix = num >= 0 ? '' : '-'
-  const absNum = Math.abs(num)
-  if (absNum >= 10000) {
-    return prefix + (absNum / 10000).toFixed(2) + '万'
-  }
-  return prefix + absNum.toFixed(2)
 }
 
 function formatPercent(num: number): string {

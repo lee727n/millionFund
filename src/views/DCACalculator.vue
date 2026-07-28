@@ -3,16 +3,14 @@
 // [WHAT] 输入基金代码、每期金额、频率、期限，计算定投收益，可视化收益曲线
 // [REF] Task #19 需求文档
 
-import { ref, reactive, computed, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { useDCASimulation, type DCASimulationInput, type DCAFrequency } from '@/composables/useDCASimulation'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
 import { showToast } from 'vant'
 import { formatMoney, formatPercent } from '@/composables/useDCASimulation'
 
 const router = useRouter()
-const { t } = useI18n()
 
 // [WHAT] 定投输入表单
 const form = reactive<{
@@ -70,7 +68,7 @@ async function doSearch(keyword: string) {
   try {
     const results = await searchFund(keyword, 10)
     searchResults.value = results
-  } catch (err) {
+  } catch {
     showToast('搜索失败')
   }
 }

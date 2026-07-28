@@ -6,7 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android%20%2B%20Windows-blue.svg)
-![Version](https://img.shields.io/badge/version-1.11.0-orange.svg)
+![Version](https://img.shields.io/badge/version-1.12.0-orange.svg)
 
 > [GitHub 仓库](https://github.com/ghshhf/millionFund) | [在线体验](#快速开始) | [更新记录](#更新记录) | [问题反馈](https://github.com/ghshhf/millionFund/issues)
 

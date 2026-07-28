@@ -2,7 +2,7 @@
 // [WHAT] 验证首页渲染、汇总信息、持仓列表、自选基金、 onboarding、错误降级
 // [DEPS] @vue/test-utils、vitest、pinia
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { computed } from 'vue'

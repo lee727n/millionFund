@@ -169,7 +169,7 @@ export async function terminateOcrWorker() {
   if (sharedWorker) {
     try {
       await sharedWorker.terminate()
-    } catch (e) {
+    } catch {
       // ignore
     }
     sharedWorker = null
@@ -395,7 +395,7 @@ export interface RecognizedHolding {
 /**
  * OCR 识别进度回调
  */
-export type OcrProgressCallback = (progress: number, status: string) => void
+export type OcrProgressCallback = (_progress: number, _status: string) => void
 
 /**
  * 检测图片模糊度（拉普拉斯方差）
@@ -403,6 +403,7 @@ export type OcrProgressCallback = (progress: number, status: string) => void
  * [RETURN] 方差值越小越模糊，一般 < 100 认为较模糊
  */
 export function detectImageBlur(imageSource: File | string): Promise<number> {
+  // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve, reject) => {
     try {
       const img = await loadImage(imageSource)
@@ -463,18 +464,6 @@ export async function recognizeText(
   onProgress?: OcrProgressCallback
 ): Promise<string> {
   if (onProgress) addProgressListener(onProgress)
-
-  const makeLogger = () => (m: any) => {
-    try {
-      const progress = typeof m?.progress === 'number' ? Math.round(m.progress * 100) : 0
-      const status = m?.status || ''
-      for (const cb of progressListeners) {
-        try { cb(progress, status) } catch (e) { /* ignore listener error */ }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
 
   const psmModes = [6, 3, 4]
 
@@ -845,7 +834,7 @@ function associateCodesFromText(results: RecognizedHolding[], text: string) {
 function findDate(lines: string[]): string | null {
   for (const line of lines) {
     // 支持 2024-01-02、2024/01/02、2024年01月02日
-    const m1 = line.match(/(\d{4})[\-/年](\d{1,2})[\-/月](\d{1,2})/)
+    const m1 = line.match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/)
     if (m1) {
       const y = m1[1]!
       const mo = String(m1[2]!).padStart(2, '0')
@@ -853,7 +842,7 @@ function findDate(lines: string[]): string | null {
       return `${y}-${mo}-${d}`
     }
     // 支持 01-02 形式（无年），使用当前年份
-    const m2 = line.match(/^(?:\D*)(\d{1,2})[\-/](\d{1,2})(?:\D*)$/)
+    const m2 = line.match(/^(?:\D*)(\d{1,2})[-/](\d{1,2})(?:\D*)$/)
     if (m2) {
       const now = new Date()
       const y = String(now.getFullYear())

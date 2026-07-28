@@ -61,7 +61,7 @@ describe('performance.ts', () => {
     markStart('test_mark')
     // 模拟一些操作
     const start = Date.now()
-    while (Date.now() - start < 10) {}
+    while (Date.now() - start < 10) { /* busy wait */ }
     markEnd('test_mark')
 
     const metrics = getMetrics()

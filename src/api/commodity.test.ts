@@ -1,9 +1,18 @@
 // [WHY] 大宗商品/贵金属行情 API 单元测试
 // [WHAT] 测试大宗商品行情 API 的纯函数和边界情况
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { fetchCommodityQuote, parseSinaCommodityResponse } from '../api/commodity'
 import type { CommodityQuote, GoldPrice } from '../types/commodity'
+
+// 拦截真实网络请求，避免测试超时
+vi.mock('@/utils/http', () => ({
+  http: {
+    text: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+    get: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+    json: vi.fn().mockRejectedValue(new Error('network disabled in test')),
+  }
+}))
 
 // ========== parseSinaCommodityResponse 测试 ==========
 

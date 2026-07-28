@@ -19,7 +19,7 @@ interface CacheEntry<T> {
  *  TTL 默认值：24 小时（86400000 ms）
  */
 export const persistCache = {
-  get<T>(key: string, validator?: (data: T) => boolean): T | null {
+  get<T>(key: string, validator?: (_data: T) => boolean): T | null {
     try {
       const raw = localStorage.getItem(`fund_${key}`)
       if (!raw) return null
@@ -60,14 +60,16 @@ export const persistCache = {
       }
       localStorage.setItem(`fund_${key}`, JSON.stringify(entry))
     } catch {
-      // localStorage 满或禁用，静默失败
+      /* localStorage 满或禁用，静默失败 */
     }
   },
 
   delete(key: string): void {
     try {
       localStorage.removeItem(`fund_${key}`)
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   },
 
   clear(): void {
@@ -80,7 +82,9 @@ export const persistCache = {
         }
       }
       keysToRemove.forEach(k => localStorage.removeItem(k))
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   },
 }
 

@@ -48,10 +48,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // [H11] 代码分包：将体积较大的第三方库拆分为独立 chunk，减小主包体积、提升加载性能
-        manualChunks: {
-          tesseract: ['tesseract.js'],
-          chart: ['chart.js'],
-          vue: ['vue', 'vue-router', 'pinia'],
+        // Vite 8 + Rolldown 要求 manualChunks 为函数，对象格式会导致构建失败
+        manualChunks(id: string) {
+          if (id.includes('node_modules/tesseract.js')) return 'tesseract'
+          if (id.includes('node_modules/chart.js') || id.includes('node_modules/vue-chartjs')) return 'chart'
+          if (id.includes('node_modules/vue') || id.includes('node_modules/vue-router') || id.includes('node_modules/pinia')) return 'vue'
+          return undefined
         },
       },
     },

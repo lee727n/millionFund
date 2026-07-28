@@ -7,34 +7,29 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
-import { useNetworkStore } from '@/stores/network'
 import { showToast } from 'vant'
 import { logger, copyLogsToClipboard, exportLogsAsText } from '@/utils/logger'
 import { useHomeData } from '@/composables/useHomeData'
 import { useActionSheet } from '@/composables/useActionSheet'
 import { useHoldingsLogic } from '@/composables/useHoldingsLogic'
 import { useHomePopups } from '@/composables/useHomePopups'
-import type { MarketIndexSimple } from '@/api/fundFast'
 
 const router = useRouter()
 const fundStore = useFundStore()
 const holdingStore = useHoldingStore()
-const networkStore = useNetworkStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 
 // 使用首页数据 hook
-const { 
-  indices, 
-  globalIndices, 
-  tradingSession, 
-  currentTime, 
-  isRefreshing, 
+const {
+  tradingSession,
+  currentTime,
+  isRefreshing,
   hs300ChangePercent,
   topIndices,
   combinedIndices,
   mobileIndices,
-  loadIndices, 
-  loadGlobalIndices 
+  loadIndices,
+  loadGlobalIndices
 } = useHomeData()
 
 // ========== 本地计算属性 ==========
@@ -67,7 +62,6 @@ const {
   observeTodayProfitPercent,
   normalHoldings,
   observeHoldings,
-  handleSort,
   filterBySource,
   filterByAssetClass,
 } = useHoldingsLogic()

@@ -32,7 +32,6 @@ import {
   parseHoldingText,
   recognizeHoldings,
   terminateOcrWorker,
-  RecognizedHolding
 } from '@/utils/ocr'
 // [WHY] vi.mock('tesseract.js') 已将 createWorker 作为命名导出提供为 mock fn；
 // 源码内部用 `await import('tesseract.js')` 取同一模块实例，故直接顶层导入即可共享。

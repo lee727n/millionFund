@@ -169,15 +169,6 @@ const sortedHoldings = computed(() => {
   return funds
 })
 
-// [WHAT] 汇总统计样式
-const summaryProfitClass = computed(() => {
-  return getChangeStatus(holdingStore.summary.totalProfit)
-})
-
-const summaryTodayClass = computed(() => {
-  return getChangeStatus(holdingStore.summary.todayProfit)
-})
-
 // 将持仓按每行两个分组，便于双列展示（仅 Web 端）
 const groupedHoldings = computed(() => {
   const items = sortedHoldings.value
@@ -395,7 +386,7 @@ async function submitCostAdjust() {
     
     holdingStore.addOrUpdateHolding(record)
     showToast(t('holding.cost_adjust_success'))
-  } catch (error) {
+  } catch {
     showToast(t('holding.cost_adjust_failed'))
   } finally {
     closeToast()
@@ -496,26 +487,24 @@ async function backupHoldings() {
   
   // 过滤掉运行时字段，只保留恢复数据所需的关键字段
   const holdingsForBackup = holdingStore.holdings.map(holding => {
-    /* eslint-disable @typescript-eslint/no-unused-vars */
-    const { 
-      // 运行时字段（不备份）
-      loading, 
-      currentValue, 
-      marketValue, 
-      profit, 
-      profitRate, 
-      todayChange, 
-      todayProfit,
-      trendPrediction,
-      dataSource,
-      valueDate,
-      isUpdated,
-      // 保留的字段
-      ...rest 
-    } = holding
-    /* eslint-enable @typescript-eslint/no-unused-vars */
-    return rest
-  })
+      const {
+        // 运行时字段（不备份）
+        loading: _loading,
+        currentValue: _currentValue,
+        marketValue: _marketValue,
+        profit: _profit,
+        profitRate: _profitRate,
+        todayChange: _todayChange,
+        todayProfit: _todayProfit,
+        trendPrediction: _trendPrediction,
+        dataSource: _dataSource,
+        valueDate: _valueDate,
+        isUpdated: _isUpdated,
+        // 保留的字段
+        ...rest
+      } = holding
+      return rest
+    })
   
   // AI追踪数据备份（只保留基金代码和调仓净值）
   const aiTrackingForBackup = aiTrackingStore.records.map(record => ({
@@ -668,28 +657,26 @@ function restoreHoldings() {
           
           // 处理持仓数据，移除运行时字段
           const processedHoldings = jsonData.holdings.map((holding: any) => {
-            /* eslint-disable @typescript-eslint/no-unused-vars */
-            const { 
-              marketValue, 
-              profit, 
-              originProfit, 
-              lastUpdateDate, 
-              todayProfit, 
-              lastTodayProfit, 
-              profitRate,
-              loading,
-              currentValue,
-              todayChange,
-              shareClass,
-              manualProfitRate,
-              serviceFeeRate,
-              serviceFeeDeducted,
-              lastFeeDate,
-              ...rest 
-            } = holding
-            /* eslint-enable @typescript-eslint/no-unused-vars */
-            
-            const industrySectors = Array.isArray(rest.industrySectors) 
+              const {
+                marketValue: _marketValue,
+                profit: _profit,
+                originProfit: _originProfit,
+                lastUpdateDate: _lastUpdateDate,
+                todayProfit: _todayProfit,
+                lastTodayProfit: _lastTodayProfit,
+                profitRate: _profitRate,
+                loading: _loading,
+                currentValue: _currentValue,
+                todayChange: _todayChange,
+                shareClass: _shareClass,
+                manualProfitRate: _manualProfitRate,
+                serviceFeeRate: _serviceFeeRate,
+                serviceFeeDeducted: _serviceFeeDeducted,
+                lastFeeDate: _lastFeeDate,
+                ...rest
+              } = holding
+
+              const industrySectors = Array.isArray(rest.industrySectors) 
               ? rest.industrySectors.join(', ') 
               : rest.industrySectors
             
@@ -711,7 +698,7 @@ function restoreHoldings() {
           }
           
           showToast(t('holding.restore_success'))
-        } catch (error) {
+        } catch {
           showToast(t('holding.parse_backup_failed'))
         }
       }
@@ -719,7 +706,7 @@ function restoreHoldings() {
         showToast(t('holding.read_file_failed'))
       }
       reader.readAsText(file)
-    } catch (error) {
+    } catch {
       showToast(t('holding.restore_failed'))
     }
   }

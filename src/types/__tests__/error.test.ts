@@ -8,7 +8,6 @@ import {
   inferErrorCode,
   mapCodeToContext,
   type ApiErrorCode,
-  type ApiError,
 } from '@/types/error'
 
 describe('error.ts', () => {

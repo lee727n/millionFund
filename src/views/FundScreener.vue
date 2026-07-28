@@ -5,13 +5,10 @@
 
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
-import { fetchPeriodReturnExt } from '@/api/tiantianApi'
 import { showToast } from 'vant'
 
 const router = useRouter()
-const { t } = useI18n()
 
 // [WHAT] 筛选条件
 interface FundFilterCriteria {
@@ -78,14 +75,6 @@ const sortOptions = [
   { label: '代码', value: 'code' },
   { label: '名称', value: 'name' }
 ]
-
-// [WHAT] 是否已应用筛选
-const hasActiveFilters = computed(() => {
-  return filters.type.length > 0 ||
-    filters.fundCompany !== '' ||
-    filters.minRating > 0 ||
-    filters.keyword !== ''
-})
 
 // [WHAT] 活跃筛选数量
 const activeFilterCount = computed(() => {
