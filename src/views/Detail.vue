@@ -74,7 +74,6 @@ const assetAllocation = ref<AssetAllocation | null>(null)
 const fundRating = ref<FundRating | null>(null)
 const periodReturns = ref<PeriodReturnExt[]>([])
 const sectorInfo = ref<{ name: string; dayReturn: number } | null>(null)
-const similarFunds = ref<{ code: string; name: string; yearReturn: number }[]>([])
 const dividendRecords = ref<{ date: string; amount: number; type: string }[]>([])
  
 const announcements = ref<{ id: string; title: string; date: string; type: string; url: string }[]>([])
@@ -538,26 +537,12 @@ async function submitSourceAdjust() {
   showSourceDialog.value = false
 }
 
-// [WHAT] 跳转同类基金
-function goToSimilarFund(code: string) {
-  if (code === fundCode.value) {
-    showToast(t('detail.already_in_this_fund'))
-    return
-  }
-  router.push(`/detail/${code}`)
-}
-
 // [WHAT] 跳转到基金对比页面，带入当前基金代码
 function goToCompare() {
   router.push({
     path: '/fund-compare',
     query: { codes: fundCode.value }
   })
-}
-
-// [WHAT] 搜索同类基金
-function searchSimilarFunds() {
-  // 已移除，不再使用
 }
 
 // [WHAT] 打开公告链接
@@ -664,17 +649,13 @@ function formatPercent(num: number): string {
     />
 
     <!-- 关联板块 -->
-    <div v-if="sectorInfo" class="sector-section" @click="searchSimilarFunds">
+    <div v-if="sectorInfo" class="sector-section">
       <div class="sector-info">
         <span class="sector-label">{{ t('detail.related_sectors') }}</span>
         <span class="sector-name">{{ sectorInfo.name }}</span>
         <span class="sector-change" :class="sectorInfo.dayReturn >= 0 ? 'up' : 'down'">
           {{ formatPercent(sectorInfo.dayReturn) }}
         </span>
-      </div>
-      <div class="sector-link">
-        {{ similarFunds.length }}只同类基金
-        <van-icon name="arrow" />
       </div>
     </div>
 
@@ -699,30 +680,6 @@ function formatPercent(num: number): string {
         <van-icon name="shop-o" size="16" />
         <span>{{ getSourceLabel(holdingInfo.source || '') }}</span>
         <span v-if="holdingInfo.isQDII" class="qdii-badge">QDII</span>
-      </div>
-    </div>
-
-    <!-- 同类基金 -->
-    <div v-if="similarFunds.length > 0" class="similar-section">
-      <div class="section-header">
-        <span>{{ t('detail.similar_funds') }}</span>
-        <span class="section-tip">{{ t('detail.year_up_top5') }}</span>
-      </div>
-      <div class="similar-list">
-        <div 
-          v-for="fund in similarFunds.slice(0, 5)" 
-          :key="fund.code"
-          class="similar-item"
-          @click="goToSimilarFund(fund.code)"
-        >
-          <div class="similar-info">
-            <div class="similar-name">{{ fund.name }}</div>
-            <div class="similar-code">{{ fund.code }}</div>
-          </div>
-          <div class="similar-return" :class="fund.yearReturn >= 0 ? 'up' : 'down'">
-            {{ formatPercent(fund.yearReturn) }}
-          </div>
-        </div>
       </div>
     </div>
 
@@ -1349,21 +1306,6 @@ function formatPercent(num: number): string {
 .sector-change.up { color: #f56c6c; }
 .sector-change.down { color: #67c23a; }
 
-.sector-link {
-  font-size: 13px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ========== 同类基金 ========== */
-.similar-section {
-  background: var(--bg-secondary);
-  margin: 0 12px 12px;
-  border-radius: 12px;
-}
-
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -1379,55 +1321,6 @@ function formatPercent(num: number): string {
   font-weight: 400;
   color: var(--text-secondary);
 }
-
-.similar-list {
-  padding: 8px 16px;
-}
-
-.similar-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-}
-
-.similar-item:last-child {
-  border-bottom: none;
-}
-
-.similar-item:active {
-  opacity: 0.7;
-}
-
-.similar-info {
-  flex: 1;
-  overflow: hidden;
-}
-
-.similar-name {
-  font-size: 14px;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.similar-code {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.similar-return {
-  font-size: 14px;
-  font-weight: 600;
-  font-family: 'DIN Alternate', -apple-system, monospace;
-}
-
-.similar-return.up { color: #f56c6c; }
-.similar-return.down { color: #67c23a; }
 
 /* ========== 信息区块通用样式 ========== */
 .info-section {

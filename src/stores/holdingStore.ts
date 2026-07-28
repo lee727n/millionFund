@@ -82,14 +82,6 @@ export const useHoldingStore = defineStore('holding', () => {
     fetchPortfolioSummary
   }
   
-  // 筛选模块
-  const filter = {
-    filterHoldings,
-    sortHoldings,
-    groupByAssetClass,
-    getHoldingStats
-  }
-  
   // ========== State ==========
   
   /** 是否正在刷新 */
@@ -108,13 +100,13 @@ export const useHoldingStore = defineStore('holding', () => {
     
     const cleanedRecords = records.map((r: any) => {
       const {
-        shareClass,
-        serviceFeeRate,
-        serviceFeeDeducted,
-        lastFeeDate,
-        lastUpdateDate,
-        originProfit,
-        lastTodayProfit,
+        shareClass: _shareClass,
+        serviceFeeRate: _serviceFeeRate,
+        serviceFeeDeducted: _serviceFeeDeducted,
+        lastFeeDate: _lastFeeDate,
+        lastUpdateDate: _lastUpdateDate,
+        originProfit: _originProfit,
+        lastTodayProfit: _lastTodayProfit,
         ...rest
       } = r
       
