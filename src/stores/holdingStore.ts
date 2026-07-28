@@ -269,9 +269,10 @@ export const useHoldingStore = defineStore('holding', () => {
   async function refreshAStocks(holdings: HoldingWithProfit[]) {
     const codes = holdings.map(h => h.symbol)
     const results = await fetchAStockQuote(codes).catch(() => [])
-    
+    const quoteMap = new Map(results.map(q => [q.symbol, q]))
+
     holdings.forEach(h => {
-      const quote = results.find(q => q.symbol === h.symbol)
+      const quote = quoteMap.get(h.symbol)
       if (quote) {
         updateHoldingWithStockData(h, quote.currentPrice, quote.changePercent, false)
       } else {
@@ -279,13 +280,14 @@ export const useHoldingStore = defineStore('holding', () => {
       }
     })
   }
-  
+
   async function refreshHKStocks(holdings: HoldingWithProfit[]) {
     const codes = holdings.map(h => h.symbol)
     const results = await fetchHKStockQuote(codes).catch(() => [])
-    
+    const quoteMap = new Map(results.map(q => [q.symbol, q]))
+
     holdings.forEach(h => {
-      const quote = results.find(q => q.symbol === h.symbol)
+      const quote = quoteMap.get(h.symbol)
       if (quote) {
         updateHoldingWithStockData(h, quote.currentPrice, quote.changePercent, false)
       } else {
@@ -293,13 +295,14 @@ export const useHoldingStore = defineStore('holding', () => {
       }
     })
   }
-  
+
   async function refreshUSStocks(holdings: HoldingWithProfit[]) {
     const codes = holdings.map(h => h.symbol)
     const results = await fetchUSStockQuote(codes).catch(() => []) as any
-    
+    const quoteMap = new Map(results.map((q: any) => [q.symbol, q]))
+
     holdings.forEach(h => {
-      const quote = results.find(q => q.symbol === h.symbol)
+      const quote = quoteMap.get(h.symbol)
       if (quote) {
         updateHoldingWithStockData(h, quote.currentPrice, quote.changePercent, false)
       } else {
@@ -339,9 +342,10 @@ export const useHoldingStore = defineStore('holding', () => {
   async function refreshCommodities(holdings: HoldingWithProfit[]) {
     const codes = holdings.map(h => h.symbol)
     const results = await fetchCommodityQuote(codes).catch(() => []) as any
-    
+    const quoteMap = new Map(results.map((q: any) => [q.symbol, q]))
+
     holdings.forEach(h => {
-      const quote = results.find(q => q.symbol === h.symbol)
+      const quote = quoteMap.get(h.symbol)
       if (quote) {
         updateHoldingWithStockData(h, quote.price, quote.changePercent, false)
       } else {

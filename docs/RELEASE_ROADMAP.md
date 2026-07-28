@@ -143,10 +143,10 @@ v1.9.8                v1.10.0 ✅            v1.11.0 ✅            v2.0.x
 | # | 任务 | 工时 | 优先级 | 来源文档 | 状态 |
 |---|------|------|--------|---------|------|
 | 44 | 基金对比工具（2-5 只横向对比） | 2d | P1 | FUND §4.2.1 | `[x]` 2026-07-29 代码验证（FundCompare.vue 已实现；修复 fundStore.funds→watchlist bug） |
-| 45 | 基金筛选器（类型/收益率/风险/规模） | 2d | P1 | FUND §4.2.2 | `[~]` 部分实现（FundScreener.vue 类型/基金公司筛选工作；收益/风险/评级排序 cmp=0 跳过；评级筛选 TODO） |
+| 45 | 基金筛选器（类型/收益率/风险/规模） | 2d | P1 | FUND §4.2.2 | `[x]` 2026-07-29 修复评级筛选（批量获取 FundRating）+ 排序实现（rating/volatility/sharpeRatio）+ 默认排序改为 code |
 | 46 | 定投模拟器（历史回测 + 可视化） | 3d | P2 | FUND §4.2.3 | `[x]` 2026-07-02（DCACalculator） |
 | 47 | 详情页 K线切换（日/周/月） | 2d | P2 | FUND §4.2.5 | `[ ]` ⚠️ 未实现（OKXChart 仅有 1d/5d/1m/3m/6m/1y 时间范围切换；无周K/月K 蜡烛聚合逻辑） |
-| 48 | 自选列表拖拽排序 | 1d | P2 | FUND §5 | `[ ]` ⚠️ 未实现（Watchlist.vue 仅 13 行占位页 "开发中"；fundStore 无 reorder/moveTo 方法） |
+| 48 | 自选列表拖拽排序 | 1d | P2 | FUND §5 | `[~]` 部分实现（Watchlist.vue 已补齐列表渲染+下拉刷新+删除；拖拽排序未实现，fundStore 无 reorder/moveTo 方法） |
 
 ### 🏗 平台化
 
@@ -185,12 +185,10 @@ v1.9.8                v1.10.0 ✅            v1.11.0 ✅            v2.0.x
 | # | 任务 | 模块 | 预计工时 | 状态 |
 |---|------|------|---------|---------|
 | 7 | OCR 解析引擎测试（真实样张 fixture） | OCR | 1d | ⚠️ 待实现 |
-| 45 | 基金筛选器：收益/风险/评级排序 + 评级筛选 | 基金 | 半天 | ⚠️ 部分实现（当前 cmp=0 不排序；按评级筛选 TODO 跳过）|
 | 19 | TypeScript strict 子选项清零（noUncheckedIndexedAccess） | 架构 | 1d | 🟡 部分实现（noUnusedLocals/Parameters/UncheckedSideEffectImports 已开）|
 | 11 | Jaccard 中文分词修复（2-gram bigram 已实现，补纯函数 UT） | 新闻 | 2h | 🟡 已修复，UT 待补 |
 | 44 | FundCompare 从自选加载：确保 watchlist 在进入页面前已初始化（基金名称显示 + 列表渲染） | 基金 | 1h | 🟡 store 引用 bug 已修；页面首次进入 watchlist 可能为空待验证 |
 | 34 | 基金详情页同类平均对比（similarFunds 数组填充 + 同类收益/费率平均对比） | 基金 | 1d | ⚠️ 未实现（僵尸代码已清理，需重新设计）|
-| 48 | 自选列表 Watchlist.vue 从占位页补齐（含拖拽排序） | 基金/自选 | 1-2d | ⚠️ 未实现 |
 
 ---
 

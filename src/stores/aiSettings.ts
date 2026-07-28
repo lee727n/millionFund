@@ -73,7 +73,9 @@ export const useAISettingsStore = defineStore('aiSettings', () => {
           headers['anthropic-version'] = '2023-06-01'
           break
         case 'gemini':
-          url = `https://generativelanguage.googleapis.com/v1beta/models/${config.value.model}:generateContent?key=${config.value.apiKey}`
+          // [SECURITY] 使用 header 传 key，避免 API Key 出现在 URL/浏览器历史/服务端日志
+          url = config.value.endpoint || `https://generativelanguage.googleapis.com/v1beta/models/${config.value.model}:generateContent`
+          headers['x-goog-api-key'] = config.value.apiKey
           break
         default:
           url = config.value.endpoint

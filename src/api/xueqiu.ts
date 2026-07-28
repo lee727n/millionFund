@@ -77,9 +77,10 @@ export async function fetchHotDiscussions(type: 'fund' | 'stock' = 'fund'): Prom
 
 /**
  * 获取股票情绪列表
+ * [NOTE] 当前为演示数据，不发送网络请求。接入真实接口后需替换。
  */
 export async function fetchStockSentimentList(type: 'fund' | 'stock' = 'fund'): Promise<StockSentiment[]> {
-  // 模拟数据
+  // 演示数据（非实时）
   return [
     { stock: '贵州茅台', code: '600519', sentiment: 85, change: 2.5, volume: 1000000 },
     { stock: '宁德时代', code: '300750', sentiment: 78, change: -1.2, volume: 800000 },
@@ -89,9 +90,10 @@ export async function fetchStockSentimentList(type: 'fund' | 'stock' = 'fund'): 
 
 /**
  * 获取用户观点
+ * [NOTE] 当前为演示数据，不发送网络请求。接入真实接口后需替换。
  */
 export async function fetchUserViews(): Promise<UserView[]> {
-  // 模拟数据
+  // 演示数据（非实时）
   return [
     {
       user: '但斌',
@@ -114,8 +116,10 @@ export async function fetchUserViews(): Promise<UserView[]> {
 
 /**
  * 获取雪球新闻（用于FinanceNews.vue）
+ * [NOTE] 当前为演示数据，不发送网络请求。接入真实接口后需替换。
  */
 export async function fetchXueqiuNews(page = 1, pageSize = 20): Promise<NewsItem[]> {
+  // 演示数据（非实时）
   const mockNews = [
     {
       title: '茅台股价重回2000元，市值超2.5万亿',

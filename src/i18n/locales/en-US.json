@@ -178,7 +178,8 @@
     "edit": "Edit Watchlist",
     "delete": "Delete from Watchlist",
     "no_data": "No watchlist items",
-    "search_placeholder": "Search fund code or name"
+    "search_placeholder": "Search fund code or name",
+    "confirm_delete": "Remove this fund from your watchlist?"
   },
   "detail": {
     "title": "Fund Details",
@@ -346,7 +347,8 @@
     "add_success": "添加成功",
     "confirm_delete": "确认删除",
     "saving": "Saving...",
-    "save_failed": "Save failed"
+    "save_failed": "Save failed",
+    "last_refresh": "Last refresh"
   },
   "market": {
     "title": "Market Overview",

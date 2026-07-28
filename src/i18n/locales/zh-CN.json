@@ -178,7 +178,8 @@
     "edit": "编辑自选",
     "delete": "删除自选",
     "no_data": "暂无自选",
-    "search_placeholder": "搜索基金代码或名称"
+    "search_placeholder": "搜索基金代码或名称",
+    "confirm_delete": "确定要删除该自选基金吗？"
   },
   "detail": {
     "title": "基金详情",
@@ -350,7 +351,8 @@
     "add_success": "添加成功",
     "confirm_delete": "确认删除",
     "saving": "保存中...",
-    "save_failed": "保存失败"
+    "save_failed": "保存失败",
+    "last_refresh": "最后刷新"
   },
   "market": {
     "title": "市场概览",

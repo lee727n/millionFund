@@ -6,6 +6,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchFund, type FundInfo } from '@/api/fundSearch'
+import { fetchFundRating } from '@/api/fundDetail'
+import type { FundRating } from '@/api/fundTypes'
 import { showToast } from 'vant'
 
 const router = useRouter()
@@ -24,17 +26,20 @@ interface FundFilterCriteria {
 const filters = reactive<FundFilterCriteria>({
   type: [],
   fundCompany: '',
-  sortBy: 'return',
-  sortOrder: 'desc',
+  sortBy: 'code',
+  sortOrder: 'asc',
   dateRange: '1年',
   minRating: 0,
   keyword: ''
 })
 
 // [WHAT] 筛选结果
-const filterResults = ref<FundInfo[]>([])
+const filterResults = ref<(FundInfo & { ratingData?: FundRating })[]>([])
 const isLoading = ref(false)
 const showFilterPanel = ref(false)
+
+// [WHAT] 评级数据缓存（按 code 缓存，避免重复请求）
+const ratingCache = new Map<string, FundRating | null>()
 
 // [WHAT] 基金类型选项
 const fundTypeOptions = [
@@ -94,13 +99,11 @@ async function applyFilters() {
 
   try {
     // 获取基金列表
-    let results: FundInfo[]
+    let results: (FundInfo & { ratingData?: FundRating })[]
 
     if (filters.keyword) {
-      // 有关键词，先搜索
       results = await searchFund(filters.keyword, 500)
     } else {
-      // 没关键词，获取全部
       results = await searchFund('', 500)
     }
 
@@ -118,10 +121,26 @@ async function applyFilters() {
       )
     }
 
-    // TODO: 按评级筛选（需要获取评级数据，暂时跳过）
-    // if (filters.minRating > 0) {
-    //   // 需要获取每个基金的评级数据
-    // }
+    // 按评级筛选：需要评级数据，批量获取（限制最多 30 只避免过多请求）
+    if (filters.minRating > 0 || filters.sortBy === 'rating' || filters.sortBy === 'risk') {
+      // 先取前 30 只（已按类型/公司过滤）获取评级
+      const candidates = results.slice(0, 30)
+      await Promise.all(
+        candidates.map(async (fund) => {
+          if (!ratingCache.has(fund.code)) {
+            ratingCache.set(fund.code, await fetchFundRating(fund.code).catch(() => null))
+          }
+          fund.ratingData = ratingCache.get(fund.code) ?? undefined
+        })
+      )
+
+      // 按评级筛选
+      if (filters.minRating > 0) {
+        results = results.filter(fund =>
+          fund.ratingData && fund.ratingData.rating >= filters.minRating
+        )
+      }
+    }
 
     // 排序
     results = sortFunds(results)
@@ -138,7 +157,7 @@ async function applyFilters() {
 /**
  * 排序基金列表
  */
-function sortFunds(funds: FundInfo[]): FundInfo[] {
+function sortFunds(funds: (FundInfo & { ratingData?: FundRating })[]): (FundInfo & { ratingData?: FundRating })[] {
   const sorted = [...funds]
 
   sorted.sort((a, b) => {
@@ -151,11 +170,16 @@ function sortFunds(funds: FundInfo[]): FundInfo[] {
       case 'name':
         cmp = a.name.localeCompare(b.name)
         break
-      case 'return':
       case 'rating':
+        cmp = (a.ratingData?.rating || 0) - (b.ratingData?.rating || 0)
+        break
       case 'risk':
-        // 收益/评级/风险需异步获取，FundInfo 本身不含这些字段，保持原始顺序
-        cmp = 0
+        // 按波动率排序（波动率越高风险越大）
+        cmp = (a.ratingData?.volatility || 0) - (b.ratingData?.volatility || 0)
+        break
+      case 'return':
+        // 按夏普比率排序（夏普越高收益风险比越好）
+        cmp = (a.ratingData?.sharpeRatio || 0) - (b.ratingData?.sharpeRatio || 0)
         break
     }
 
@@ -171,8 +195,8 @@ function sortFunds(funds: FundInfo[]): FundInfo[] {
 function resetFilters() {
   filters.type = []
   filters.fundCompany = ''
-  filters.sortBy = 'return'
-  filters.sortOrder = 'desc'
+  filters.sortBy = 'code'
+  filters.sortOrder = 'asc'
   filters.dateRange = '1年'
   filters.minRating = 0
   filters.keyword = ''
