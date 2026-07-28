@@ -2,14 +2,31 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
-import { getTrades, removeTrade } from '@/utils/storage'
+import { getTrades, removeTrade, getHoldings } from '@/utils/storage'
 import { fetchFundAccurateData } from '@/api/fundFast'
 import type { TradeRecord } from '@/types/fund'
+// 账户图标 - 通过 import 让 Vite 正确处理资源路径
+// @ts-ignore
+import aliIcon from '@/assets/ali.jpg'
+// @ts-ignore
+import txIcon from '@/assets/TX.jpg'
+// @ts-ignore
+import jdIcon from '@/assets/JD.jpg'
 
 const router = useRouter()
 
 const loading = ref(true)
 const fundNavMap = ref<Map<string, number>>(new Map())
+
+// 账户图标映射
+const accountIcons: Record<string, string> = {
+  ali: aliIcon,
+  TX: txIcon,
+  JD: jdIcon
+}
+
+// 当前账户筛选 (''=全部, 'ali', 'TX', 'JD')
+const accountFilter = ref<string>('')
 
 // 所有交易记录
 const allTrades = ref<TradeRecord[]>([])
@@ -19,19 +36,36 @@ async function loadTrades() {
   loading.value = true
   const trades = getTrades()
   
+  // 获取持仓中的基金来源信息，用于自动匹配
+  const holdings = getHoldings()
+  const fundSourceMap = new Map<string, string>()
+  holdings.forEach(h => {
+    if (h.source) {
+      fundSourceMap.set(h.code, h.source)
+    }
+  })
+  
+  // 自动补全交易记录中的 source 字段
+  const enrichedTrades = trades.map(t => {
+    if (!t.source && fundSourceMap.has(t.code)) {
+      return { ...t, source: fundSourceMap.get(t.code) as string }
+    }
+    return t
+  })
+  
   // 按基金分组排序
-  allTrades.value = trades.sort((a, b) => {
+  allTrades.value = enrichedTrades.sort((a, b) => {
     // 先按基金代码分组，组内按时间倒序
     if (a.code !== b.code) return a.code.localeCompare(b.code)
     return b.createdAt - a.createdAt
   })
   
   // 获取每个基金的当前净值用于计算涨跌幅
-  const fundCodes = [...new Set(trades.map(t => t.code))]
+  const fundCodes = [...new Set(enrichedTrades.map(t => t.code))] as string[]
   const requests = fundCodes.map(async (code) => {
     try {
       const data = await fetchFundAccurateData(code)
-      fundNavMap.value.set(code, data.nav || data.estimate || 0)
+      fundNavMap.value.set(code, (data.nav || data.estimate || 0) as number)
     } catch (e) {
       // 静默失败
     }
@@ -41,19 +75,27 @@ async function loadTrades() {
   loading.value = false
 }
 
+// 筛选后的交易记录
+const filteredTrades = computed(() => {
+  if (!accountFilter.value) return allTrades.value
+  return allTrades.value.filter(t => t.source === accountFilter.value)
+})
+
 // 按基金分组的交易记录
 const groupedTrades = computed(() => {
   const groups = new Map<string, {
     code: string
     name: string
+    source?: string
     trades: (TradeRecord & { postReturn: number })[]
   }>()
 
-  allTrades.value.forEach(trade => {
+  filteredTrades.value.forEach(trade => {
     if (!groups.has(trade.code)) {
       groups.set(trade.code, {
         code: trade.code,
         name: trade.name,
+        source: trade.source,
         trades: []
       })
     }
@@ -68,9 +110,29 @@ const groupedTrades = computed(() => {
   return Array.from(groups.values())
 })
 
+// 获取账户图标图片
+function getSourceIconSrc(source?: string): string {
+  if (!source) return ''
+  return accountIcons[source] || ''
+}
+
+function getSourceName(source?: string): string {
+  switch (source) {
+    case 'ali': return '支付宝'
+    case 'TX': return '腾讯'
+    case 'JD': return '京东'
+    default: return ''
+  }
+}
+
 // 跳转详情
 function goToDetail(code: string) {
   router.push(`/detail/${code}`)
+}
+
+// 跳转AI追踪
+function goToAITracking() {
+  router.push('/ai-tracking')
 }
 
 // 删除交易记录
@@ -89,6 +151,11 @@ async function deleteTrade(trade: TradeRecord) {
   }
 }
 
+// 切换账户筛选（再次点击取消筛选）
+function toggleAccountFilter(account: string) {
+  accountFilter.value = accountFilter.value === account ? '' : account
+}
+
 onMounted(() => {
   loadTrades()
 })
@@ -96,11 +163,43 @@ onMounted(() => {
 
 <template>
   <div class="trade-center">
-    <!-- 顶部标题 -->
+    <!-- 顶部标题 + 筛选按钮 -->
     <div class="header">
-      <span class="title-icon">📊</span>
-      <span>交易记录</span>
-      <span class="trade-count">{{ allTrades.length }}条</span>
+      <div class="header-left">
+        <span class="title-icon">📊</span>
+        <span>交易记录</span>
+        <span class="trade-count">{{ filteredTrades.length }}条</span>
+        <!-- 账户筛选按钮 - 可切换 -->
+        <button 
+          class="filter-btn source-btn" 
+          :class="{ active: accountFilter === 'ali' }"
+          @click="toggleAccountFilter('ali')"
+          title="支付宝"
+        >
+          <img src="@/assets/ali.jpg" class="source-icon" alt="支付宝" />
+        </button>
+        <button 
+          class="filter-btn source-btn" 
+          :class="{ active: accountFilter === 'TX' }"
+          @click="toggleAccountFilter('TX')"
+          title="腾讯"
+        >
+          <img src="@/assets/TX.jpg" class="source-icon" alt="腾讯" />
+        </button>
+        <button 
+          class="filter-btn source-btn" 
+          :class="{ active: accountFilter === 'JD' }"
+          @click="toggleAccountFilter('JD')"
+          title="京东"
+        >
+          <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
+        </button>
+      </div>
+      <div class="header-right">
+        <button class="ai-entry-btn" @click="goToAITracking">
+          <span>AI追踪</span>
+        </button>
+      </div>
     </div>
 
     <!-- 加载状态 -->
@@ -123,8 +222,14 @@ onMounted(() => {
         :key="group.code" 
         class="fund-card"
       >
-        <!-- 第一行：基金名称 + code -->
+        <!-- 第一行：账户图标 + 基金名称 + code -->
         <div class="fund-header" @click="goToDetail(group.code)">
+          <img 
+            v-if="group.source" 
+            :src="getSourceIconSrc(group.source)" 
+            class="fund-source-icon" 
+            :title="getSourceName(group.source)"
+          />
           <span class="fund-name">{{ group.name }}</span>
           <span class="fund-code">{{ group.code }}</span>
         </div>
@@ -173,24 +278,92 @@ onMounted(() => {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 14px 16px;
   font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .title-icon {
   font-size: 20px;
 }
 
+.ai-entry-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
+  transition: all 0.3s;
+}
+
+.ai-entry-btn:active {
+  transform: scale(0.95);
+}
+
+.ai-entry-btn span {
+  letter-spacing: 0.5px;
+}
+
 .trade-count {
   font-size: 13px;
   font-weight: normal;
   color: var(--text-secondary);
-  margin-left: auto;
+}
+
+/* 筛选按钮 */
+.filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-btn.source-btn {
+  padding: 4px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-secondary);
+}
+
+.filter-btn.source-btn.active {
+  border-color: var(--accent-color, #1890ff);
+  box-shadow: 0 0 0 2px var(--accent-color, #1890ff);
+}
+
+.source-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: contain;
 }
 
 /* 加载和空状态 */
@@ -239,7 +412,8 @@ onMounted(() => {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  padding: 8px 12px 80px;
+  padding: 8px 12px;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
 }
 
 /* 基金卡片 */
@@ -252,7 +426,7 @@ onMounted(() => {
 
 .fund-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   margin-bottom: 10px;
   cursor: pointer;
@@ -260,6 +434,14 @@ onMounted(() => {
 
 .fund-header:active {
   opacity: 0.7;
+}
+
+.fund-source-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .fund-name {

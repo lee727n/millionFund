@@ -627,7 +627,12 @@ function drawChart() {
   volumeHeight = 0
   volumeTop = height
   
-  const padding = { top: 15, right: 60, bottom: 25, left: 55 }
+  // [WHY] 根据画布宽度自适应调整内边距，充分利用手机屏幕空间
+  // PC端（宽度 >= 500）保留较宽松的内边距，移动端紧凑布局
+  const isMobile = width < 500
+  const padding = isMobile 
+    ? { top: 10, right: 40, bottom: 22, left: 40 }
+    : { top: 15, right: 60, bottom: 25, left: 55 }
   const chartWidth = width - padding.left - padding.right
   
   // [WHY] 获取当前主题颜色
@@ -1443,19 +1448,20 @@ onUnmounted(() => {
 
 /* [WHAT] 图表头部（模式切换 + 时间周期） */
 .chart-header {
+  margin-top: 16px;
   border-bottom: 1px solid var(--border-color);
 }
 
 /* [WHAT] 模式切换标签 */
 .mode-tabs {
   display: flex;
-  padding: 8px 12px 4px;
-  gap: 6px;
+  padding: 4px 8px 2px;
+  gap: 4px;
   border-bottom: 1px solid rgba(128, 128, 128, 0.15);
 }
 
 .mode-tab {
-  padding: 6px 16px;
+  padding: 4px 12px;
   font-size: 13px;
   color: var(--text-secondary);
   background: transparent;
@@ -1480,8 +1486,8 @@ onUnmounted(() => {
 .performance-legend {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 10px 12px;
+  gap: 16px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1532,8 +1538,8 @@ onUnmounted(() => {
 .period-selector {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  gap: 2px;
+  padding: 8px 8px;
+  gap: 4px;
   border-bottom: 1px solid var(--border-color);
   overflow-x: auto;
   scrollbar-width: none;
@@ -1548,8 +1554,8 @@ onUnmounted(() => {
 .period-btn {
   min-height: 36px;
   min-width: 44px;
-  padding: 8px 14px;
-  font-size: 14px;
+  padding: 6px 12px;
+  font-size: 13px;
   color: var(--text-secondary);
   background: transparent;
   border-radius: 6px;
@@ -1642,9 +1648,9 @@ onUnmounted(() => {
 /* OHLC信息栏 */
 .ohlc-bar {
   display: flex;
-  gap: 12px;
-  padding: 10px 12px;
-  font-size: 13px;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
   border-bottom: 1px solid var(--border-color);
   overflow-x: auto;
   scrollbar-width: none;
@@ -1681,9 +1687,9 @@ onUnmounted(() => {
 /* 图表容器 */
 .chart-container {
   position: relative;
-  /* [WHY] 使用vw单位适配不同屏幕 */
-  height: max(200px, 45vw);
-  max-height: 320px;
+  /* [WHY] 使用vw单位适配不同屏幕，移动端让图表更大 */
+  height: max(220px, 55vw);
+  max-height: 340px;
   /* [WHY] 防止图表区域意外滚动 */
   touch-action: pan-x pan-y;
 }
@@ -1754,18 +1760,18 @@ onUnmounted(() => {
 @media screen and (max-width: 375px) {
   /* 小屏手机（iPhone SE等） */
   .period-btn {
-    padding: 6px 10px;
-    font-size: 13px;
-    min-width: 40px;
+    padding: 4px 8px;
+    font-size: 12px;
+    min-width: 36px;
   }
   
   .ohlc-bar {
-    gap: 8px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 11px;
   }
   
   .chart-container {
-    height: 200px;
+    height: 220px;
   }
   
   .returns-bar {
@@ -1776,12 +1782,12 @@ onUnmounted(() => {
 @media screen and (min-width: 414px) {
   /* 大屏手机（iPhone Plus/Max等） */
   .period-btn {
-    padding: 10px 16px;
-    font-size: 15px;
+    padding: 6px 12px;
+    font-size: 14px;
   }
   
   .chart-container {
-    height: 280px;
+    height: 300px;
   }
 }
 

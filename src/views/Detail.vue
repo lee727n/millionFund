@@ -283,6 +283,7 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
+      source: holding.source,
       createdAt: Date.now()
     })
 
@@ -2029,10 +2030,17 @@ function formatPercent(num: number): string {
 /* ========== 图表区域 ========== */
 .chart-section {
   background: var(--bg-secondary);
-  margin: 0 12px 12px;
+  margin: 0 4px 8px;
   border-radius: 12px;
-  overflow: hidden;
-  padding-top: 20px;
+  overflow: visible;
+  padding-top: 8px;
+}
+
+@media (min-width: 768px) {
+  .chart-section {
+    margin: 0 12px 12px;
+    padding-top: 20px;
+  }
 }
 
 /* ========== 交易记录 ========== */

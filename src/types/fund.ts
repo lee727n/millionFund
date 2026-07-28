@@ -172,6 +172,8 @@ export interface TradeRecord {
   estimated?: boolean
   /** 备注 */
   remark?: string
+  /** 账户来源（ali/TX/JD） */
+  source?: string
   /** 创建时间 */
   createdAt: number
 }

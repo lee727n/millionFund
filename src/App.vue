@@ -72,7 +72,8 @@ watch(
     const tabMap: Record<string, string> = {
       home: 'home',
       holding: 'holding',
-      'ai-tracking': 'ai'
+      'ai-tracking': 'ai',
+      'trade-center': 'trader'
     }
     if (name && tabMap[name as string]) {
       activeTab.value = tabMap[name as string]
@@ -94,6 +95,10 @@ function onTabChange(name: string | number) {
 
 function goToAITracking() {
   router.push('/ai-tracking')
+}
+
+function goToTradeCenter() {
+  router.push('/trade-center')
 }
 </script>
 
@@ -123,9 +128,9 @@ function goToAITracking() {
       @change="onTabChange"
     >
       <van-tabbar-item name="holding" icon="balance-list-o">我的持仓</van-tabbar-item>
-      <div class="tabbar-center-placeholder" :class="{ 'is-active': activeTab === 'ai' }" @click="goToAITracking">
+      <div class="tabbar-center-placeholder" :class="{ 'is-active': activeTab === 'trader' }" @click="goToTradeCenter">
         <div class="tabbar-raised-button">
-          <span>AI追踪</span>
+          <span>Trader</span>
         </div>
       </div>
       <van-tabbar-item name="home" icon="home-o">趋势行情</van-tabbar-item>

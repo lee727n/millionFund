@@ -766,11 +766,6 @@ async function cloudRestoreHoldings() {
   }
 }
 
-// [WHAT] 跳转到交易中心
-function goToTradeCenter() {
-  router.push('/trade-center')
-}
-
 // [WHAT] 清空所有持仓数据
 async function clearAllHoldings() {
   try {
@@ -1053,16 +1048,10 @@ async function refreshHoldingsCache() {
         <div class="nav-title">我的持仓</div>
         <!-- 移动端操作按钮 -->
         <div class="nav-cloud-actions mobile-only">
-          <van-button size="small" @click="goToTradeCenter" class="nav-btn">交易</van-button>
           <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
           <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
         </div>
-        <!-- PC端操作按钮 -->
-        <div class="nav-cloud-actions desktop-only">
-          <van-button size="small" @click="goToTradeCenter" class="nav-btn">交易中心</van-button>
-          <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
-          <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
-        </div>
+
       </div>
       <!-- 第二行：按钮 -->
       <div class="nav-actions-row">
@@ -1867,6 +1856,11 @@ async function refreshHoldingsCache() {
     display: none !important;
   }
   
+  /* 移动端：隐藏PC端按钮 */
+  .desktop-only {
+    display: none !important;
+  }
+  
   /* 移动端：显示移动端按钮 */
   .mobile-only {
     display: flex !important;
@@ -1914,11 +1908,15 @@ async function refreshHoldingsCache() {
 /* 网页端：显示网页端按钮 */
 @media (min-width: 768px) {
   .web-only {
-    display: flex;
+    display: flex !important;
+  }
+  
+  .desktop-only {
+    display: flex !important;
   }
   
   .mobile-only {
-    display: none;
+    display: none !important;
   }
   
   .source-buttons {

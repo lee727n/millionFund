@@ -629,6 +629,7 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
+      source: holding.source,
       createdAt: Date.now()
     })
 
