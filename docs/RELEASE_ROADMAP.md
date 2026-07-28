@@ -111,10 +111,10 @@ v1.9.8                v1.10.0 ✅            v1.11.0 ✅            v2.0.x
 | # | 任务 | 工时 | 优先级 | 来源文档 | 状态 |
 |---|------|------|--------|---------|------|
 | 35 | 自选列表首次加载缓存优先 | 1d | P1 | FUND §4.3 | `[x]` 2026-07-03 |
-| 36 | 持仓页面增量汇总计算 | 1d | P2 | FUND §4.3 | `[ ]` ⚠️ 待实现（holdingStore 全量 computed 重算；每次 addOrUpdateHolding 触发全量 refreshEstimates + fetchPortfolioSummary）|
+| 36 | 持仓页面增量汇总计算 | 1d | P2 | FUND §4.3 | `[x]` 2026-07-29 新增 refreshSingleHolding，addOrUpdateHolding 改调单条刷新（O(n)→O(1) 网络请求）；全量 refreshEstimates 保留用于初始化/下拉刷新 |
 | 37 | 基金搜索本地索引（拼音 + 最近搜索记忆） | 1d | P2 | FUND §4.3 | `[x]` 2026-07-03 |
 
-**总计**：~16 人日（3 人并行约 1.5 周） — **已完成 14/17**（代码验证：#34/#36/#26 三项仍待实现）
+**总计**：~16 人日（3 人并行约 1.5 周） — **已完成 15/17**（代码验证：#34/#26 两项仍待实现）
 
 ---
 
@@ -186,10 +186,10 @@ v1.9.8                v1.10.0 ✅            v1.11.0 ✅            v2.0.x
 |---|------|------|---------|---------|
 | 7 | OCR 解析引擎测试（真实样张 fixture） | OCR | 1d | ⚠️ 待实现 |
 | 45 | 基金筛选器：收益/风险/评级排序 + 评级筛选 | 基金 | 半天 | ⚠️ 部分实现（当前 cmp=0 不排序；按评级筛选 TODO 跳过）|
-| 19 | TypeScript strict 子选项清零（noUnusedLocals/Parameters/UncheckedIndexedAccess） | 架构 | 1d | 🟡 部分实现 |
-| 11 | Jaccard 中文分词修复（按空白切分对中文无效；n-gram or 分词库） | 新闻 | 2h | 🟡 已实现但有质量缺陷 |
+| 19 | TypeScript strict 子选项清零（noUncheckedIndexedAccess） | 架构 | 1d | 🟡 部分实现（noUnusedLocals/Parameters/UncheckedSideEffectImports 已开）|
+| 11 | Jaccard 中文分词修复（2-gram bigram 已实现，补纯函数 UT） | 新闻 | 2h | 🟡 已修复，UT 待补 |
 | 44 | FundCompare 从自选加载：确保 watchlist 在进入页面前已初始化（基金名称显示 + 列表渲染） | 基金 | 1h | 🟡 store 引用 bug 已修；页面首次进入 watchlist 可能为空待验证 |
-| 34 | 基金详情页同类平均对比（similarFunds 数组填充 + 同类收益/费率平均对比） | 基金 | 1d | ⚠️ 未实现（similarFunds=[] 僵尸代码）|
+| 34 | 基金详情页同类平均对比（similarFunds 数组填充 + 同类收益/费率平均对比） | 基金 | 1d | ⚠️ 未实现（僵尸代码已清理，需重新设计）|
 | 48 | 自选列表 Watchlist.vue 从占位页补齐（含拖拽排序） | 基金/自选 | 1-2d | ⚠️ 未实现 |
 
 ---

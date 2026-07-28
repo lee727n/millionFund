@@ -213,6 +213,42 @@ export const useHoldingStore = defineStore('holding', () => {
       fetchPortfolioSummary()
     }
   }
+
+  /**
+   * 增量刷新单条持仓的估值和收益
+   * [WHY] addOrUpdateHolding 只影响一条持仓，无需触发全量 refreshEstimates
+   *       （后者会对所有持仓发起网络请求，O(n) 条行情拉取）。
+   *       改为只请求被修改的那一条，将网络请求量从 O(n) 降到 O(1)。
+   * [NOTE] 若正在全量刷新则跳过，避免重复请求（全量刷新会覆盖单条结果）。
+   * @param holding 待刷新的持仓对象（holdings 数组中的引用，原地更新）
+   */
+  async function refreshSingleHolding(holding: HoldingWithProfit): Promise<void> {
+    if (isRefreshing.value) return
+
+    const ac = (holding.assetClass || 'fund') as AssetClass
+    const group = [holding]
+
+    try {
+      switch (ac) {
+        case 'fund': await refreshFunds(group); break
+        case 'astock':
+        case 'convertible':
+        case 'reits': await refreshAStocks(group); break
+        case 'hkstock': await refreshHKStocks(group); break
+        case 'usstock': await refreshUSStocks(group); break
+        case 'bond': await refreshBonds(group); break
+        case 'gold':
+        case 'commodity': await refreshCommodities(group); break
+        case 'future': await refreshFutures(group); break
+        case 'forex': await refreshForex(group); break
+        case 'crypto': await refreshCrypto(group); break
+        default: await refreshFunds(group); break
+      }
+    } finally {
+      upsertHolding(holding)
+      fetchPortfolioSummary()
+    }
+  }
   
   // ========== 刷新函数（保持原有逻辑） ==========
   
@@ -570,43 +606,20 @@ export const useHoldingStore = defineStore('holding', () => {
   
   async function addOrUpdateHolding(record: HoldingRecord) {
     const index = holdings.value.findIndex(h => h.code === record.code)
-    
+    let target: HoldingWithProfit
+
     if (index >= 0) {
-      holdings.value[index] = {
-        ...holdings.value[index],
-        ...record,
-        loading: true
-      }
+      target = { ...holdings.value[index]!, ...record, loading: true }
+      holdings.value[index] = target
     } else {
-      holdings.value.push({
-        ...record,
-        loading: true
-      })
+      target = { ...record, loading: true } as HoldingWithProfit
+      holdings.value.push(target)
     }
-    
-    const cleanedHoldings = holdings.value.map(h => ({
-      id: h.id,
-      assetClass: h.assetClass || 'fund',
-      symbol: h.symbol,
-      name: h.name,
-      exchange: h.exchange,
-      currency: h.currency,
-      costPrice: h.costPrice,
-      currentPrice: h.currentPrice,
-      shares: h.shares,
-      costValue: h.costValue,
-      currentValue: h.currentValue,
-      profit: h.profit,
-      profitRate: h.profitRate,
-      fxRate: h.fxRate,
-      valueCNY: h.valueCNY,
-      profitCNY: h.profitCNY,
-      createdAt: h.createdAt,
-      updatedAt: new Date().toISOString()
-    }))
-    
-    await saveHoldings(cleanedHoldings)
-    await refreshEstimates()
+
+    // [WHY] 单条持久化 + 增量刷新，替代原来的全量 saveHoldings + refreshEstimates
+    //       网络请求量从 O(n) 降到 O(1)，避免编辑单条持仓时刷新所有持仓行情
+    await upsertHolding(target)
+    await refreshSingleHolding(target)
   }
   
   function removeHolding(code: string) {
@@ -783,6 +796,7 @@ export const useHoldingStore = defineStore('holding', () => {
     // Actions - 初始化和刷新
     initHoldings,
     refreshEstimates,
+    refreshSingleHolding,
     
     // Actions - 计算
     calculateProfit,

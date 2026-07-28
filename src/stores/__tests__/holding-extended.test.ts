@@ -194,6 +194,82 @@ describe('holding store', () => {
     expect(store.holdings[0].shares).toBe(2000)
   })
 
+  // ─── 增量刷新（Task #36） ────────────────────────────────────
+
+  test('addOrUpdateHolding 增量模式：只请求被修改持仓的行情，不触发全量 refreshEstimates', async () => {
+    const { useHoldingStore } = await import('@/stores/holding')
+    const { fetchFundAccurateData } = await import('@/api/fundFast')
+    const mockFetch = vi.mocked(fetchFundAccurateData)
+    mockFetch.mockClear()
+
+    const store = useHoldingStore()
+    // 预置 3 只基金持仓
+    store.holdings = [
+      { code: '001', name: '基金A', assetClass: 'fund', shares: 1000, buyNetValue: 1.0, loading: false } as any,
+      { code: '002', name: '基金B', assetClass: 'fund', shares: 500, buyNetValue: 1.5, loading: false } as any,
+      { code: '003', name: '基金C', assetClass: 'fund', shares: 800, buyNetValue: 2.0, loading: false } as any,
+    ]
+
+    // 编辑其中一只
+    await store.addOrUpdateHolding({
+      code: '002',
+      name: '基金B-改名',
+      assetClass: 'fund',
+      shares: 2000,
+      buyNetValue: 1.5,
+    })
+
+    // 增量模式：只请求 1 次（被编辑的那只），而非全量 3 次
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledWith('002', undefined)
+  })
+
+  test('refreshSingleHolding 只刷新目标持仓并更新 portfolioSummary', async () => {
+    const { useHoldingStore } = await import('@/stores/holding')
+    const { fetchFundAccurateData } = await import('@/api/fundFast')
+    const mockFetch = vi.mocked(fetchFundAccurateData)
+    mockFetch.mockClear()
+
+    const store = useHoldingStore()
+    store.holdings = [
+      { code: '001', name: '基金A', assetClass: 'fund', shares: 1000, buyNetValue: 1.0, loading: false, marketValue: 1000 } as any,
+      { code: '002', name: '基金B', assetClass: 'fund', shares: 500, buyNetValue: 1.5, loading: false, marketValue: 750 } as any,
+    ]
+
+    const target = store.holdings[0]!
+    await store.refreshSingleHolding(target)
+
+    // 只请求了目标持仓
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledWith('001', undefined)
+    // loading 被置为 false
+    expect(target.loading).toBe(false)
+    // portfolioSummary 被更新（marketValue 变为 shares * currentValue = 1000 * 1.5 = 1500）
+    expect(store.portfolioSummary).not.toBeNull()
+    expect(store.portfolioSummary!.byAssetClass.fund.value).toBe(1500 + 750)
+  })
+
+  test('refreshSingleHolding 在全量刷新进行中时跳过', async () => {
+    const { useHoldingStore } = await import('@/stores/holding')
+    const { fetchFundAccurateData } = await import('@/api/fundFast')
+    const mockFetch = vi.mocked(fetchFundAccurateData)
+    mockFetch.mockClear()
+
+    const store = useHoldingStore()
+    store.holdings = [
+      { code: '001', name: '基金A', assetClass: 'fund', shares: 1000, buyNetValue: 1.0, loading: false } as any,
+    ]
+
+    // 模拟正在全量刷新
+    store.isRefreshing = true
+
+    const target = store.holdings[0]!
+    await store.refreshSingleHolding(target)
+
+    // 跳过：不发起请求
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   // ─── holdingCodes computed ───────────────────────────────────
 
   test('holdingCodes 返回所有代码', async () => {
