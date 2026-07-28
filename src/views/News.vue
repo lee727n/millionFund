@@ -462,34 +462,56 @@ async function loadYicaiNews() {
 // ========== Jaccard 相似度交叉验证 (Task #11) ==========
 
 /**
- * 计算两个字符串的 Jaccard 相似度
+ * 计算两个字符串的 Jaccard 相似度（字符级二元语法分词）
  * J(A,B) = |A ∩ B| / |A ∪ B|
+ *
+ * [WHY] 原实现按空白分词对中文标题完全失效（中文无空格），
+ *       导致整句被当作单个 token，Jaccard 要么 0 要么 1，0.5 阈值形同虚设。
+ * [WHAT] 改用字符级 2-gram（bigram）对中英文短标题通用：
+ *        - 中文："央行降准" → ["央行","行降","降准"]，能捕捉局部语义重叠
+ *        - 英文："Fed Hikes" → 归一化后 "fedhikes" → ["fe","ed","dh","hi","ik","ke","es"]
+ *        - 混合代码/数字：正确切分并匹配
  * @param strA 字符串A
  * @param strB 字符串B
  * @returns 相似度 (0-1之间)
  */
 function jaccardSimilarity(strA: string, strB: string): number {
-  // 将字符串转换为词集合 (按空格和标点分割)
+  // 字符级二元语法分词（2-gram），对中文和英文短标题都有效
   const tokenize = (str: string): Set<string> => {
-    const tokens = str
+    const normalized = str
       .toLowerCase()
-      .replace(/[，。！？、；：""''《》（）【】\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 2)
-    return new Set(tokens)
+      .replace(/[\p{P}\p{Z}\s]/gu, '') // 删除所有 Unicode 标点和空白
+    const grams = new Set<string>()
+    const len = normalized.length
+    if (len === 0) return grams
+    if (len === 1) {
+      grams.add(normalized)
+      return grams
+    }
+    for (let i = 0; i < len - 1; i++) {
+      grams.add(normalized.slice(i, i + 2))
+    }
+    // 极短文本额外加入单字符（单字标题、基金代码等）
+    if (len <= 3) {
+      for (let i = 0; i < len; i++) {
+        grams.add(normalized[i])
+      }
+    }
+    return grams
   }
-  
+
   const setA = tokenize(strA)
   const setB = tokenize(strB)
-  
-  // 计算交集
-  const intersection = new Set([...setA].filter(x => setB.has(x)))
-  
-  // 计算并集
-  const union = new Set([...setA, ...setB])
-  
-  // Jaccard 相似度
-  return union.size === 0 ? 0 : intersection.size / union.size
+
+  // 计算交集（用更小集合遍历：O(min(|A|,|B|))）
+  const [small, large] = setA.size <= setB.size ? [setA, setB] : [setB, setA]
+  let intersectionCount = 0
+  for (const token of small) {
+    if (large.has(token)) intersectionCount++
+  }
+
+  const unionCount = setA.size + setB.size - intersectionCount
+  return unionCount === 0 ? 0 : intersectionCount / unionCount
 }
 
 /**
@@ -563,7 +585,11 @@ async function loadAllSourcesWithCrossValidation() {
   // 使用 Jaccard 相似度进行交叉验证
   console.log(`[News] 📊 开始交叉验证，共 ${allNews.length} 条新闻...`)
   
-  const SIMILARITY_THRESHOLD = 0.5  // 相似度阈值
+  // 字符级 2-gram 下 0.30 是更合适的交叉验证阈值
+  // - 0.50 以上：几乎完全相同的标题（同一条新闻的多源转载）
+  // - 0.30-0.50：高度相关的新闻（同事件不同角度报道）
+  // - 0.15-0.30：部分关键词重合（可能相关也可能不相关）
+  const SIMILARITY_THRESHOLD = 0.30
   
   for (let i = 0; i < allNews.length; i++) {
     for (let j = i + 1; j < allNews.length; j++) {
