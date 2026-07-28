@@ -68,7 +68,7 @@ onMounted(async () => {
  * 从 store 获取基金名称
  */
 function getFundNameFromStore(code: string): string {
-  const fund = fundStore.funds.find(f => f.code === code)
+  const fund = fundStore.watchlist.find(f => f.code === code)
   return fund?.name || code
 }
 
@@ -127,9 +127,9 @@ async function handleAddFund(fund: FundInfo) {
  * 从自选列表添加
  */
 async function handleAddFromWatchlist(index: number) {
-  if (index < 0 || index >= fundStore.funds.length) return
+  if (index < 0 || index >= fundStore.watchlist.length) return
 
-  const fund = fundStore.funds[index]
+  const fund = fundStore.watchlist[index]
   const success = await addFund(fund.code, fund.name)
   if (success) {
     showToast('已添加')
@@ -419,11 +419,11 @@ function isBestValue(item: FundComparisonItem, key: 'maxDrawdown' | 'volatility'
         />
 
         <!-- 自选列表快捷添加 -->
-        <div v-if="fundStore.funds.length > 0" class="watchlist-section">
+        <div v-if="fundStore.watchlist.length > 0" class="watchlist-section">
           <div class="sub-title">从自选添加</div>
           <div class="watchlist-grid">
             <div
-              v-for="(fund, index) in fundStore.funds"
+              v-for="(fund, index) in fundStore.watchlist"
               :key="fund.code"
               class="watchlist-item"
               @click="handleAddFromWatchlist(index)"
