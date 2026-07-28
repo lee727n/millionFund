@@ -12,7 +12,7 @@ import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { fetchFundAccurateData } from '@/api/fundFast'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
-import { saveHoldings, saveSourceFilter, getSourceFilter } from '@/utils/storage'
+import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades } from '@/utils/storage'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
@@ -444,7 +444,8 @@ async function backupHoldings() {
     holdings: holdingsForBackup,
     summary: holdingStore.summary,
     aiTracking: aiTrackingForBackup,
-    baiduOcrConfig: getBaiduOcrConfig()
+    baiduOcrConfig: getBaiduOcrConfig(),
+    trades: getTrades()
   }
   
   // 转换为 JSON 字符串
@@ -534,6 +535,11 @@ function restoreHoldings() {
           // 恢复AI追踪数据
           if (jsonData.aiTracking && Array.isArray(jsonData.aiTracking)) {
             aiTrackingStore.importRecords(jsonData.aiTracking)
+          }
+          
+          // 恢复交易记录
+          if (jsonData.trades && Array.isArray(jsonData.trades)) {
+            saveTrades(jsonData.trades)
           }
           
           // 恢复百度 OCR 配置
@@ -647,7 +653,8 @@ async function cloudBackupHoldings() {
       holdings: holdingsForBackup,
       summary: holdingStore.summary,
       aiTracking: aiTrackingForBackup,
-      baiduOcrConfig: getBaiduOcrConfig()
+      baiduOcrConfig: getBaiduOcrConfig(),
+      trades: getTrades()
     }
     
     const jsonData = JSON.stringify(backupData, null, 2)
@@ -739,6 +746,11 @@ async function cloudRestoreHoldings() {
         aiTrackingStore.importRecords(jsonData.aiTracking)
       }
       
+      // 恢复交易记录
+      if (jsonData.trades && Array.isArray(jsonData.trades)) {
+        saveTrades(jsonData.trades)
+      }
+      
       // 恢复百度 OCR 配置
       if (jsonData.baiduOcrConfig && jsonData.baiduOcrConfig.apiKey && jsonData.baiduOcrConfig.secretKey) {
         setBaiduOcrConfig(jsonData.baiduOcrConfig)
@@ -754,6 +766,11 @@ async function cloudRestoreHoldings() {
   }
 }
 
+// [WHAT] 跳转到交易中心
+function goToTradeCenter() {
+  router.push('/trade-center')
+}
+
 // [WHAT] 清空所有持仓数据
 async function clearAllHoldings() {
   try {
@@ -764,9 +781,11 @@ async function clearAllHoldings() {
     
     // 清空 localStorage
     localStorage.removeItem('fund_holdings')
+    localStorage.removeItem('fund_trades')
     
     // 清空 store
     holdingStore.holdings = []
+    saveTrades([])
     
     showToast('已清空所有持仓数据')
   } catch {
@@ -1032,8 +1051,15 @@ async function refreshHoldingsCache() {
       <div class="nav-title-row">
         <div class="version-badge">v3.7</div>
         <div class="nav-title">我的持仓</div>
-        <!-- 移动端云备份/恢复按钮 -->
+        <!-- 移动端操作按钮 -->
         <div class="nav-cloud-actions mobile-only">
+          <van-button size="small" @click="goToTradeCenter" class="nav-btn">交易</van-button>
+          <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
+          <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
+        </div>
+        <!-- PC端操作按钮 -->
+        <div class="nav-cloud-actions desktop-only">
+          <van-button size="small" @click="goToTradeCenter" class="nav-btn">交易中心</van-button>
           <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
           <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
         </div>

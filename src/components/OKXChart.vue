@@ -7,12 +7,14 @@ import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { fetchSimpleKLineData, calculatePeriodReturns, clearFundCache, fetchHS300History, type SimpleKLineData, type PeriodReturn } from '@/api/fundFast'
 import { useThemeStore } from '@/stores/theme'
 import { isTradingTime } from '@/api/tiantianApi'
+import type { TradeRecord } from '@/types/fund'
 
 const props = defineProps<{
   fundCode: string
   realtimeValue: number
   realtimeChange: number
   lastClose: number
+  trades?: TradeRecord[]
 }>()
 
 const themeStore = useThemeStore()
@@ -38,6 +40,9 @@ const periodReturns = ref<PeriodReturn[]>([])
 const isLoading = ref(false)
 const activePeriod = ref('3m') // 默认显示 3 个月
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+
+// [WHAT] 鼠标位置（用于交易标记悬停提示）
+const mousePos = ref<{ x: number; y: number } | null>(null)
 
 // [WHAT] 分时数据
 interface IntradayPoint {
@@ -635,6 +640,8 @@ function drawChart() {
   // ========== 业绩走势模式 ==========
   if (chartMode.value === 'performance' && performanceData.value.length > 0) {
     drawPerformanceChart(ctx, width, height, mainHeight, padding, chartWidth, colors)
+    // 绘制交易标记（业绩模式）
+    drawTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'performance')
     return
   }
   
@@ -1000,12 +1007,208 @@ function drawChart() {
       ctx.fillText(`最新交易日: ${displayDate}`, padding.left, padding.top - 3)
     }
   }
+
+  // 绘制交易标记（净值模式）
+  drawTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'normal')
 }
 
 function formatVolume(v: number): string {
   if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
   if (v >= 1000) return (v / 1000).toFixed(1) + 'K'
   return v.toFixed(0)
+}
+
+// ========== 交易标记绘制 ==========
+function drawTradeMarkers(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  mainHeight: number,
+  padding: { top: number; right: number; bottom: number; left: number },
+  chartWidth: number,
+  colors: ReturnType<typeof getThemeColors>,
+  mode: 'performance' | 'normal'
+) {
+  const trades = props.trades
+  if (!trades || trades.length === 0) return
+
+  const data = mode === 'performance' ? performanceData.value : filteredData.value
+  if (data.length === 0) return
+
+  // 计算坐标转换函数
+  const toX = (index: number) => padding.left + (chartWidth / Math.max(data.length - 1, 1)) * index
+
+  let toY: (value: number) => number
+  let valueGetter: (d: any) => number
+  let hoveredTrade: TradeRecord | null = null
+
+  if (mode === 'performance') {
+    const allReturns = [
+      ...performanceData.value.map(d => d.fundReturn),
+      ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
+    ]
+    let minReturn = Math.min(...allReturns)
+    let maxReturn = Math.max(...allReturns)
+    minReturn = Math.min(minReturn, 0)
+    maxReturn = Math.max(maxReturn, 0)
+    const returnMargin = (maxReturn - minReturn) * 0.1 || 2
+    minReturn -= returnMargin
+    maxReturn += returnMargin
+    const returnRange = maxReturn - minReturn || 1
+
+    toY = (ret: number) => padding.top + (mainHeight - padding.top) * (1 - (ret - minReturn) / returnRange)
+    valueGetter = (d: any) => d.fundReturn
+
+    // 检查悬停
+    if (mousePos.value) {
+      for (const trade of trades) {
+        const pointIndex = performanceData.value.findIndex((d: any) => d.time === trade.date)
+        if (pointIndex === -1) continue
+        const x = toX(pointIndex)
+        const y = toY(valueGetter(performanceData.value[pointIndex]!))
+        const dist = Math.hypot(mousePos.value.x - x, mousePos.value.y - y)
+        if (dist <= 12) {
+          hoveredTrade = trade
+          break
+        }
+      }
+    }
+  } else {
+    const values = filteredData.value.map(d => d.value)
+    let minValue = Math.min(...values)
+    let maxValue = Math.max(...values)
+    const margin = (maxValue - minValue) * 0.1 || 0.01
+    minValue -= margin
+    maxValue += margin
+    const valueRange = maxValue - minValue || 1
+
+    toY = (val: number) => padding.top + (mainHeight - padding.top) * (1 - (val - minValue) / valueRange)
+    valueGetter = (d: any) => d.value
+
+    // 检查悬停
+    if (mousePos.value) {
+      for (const trade of trades) {
+        const pointIndex = filteredData.value.findIndex((d: any) => d.time === trade.date)
+        if (pointIndex === -1) continue
+        const x = toX(pointIndex)
+        const y = toY(valueGetter(filteredData.value[pointIndex]!))
+        const dist = Math.hypot(mousePos.value.x - x, mousePos.value.y - y)
+        if (dist <= 12) {
+          hoveredTrade = trade
+          break
+        }
+      }
+    }
+  }
+
+  // 绘制交易标记
+  for (const trade of trades) {
+    const pointIndex = data.findIndex((d: any) => d.time === trade.date)
+    if (pointIndex === -1) continue
+
+    const x = toX(pointIndex)
+    const y = toY(valueGetter(data[pointIndex]!))
+    const isBuy = trade.type === 'buy'
+    const markerColor = isBuy ? '#f6465d' : '#0ecb81'
+
+    // 绘制圆点标记
+    ctx.beginPath()
+    ctx.arc(x, y, 6, 0, Math.PI * 2)
+    ctx.fillStyle = markerColor
+    ctx.globalAlpha = 0.9
+    ctx.fill()
+    ctx.globalAlpha = 1
+
+    // 绘制边框
+    ctx.beginPath()
+    ctx.arc(x, y, 6, 0, Math.PI * 2)
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    // 绘制方向标记（上三角=买入，下三角=卖出）
+    ctx.beginPath()
+    if (isBuy) {
+      // 买入：向上三角形
+      ctx.moveTo(x, y - 12)
+      ctx.lineTo(x - 4, y - 6)
+      ctx.lineTo(x + 4, y - 6)
+    } else {
+      // 卖出：向下三角形
+      ctx.moveTo(x, y + 12)
+      ctx.lineTo(x - 4, y + 6)
+      ctx.lineTo(x + 4, y + 6)
+    }
+    ctx.closePath()
+    ctx.fillStyle = markerColor
+    ctx.fill()
+  }
+
+  // 绘制悬停提示
+  if (hoveredTrade && mousePos.value) {
+    const trade = hoveredTrade
+    const pointIndex = data.findIndex((d: any) => d.time === trade.date)
+    if (pointIndex === -1) return
+
+    const x = toX(pointIndex)
+    const y = toY(valueGetter(data[pointIndex]!))
+    const isBuy = trade.type === 'buy'
+
+    // 提示框内容
+    const lines = [
+      `${isBuy ? '📈 加仓' : '📉 减仓'} ${trade.date}`,
+      `金额: ${trade.amount.toFixed(2)} 元`,
+      `净值: ${trade.netValue.toFixed(4)}`,
+      `份额: ${trade.shares.toFixed(2)}`
+    ]
+
+    // 测量提示框尺寸
+    ctx.font = '12px Arial'
+    const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width))
+    const boxWidth = maxWidth + 16
+    const lineHeight = 18
+    const boxHeight = lines.length * lineHeight + 12
+
+    // 确定提示框位置（避免超出边界）
+    let boxX = x + 12
+    let boxY = y - boxHeight - 10
+    if (boxX + boxWidth > width) boxX = x - boxWidth - 12
+    if (boxY < padding.top) boxY = y + 12
+
+    // 绘制提示框背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+    ctx.beginPath()
+    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6)
+    ctx.fill()
+
+    // 绘制提示框边框
+    ctx.strokeStyle = isBuy ? '#f6465d' : '#0ecb81'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    // 绘制提示文字
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'left'
+    ctx.font = '12px Arial'
+    lines.forEach((line, i) => {
+      ctx.fillText(line, boxX + 8, boxY + 20 + i * lineHeight)
+    })
+  }
+}
+
+// ========== 画布鼠标事件 ==========
+function handleMouseMove(e: MouseEvent) {
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  mousePos.value = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  }
+}
+
+function handleMouseLeave() {
+  mousePos.value = null
 }
 
 // ========== 事件处理 ==========
@@ -1101,6 +1304,11 @@ watch(chartMode, () => {
   nextTick(drawChart)
 })
 
+// [WHY] 监控交易记录变化，重绘标记
+watch(() => props.trades, () => {
+  nextTick(drawChart)
+}, { deep: true })
+
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
@@ -1195,24 +1403,30 @@ onUnmounted(() => {
       <div v-if="isLoading" class="chart-loading">
         <van-loading size="24px" color="#0ecb81">加载中...</van-loading>
       </div>
-      <canvas v-else ref="canvasRef" class="chart-canvas"></canvas>
+      <canvas 
+        v-else 
+        ref="canvasRef" 
+        class="chart-canvas"
+        @mousemove="handleMouseMove"
+        @mouseleave="handleMouseLeave"
+      ></canvas>
     </div>
 
     <!-- 成交量标签 -->
-    <div class="volume-label">
+    <!-- <div class="volume-label">
       <span>成交量(Volume)</span>
       <span class="volume-value">{{ formatVolume((filteredData[filteredData.length - 1] as any)?.volume || 0) }}</span>
-    </div>
+    </div> -->
 
     <!-- 阶段涨幅 -->
-    <div v-if="periodReturns.length > 0" class="returns-bar">
+    <!-- <div v-if="periodReturns.length > 0" class="returns-bar">
       <div v-for="r in periodReturns" :key="r.period" class="return-item">
         <span class="return-label">{{ r.label }}</span>
         <span class="return-value" :class="r.change >= 0 ? 'up' : 'down'">
           {{ r.change >= 0 ? '+' : '' }}{{ r.change.toFixed(2) }}%
         </span>
       </div>
-    </div>
+    </div> -->
   </div>
 </template>
 

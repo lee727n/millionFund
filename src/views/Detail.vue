@@ -3,7 +3,7 @@
 // [WHAT] 蓝色顶部、持仓数据、分时图、关联板块、底部操作栏
 // [REF] 参考蚂蚁基金/天天基金的专业设计
 
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, onActivated, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
@@ -21,8 +21,9 @@ import {
   predictTrend, calculateReturnAnalysis, calculateFundScore,
   type TrendPrediction, type ReturnAnalysis, type FundScore
 } from '@/utils/statistics'
-import { getFundNetValue } from '@/utils/storage'
-import { fetchNetValueHistoryFast } from '@/api/fundFast'
+import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade } from '@/utils/storage'
+import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
+import type { TradeRecord, TradeType } from '@/types/fund'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,6 +32,290 @@ const holdingStore = useHoldingStore()
 
 // [WHAT] 基金代码
 const fundCode = computed(() => route.params.code as string)
+
+// [WHAT] 交易记录
+const trades = ref<TradeRecord[]>([])
+
+// [WHAT] 带涨跌幅的交易记录（按日期排序）
+const tradesWithReturn = computed(() => {
+  const currentNav = parseFloat(fundInfo.value?.gsz || fundInfo.value?.dwjz || '0')
+  return [...trades.value]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(trade => {
+      const postReturn = currentNav > 0 && trade.netValue > 0
+        ? ((currentNav - trade.netValue) / trade.netValue) * 100
+        : 0
+      return { ...trade, postReturn }
+    })
+})
+
+async function loadTrades() {
+  if (!fundCode.value) return
+  const allTrades = getTradesByCode(fundCode.value)
+  const estimatedTrades = allTrades.filter(t => t.estimated)
+
+  // 如果有估值交易，检查是否已有正式净值可更新
+  if (estimatedTrades.length > 0) {
+    try {
+      const data = await fetchFundAccurateData(fundCode.value)
+      // 只有当 navDate >= 交易日期（即净值已在交易日期之后公布）才更新
+      if (data.nav > 0 && data.navDate) {
+        updateTradesByCode(fundCode.value, data.nav, data.navDate)
+      }
+    } catch (e) {
+      console.error('检查交易估值更新失败:', e)
+    }
+  }
+
+  trades.value = getTradesByCode(fundCode.value)
+}
+watch(fundCode, () => {
+  loadTrades()
+}, { immediate: true })
+
+// [WHAT] 删除交易记录（同时回滚持仓）
+function handleDeleteTrade(tradeId: string) {
+  const trade = trades.value.find(t => t.id === tradeId)
+  if (!trade) return
+
+  showConfirmDialog({
+    title: '确认删除',
+    message: `删除此${trade.type === 'buy' ? '加仓' : '减仓'}记录将同时回滚持仓变化，确认吗？`,
+  })
+    .then(() => {
+      // 回滚持仓
+      const holding = holdingStore.holdings.find(h => h.code === trade.code)
+      if (holding) {
+        if (trade.type === 'buy') {
+          // 加仓回滚 = 减份额
+          holding.shares = (holding.shares || 0) - trade.shares
+        } else if (trade.type === 'sell') {
+          // 减仓回滚 = 加份额
+          holding.shares = (holding.shares || 0) + trade.shares
+        }
+        holdingStore.addOrUpdateHolding(holding)
+      }
+
+      removeTrade(tradeId)
+      loadTrades()
+      showToast('已删除')
+    })
+    .catch(() => {})
+}
+
+// [WHAT] 交易弹窗
+const showTradeDialog = ref(false)
+const tradeFormData = ref({
+  type: 'buy' as TradeType,
+  amount: '',
+  netValue: '',
+  date: '',
+  isEstimate: false
+})
+const tradeNetValueHistory = ref<{ time: string; value: number }[]>([])
+let tradeHistoryFund = ''
+let tradeRealTimeValue = 0
+let tradeRealTimeIsEstimate = true
+
+async function openTradeDialog() {
+  if (!fundCode.value) return
+
+  // 先弹窗（用现有数据快速填充）
+  tradeFormData.value = {
+    type: 'buy',
+    amount: '',
+    netValue: fundInfo.value?.gsz || fundInfo.value?.dwjz || '',
+    date: new Date().toISOString().split('T')[0],
+    isEstimate: true
+  }
+  showTradeDialog.value = true
+
+  // 等待弹窗DOM渲染
+  await nextTick()
+
+  // 并行加载：净值历史 + 最新估值
+  const tasks: Promise<void>[] = []
+
+  if (tradeHistoryFund !== fundCode.value) {
+    tasks.push(
+      fetchSimpleKLineData(fundCode.value, 400).then(data => {
+        tradeNetValueHistory.value = data.map(d => ({ time: d.time, value: d.value }))
+        tradeHistoryFund = fundCode.value!
+        lookupNetValue(tradeFormData.value.date)
+      }).catch(() => {})
+    )
+  } else {
+    lookupNetValue(tradeFormData.value.date)
+  }
+
+  tasks.push(
+    fetchFundAccurateData(fundCode.value).then(data => {
+      const today = new Date().toISOString().split('T')[0]
+      const estimateVal = data.estimate || 0
+      const navVal = data.nav || 0
+      const navDate = data.navDate || ''
+      const isNavUpdated = navDate === today
+      
+      if (isNavUpdated && navVal > 0) {
+        tradeRealTimeValue = navVal
+        tradeRealTimeIsEstimate = false
+      } else if (estimateVal > 0) {
+        tradeRealTimeValue = estimateVal
+        tradeRealTimeIsEstimate = true
+      } else {
+        tradeRealTimeValue = navVal
+        tradeRealTimeIsEstimate = false
+      }
+      
+      if (tradeHistoryFund !== fundCode.value) {
+        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+      }
+      if (tradeFormData.value.date >= today) {
+        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+      }
+    }).catch(() => {})
+  )
+
+  await Promise.all(tasks)
+}
+
+// [WHAT] 根据日期查找净值；今天/未来用实时数据，过去用历史
+function lookupNetValue(date: string) {
+  if (!date) return
+  const today = new Date().toISOString().split('T')[0]
+
+  // 今天或未来日期 → 使用实时数据（可能是估值或净值）
+  if (date >= today) {
+    if (tradeRealTimeValue > 0) {
+      tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+      tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+    }
+    return
+  }
+
+  // 过去日期 → 查历史
+  if (tradeNetValueHistory.value.length === 0) return
+  const record = tradeNetValueHistory.value.find(d => d.time === date)
+  if (record) {
+    tradeFormData.value.netValue = record.value.toFixed(4)
+    tradeFormData.value.isEstimate = false
+  } else {
+    const nearby = findNearestNetValue(date)
+    if (nearby) {
+      tradeFormData.value.netValue = nearby.value.toFixed(4)
+      tradeFormData.value.isEstimate = true
+    }
+  }
+}
+
+// [WHAT] 查找最近的交易日净值
+function findNearestNetValue(date: string) {
+  const history = tradeNetValueHistory.value
+  if (history.length === 0) return null
+  // 找<=date的最近记录
+  const dateTs = new Date(date).getTime()
+  let nearest = history[0]
+  let minDiff = Math.abs(dateTs - new Date(history[0].time).getTime())
+  for (const item of history) {
+    const diff = Math.abs(dateTs - new Date(item.time).getTime())
+    if (diff < minDiff) {
+      minDiff = diff
+      nearest = item
+    }
+  }
+  return nearest
+}
+
+// [WHAT] 交易日期变化时自动查找历史净值
+function onTradeDateChange(newDate: string) {
+  if (newDate && tradeNetValueHistory.value.length > 0) {
+    lookupNetValue(newDate)
+  }
+  const today = new Date().toISOString().split('T')[0]
+  if (newDate >= today && tradeRealTimeValue > 0) {
+    tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+    tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+  }
+}
+
+watch(() => tradeFormData.value.date, (newDate) => {
+  if (showTradeDialog.value && newDate && tradeNetValueHistory.value.length > 0) {
+    lookupNetValue(newDate)
+  }
+})
+
+async function submitTrade() {
+  const holding = holdingInfo.value
+  if (!holding) {
+    showToast('暂未持有该基金')
+    return
+  }
+
+  const amount = parseFloat(tradeFormData.value.amount)
+  const netValue = parseFloat(tradeFormData.value.netValue)
+  const date = tradeFormData.value.date || new Date().toISOString().split('T')[0]
+  const type = tradeFormData.value.type
+  const isEstimate = tradeFormData.value.isEstimate
+
+  if (!amount || amount <= 0) {
+    showToast('请输入有效的交易金额')
+    return
+  }
+  if (!netValue || netValue <= 0) {
+    showToast('请输入有效的净值')
+    return
+  }
+
+  const shares = amount / netValue
+
+  const loadingToast = showLoadingToast('提交中...')
+  try {
+    addTrade({
+      id: '',
+      code: holding.code,
+      name: holding.name,
+      type,
+      date,
+      amount,
+      netValue,
+      shares,
+      fee: 0,
+      estimated: isEstimate,
+      createdAt: Date.now()
+    })
+
+    const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)
+    if (currentHolding) {
+      if (type === 'buy') {
+        currentHolding.shares = (currentHolding.shares || 0) + shares
+      } else {
+        const currentShares = currentHolding.shares || 0
+        if (shares > currentShares) {
+          closeToast()
+          showToast(`减仓份额超过持仓(${currentShares.toFixed(2)}份)`)
+          return
+        }
+        currentHolding.shares = currentShares - shares
+      }
+      currentHolding.currentValue = netValue
+      holdingStore.addOrUpdateHolding(currentHolding)
+    }
+
+    closeToast()
+    showTradeDialog.value = false
+    loadTrades()
+    showToast({
+      message: `${type === 'buy' ? '加仓' : '减仓'}成功`,
+      duration: 2000
+    })
+  } catch (error) {
+    console.error('交易提交失败:', error)
+    closeToast()
+    showToast('交易提交失败')
+  }
+}
 
 // 数据状态
 const fundInfo = ref<(FundEstimate & { dataSource?: string; navDate?: string }) | null>(null)
@@ -137,12 +422,17 @@ onMounted(async () => {
   await loadFundData()
 })
 
+onActivated(() => {
+  loadTrades()
+})
+
 // [WHY] 监听路由参数变化
 watch(fundCode, async (newCode, oldCode) => {
   if (newCode && newCode !== oldCode) {
     fundInfo.value = null
     isLoading.value = true
     await loadFundData()
+    loadTrades()
   }
 })
 
@@ -565,7 +855,7 @@ function formatPercent(num: number): string {
         <div class="nav-title">
           <div class="fund-name">{{ fundInfo?.name || '加载中...' }}</div>
           <div class="fund-info-row">
-            <span class="fund-code">净值日期 {{ fundInfo?.navDate || '--' }}</span>
+            <span class="fund-code">{{ fundInfo?.navDate || '--' }}</span>
             <span class="info-divider">|</span>
             <span class="estimate-tag" :class="isUp ? 'up' : 'down'">
               {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}
@@ -692,15 +982,45 @@ function formatPercent(num: number): string {
 
     <!-- 图表区域 -->
     <div class="chart-section">
-  
-      
       <ProChart
         :fund-code="fundCode"
         :realtime-value="fundInfo?.gsz ? parseFloat(fundInfo.gsz) : 0"
         :realtime-change="priceChangePercent"
         :last-close="fundInfo?.dwjz ? parseFloat(fundInfo.dwjz) : 0"
+        :trades="trades"
       />
-      
+    </div>
+
+    <!-- 交易记录 -->
+    <div v-if="tradesWithReturn.length > 0" class="trade-records-section">
+      <div class="trade-records-header">
+        <span class="trade-records-title">交易记录</span>
+        <span class="trade-records-count">{{ tradesWithReturn.length }}条</span>
+      </div>
+      <div class="trade-records-scroll">
+        <div
+          v-for="trade in tradesWithReturn"
+          :key="trade.id"
+          class="trade-record-item"
+          :class="trade.type"
+        >
+          <div class="trade-record-main">
+            <span class="trade-type-badge" :class="trade.type">
+              {{ trade.type === 'buy' ? '加仓' : '减仓' }}
+            </span>
+            <span class="trade-date">{{ trade.date }}</span>
+            <span class="trade-amount">{{ trade.amount.toFixed(0) }}元</span>
+            <span class="trade-nav" :class="{ 'is-estimate': trade.estimated }">
+              {{ trade.netValue.toFixed(4) }}
+              <span class="nav-tag">{{ trade.estimated ? '估' : '净' }}</span>
+            </span>
+            <span class="trade-return" :class="trade.postReturn >= 0 ? 'up' : 'down'">
+              {{ trade.postReturn >= 0 ? '+' : '' }}{{ trade.postReturn.toFixed(2) }}%
+            </span>
+          </div>
+          <button class="trade-delete-btn" @click.stop="handleDeleteTrade(trade.id)">×</button>
+        </div>
+      </div>
     </div>
 
     <!-- 业绩走势（Tab2） -->
@@ -1164,6 +1484,10 @@ function formatPercent(num: number): string {
 
     <!-- 底部操作栏 -->
     <div class="bottom-bar">
+      <div class="bar-item trade-btn" @click="openTradeDialog">
+        <van-icon name="balance-list" size="20" />
+        <span>交易</span>
+      </div>
       <div class="bar-item" @click="editHolding">
         <van-icon name="edit" size="20" />
         <span>修改持仓</span>
@@ -1176,14 +1500,6 @@ function formatPercent(num: number): string {
         <van-icon name="shop-o" size="20" />
         <span>来源</span>
       </div>
-      <!-- <div class="bar-item" @click="showTransactions">
-        <van-icon name="orders-o" size="20" />
-        <span>交易记录</span>
-      </div>
-      <div class="bar-item" @click="fundStore.isFundInWatchlist(fundCode) ? removeFromWatchlist() : addToWatchlist()">
-        <van-icon :name="fundStore.isFundInWatchlist(fundCode) ? 'star' : 'star-o'" size="20" />
-        <span>{{ fundStore.isFundInWatchlist(fundCode) ? '删自选' : '加自选' }}</span>
-      </div> -->
       <div class="bar-item" @click="manageSectors">
         <van-icon name="cluster-o" size="20" />
         <span>行业板块</span>
@@ -1326,6 +1642,89 @@ function formatPercent(num: number): string {
         <div class="dialog-footer">
           <van-button @click="showSourceDialog = false">取消</van-button>
           <van-button type="primary" @click="submitSourceAdjust">确定</van-button>
+        </div>
+      </div>
+    </van-popup>
+
+    <!-- 交易弹窗 -->
+    <van-popup
+      v-model:show="showTradeDialog"
+      position="center"
+      round
+      :style="{ width: '88%', maxWidth: '380px' }"
+    >
+      <div class="cost-dialog">
+        <div class="dialog-header">
+          <span>交易操作</span>
+          <van-icon name="cross" @click="showTradeDialog = false" />
+        </div>
+
+        <div class="dialog-content">
+          <div class="trade-type-group">
+            <span 
+              class="trade-type-tab" 
+              :class="{ active: tradeFormData.type === 'buy', buy: tradeFormData.type === 'buy' }"
+              @click="tradeFormData.type = 'buy'"
+            >
+              加仓
+            </span>
+            <span 
+              class="trade-type-tab" 
+              :class="{ active: tradeFormData.type === 'sell', sell: tradeFormData.type === 'sell' }"
+              @click="tradeFormData.type = 'sell'"
+            >
+              减仓
+            </span>
+          </div>
+
+          <van-field
+            :model-value="`${holdingInfo?.name} (${holdingInfo?.code})`"
+            label="基金"
+            readonly
+          />
+
+          <van-field
+            v-model="tradeFormData.amount"
+            label="交易金额"
+            type="number"
+            placeholder="请输入金额"
+          />
+
+          <van-field
+            v-model="tradeFormData.netValue"
+            label="成交净值"
+            type="number"
+            placeholder="请输入净值"
+          >
+            <template #left-icon>
+              <span v-if="tradeFormData.isEstimate" class="net-value-tag estimate-tag">估值</span>
+              <span v-else class="net-value-tag nav-tag">净值</span>
+            </template>
+          </van-field>
+
+          <div class="net-value-info" v-if="tradeFormData.isEstimate">
+            <span>使用实时估值，晚上净值更新后自动重算份额</span>
+          </div>
+
+          <van-field
+            v-model="tradeFormData.date"
+            label="交易日期"
+            type="date"
+            @update:model-value="onTradeDateChange"
+          />
+
+          <div class="trade-preview">
+            <span>预计份额: {{ 
+              tradeFormData.netValue && tradeFormData.amount 
+                ? (parseFloat(tradeFormData.amount) / parseFloat(tradeFormData.netValue)).toFixed(2) 
+                : '--' 
+            }} 份</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <van-button @click="showTradeDialog = false">取消</van-button>
+          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -1634,6 +2033,156 @@ function formatPercent(num: number): string {
   border-radius: 12px;
   overflow: hidden;
   padding-top: 20px;
+}
+
+/* ========== 交易记录 ========== */
+.trade-records-section {
+  margin: 0 12px 12px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.trade-records-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.trade-records-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trade-records-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.trade-records-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trade-record-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border-left: 3px solid;
+}
+
+.trade-record-item.buy {
+  border-left-color: #f6465d;
+}
+
+.trade-record-item.sell {
+  border-left-color: #0ecb81;
+}
+
+.trade-record-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.trade-type-badge {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.trade-type-badge.buy {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+}
+
+.trade-type-badge.sell {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+}
+
+.trade-date {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.trade-amount {
+  color: var(--text-primary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.trade-nav {
+  color: var(--text-primary);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.trade-nav.is-estimate {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.nav-tag {
+  font-size: 9px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+  flex-shrink: 0;
+}
+
+.trade-nav:not(.is-estimate) .nav-tag {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+}
+
+.trade-return {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.trade-return.up {
+  color: #f6465d;
+}
+
+.trade-return.down {
+  color: #0ecb81;
+}
+
+.trade-delete-btn {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.trade-delete-btn:hover {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
 }
 
 .chart-header {
@@ -2430,6 +2979,96 @@ function formatPercent(num: number): string {
 
 .cost-dialog .dialog-footer {
   padding: 12px 16px 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.cost-dialog .dialog-footer .van-button {
+  flex: 1;
+}
+
+/* ========== 交易弹窗 ========== */
+.trade-type-group {
+  display: flex;
+  margin: 8px 16px 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.trade-type-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+}
+
+.trade-type-tab.active.buy {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+}
+
+.trade-type-tab.active.sell {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+}
+
+.net-value-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+.estimate-tag {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+  border: 1px solid rgba(246, 70, 93, 0.3);
+}
+
+.nav-tag {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+  border: 1px solid rgba(14, 203, 129, 0.3);
+}
+
+.net-value-info {
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #f0b90b;
+  font-style: italic;
+}
+
+.trade-preview {
+  margin: 8px 16px 0;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.trade-preview span {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 交易按钮样式 */
+.bar-item.trade-btn {
+  color: #f6465d;
+}
+
+.bar-item.trade-btn .van-icon {
+  color: #f6465d;
 }
 
 .form-item {

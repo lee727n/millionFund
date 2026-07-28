@@ -168,6 +168,8 @@ export interface TradeRecord {
   shares: number
   /** 手续费（元） */
   fee: number
+  /** 是否使用估值（净值未更新时） */
+  estimated?: boolean
   /** 备注 */
   remark?: string
   /** 创建时间 */

@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   APP_VERSION: 'app_version',
   FUND_NET_VALUES: 'fund_net_values',
   SOURCE_FILTER: 'source_filter',
+  TRADES: 'fund_trades',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -209,4 +210,88 @@ export function updateFundNetValue(code: string, netValue: number): void {
  */
 export function getFundNetValue(code: string): number | undefined {
   return getFundNetValues()[code]
+}
+
+// ========== 交易记录 ==========
+
+import type { TradeRecord } from '@/types/fund'
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 8)
+}
+
+/**
+ * 获取所有交易记录
+ */
+export function getTrades(): TradeRecord[] {
+  return getItem<TradeRecord[]>(STORAGE_KEYS.TRADES, [])
+}
+
+/**
+ * 保存交易记录列表
+ */
+export function saveTrades(trades: TradeRecord[]): void {
+  setItem(STORAGE_KEYS.TRADES, trades)
+}
+
+/**
+ * 按基金代码获取交易记录
+ */
+export function getTradesByCode(code: string): TradeRecord[] {
+  return getTrades().filter(t => t.code === code)
+}
+
+/**
+ * 添加交易记录
+ */
+export function addTrade(trade: TradeRecord): void {
+  const trades = getTrades()
+  trades.push({ ...trade, id: generateId(), createdAt: Date.now() })
+  saveTrades(trades)
+}
+
+/**
+ * 删除交易记录
+ */
+export function removeTrade(id: string): void {
+  const trades = getTrades().filter(t => t.id !== id)
+  saveTrades(trades)
+}
+
+/**
+ * 更新交易记录的净值（估值转正式净值）
+ */
+export function updateTradeNetValue(id: string, netValue: number): void {
+  const trades = getTrades()
+  const trade = trades.find(t => t.id === id)
+  if (trade) {
+    trade.netValue = netValue
+    trade.shares = trade.amount / netValue
+    trade.estimated = false
+    saveTrades(trades)
+  }
+}
+
+/**
+ * 更新某基金所有交易记录的净值（估值转正式净值）
+ * [WHY] 只有当 navDate >= trade.date 时才更新，避免用旧净值覆盖新交易
+ */
+export function updateTradesByCode(code: string, netValue: number, navDate?: string): void {
+  const trades = getTrades()
+  let changed = false
+  trades.forEach(t => {
+    if (t.code === code && t.estimated && netValue > 0) {
+      // 如果有 navDate，只有当 navDate >= 交易日期才更新
+      if (navDate && navDate < t.date) {
+        return
+      }
+      t.netValue = netValue
+      t.shares = t.amount / netValue
+      t.estimated = false
+      changed = true
+    }
+  })
+  if (changed) {
+    saveTrades(trades)
+  }
 }

@@ -49,6 +49,12 @@ const router = createRouter({
       meta: { title: '持仓总览', keepAlive: true }
     },
     {
+      path: '/trade-center',
+      name: 'trade-center',
+      component: () => import('@/views/TradeCenter.vue'),
+      meta: { title: '交易中心' }
+    },
+    {
       path: '/ai-tracking/detail/:sellCode/:sellName/:buyCode/:buyName/:sellNav/:buyNav/:sellPrice/:buyPrice/:sellChange/:buyChange/:date/:sellNavEstimated/:buyNavEstimated',
       name: 'ai-tracking-detail',
       component: () => import('@/views/AITrackingDetail.vue'),

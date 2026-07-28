@@ -13,9 +13,11 @@ import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
-import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
+import { addTrade } from '@/utils/storage'
+import type { TradeType } from '@/types/fund'
 import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
 import riseW from '@/assets/riseW.jpg'
@@ -56,9 +58,9 @@ function handleFundLongpress(fund: any, position: { top: number; left: number; w
   selectedFundForAction.value = fund
 
   // 调整横条位置，确保不超出屏幕边界
-  // 横条宽度约: 4个按钮(70px*4) = 280px
+  // 横条宽度约: 5个按钮(70px*5) = 350px
   // 横条高度约: 36px
-  const actionBarWidth = 280
+  const actionBarWidth = 350
   const actionBarHeight = 36
   const gap = 8 // 与卡片的间隙
 
@@ -440,6 +442,223 @@ function handleActionDelete() {
       .catch(() => {
         // 取消删除
       })
+  }
+}
+
+// [WHAT] 交易相关
+const showTradeDialog = ref(false)
+const tradeFormData = ref({
+  type: 'buy' as TradeType,
+  amount: '',
+  netValue: '',
+  date: '',
+  isEstimate: false
+})
+const tradeNetValueHistory = ref<{ time: string; value: number }[]>([])
+let tradeHistoryFund = ''
+let tradeRealTimeValue = 0  // 实时估值（gsz），供今天/未来日期fallback使用
+let tradeRealTimeIsEstimate = true  // 实时值是否为估值
+
+async function handleActionTrade() {
+  closeActionBar()
+  const holding = selectedFundForAction.value
+  if (!holding) {
+    showToast('未选择基金')
+    return
+  }
+
+  // 立即填充基础数据并显示弹窗
+  tradeFormData.value = {
+    type: 'buy',
+    amount: '',
+    netValue: holding.currentValue ? holding.currentValue.toFixed(4) : '',
+    date: new Date().toISOString().split('T')[0],
+    isEstimate: true
+  }
+  showTradeDialog.value = true
+
+  // 等待弹窗DOM渲染完成
+  await nextTick()
+
+  // 并行加载：净值历史 + 最新估值
+  const tasks: Promise<void>[] = []
+
+  if (tradeHistoryFund !== holding.code) {
+    tasks.push(
+      fetchSimpleKLineData(holding.code, 400).then(data => {
+        tradeNetValueHistory.value = data.map(d => ({ time: d.time, value: d.value }))
+        tradeHistoryFund = holding.code
+        lookupNetValue(tradeFormData.value.date)
+      }).catch(() => {})
+    )
+  } else {
+    // 同一基金，直接用已有历史数据查找
+    lookupNetValue(tradeFormData.value.date)
+  }
+
+  tasks.push(
+    fetchFundAccurateData(holding.code, holding.isQDII).then(data => {
+      const today = new Date().toISOString().split('T')[0]
+      const estimateVal = data.estimate || 0
+      const navVal = data.nav || 0
+      const navDate = data.navDate || ''
+      const isNavUpdated = navDate === today
+      
+      if (isNavUpdated && navVal > 0) {
+        tradeRealTimeValue = navVal
+        tradeRealTimeIsEstimate = false
+      } else if (estimateVal > 0) {
+        tradeRealTimeValue = estimateVal
+        tradeRealTimeIsEstimate = true
+      } else {
+        tradeRealTimeValue = navVal
+        tradeRealTimeIsEstimate = false
+      }
+      
+      if (tradeHistoryFund !== holding.code) {
+        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+      }
+      if (tradeFormData.value.date >= today) {
+        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+      }
+    }).catch(() => {})
+  )
+
+  await Promise.all(tasks)
+}
+
+// [WHAT] 根据日期从历史净值中查找；今天/未来日期使用实时估值或净值
+function lookupNetValue(date: string) {
+  if (!date) return
+  const today = new Date().toISOString().split('T')[0]
+
+  // 今天或未来日期 → 使用实时数据（可能是估值或净值）
+  if (date >= today) {
+    if (tradeRealTimeValue > 0) {
+      tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+      tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+    }
+    return
+  }
+
+  // 过去日期 → 查历史
+  if (tradeNetValueHistory.value.length === 0) return
+  const record = tradeNetValueHistory.value.find(d => d.time === date)
+  if (record) {
+    tradeFormData.value.netValue = record.value.toFixed(4)
+    tradeFormData.value.isEstimate = false
+  } else {
+    const nearby = findNearestNetValue(date)
+    if (nearby) {
+      tradeFormData.value.netValue = nearby.value.toFixed(4)
+      tradeFormData.value.isEstimate = true
+    }
+  }
+}
+
+// [WHAT] 查找最近的交易日净值
+function findNearestNetValue(date: string) {
+  const history = tradeNetValueHistory.value
+  if (history.length === 0) return null
+  const dateTs = new Date(date).getTime()
+  let nearest = history[0]
+  let minDiff = Math.abs(dateTs - new Date(history[0].time).getTime())
+  for (const item of history) {
+    const diff = Math.abs(dateTs - new Date(item.time).getTime())
+    if (diff < minDiff) {
+      minDiff = diff
+      nearest = item
+    }
+  }
+  return nearest
+}
+
+// [WHAT] 交易日期变化时自动查找历史净值
+function onTradeDateChange(newDate: string) {
+  if (newDate && tradeNetValueHistory.value.length > 0) {
+    lookupNetValue(newDate)
+  }
+  // 即使历史没加载，也用实时数据处理今天/未来
+  const today = new Date().toISOString().split('T')[0]
+  if (newDate >= today && tradeRealTimeValue > 0) {
+    tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
+    tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+  }
+}
+
+// 保留watch作为backup
+watch(() => tradeFormData.value.date, (newDate) => {
+  if (showTradeDialog.value && newDate && tradeNetValueHistory.value.length > 0) {
+    lookupNetValue(newDate)
+  }
+})
+
+async function submitTrade() {
+  const holding = selectedFundForAction.value
+  if (!holding) return
+
+  const amount = parseFloat(tradeFormData.value.amount)
+  const netValue = parseFloat(tradeFormData.value.netValue)
+  const date = tradeFormData.value.date || new Date().toISOString().split('T')[0]
+  const type = tradeFormData.value.type
+  const isEstimate = tradeFormData.value.isEstimate
+
+  if (!amount || amount <= 0) {
+    showToast('请输入有效的交易金额')
+    return
+  }
+  if (!netValue || netValue <= 0) {
+    showToast('请输入有效的净值')
+    return
+  }
+
+  const shares = amount / netValue
+
+  const loadingToast = showLoadingToast('提交中...')
+  try {
+    addTrade({
+      id: '',
+      code: holding.code,
+      name: holding.name,
+      type,
+      date,
+      amount,
+      netValue,
+      shares,
+      fee: 0,
+      estimated: isEstimate,
+      createdAt: Date.now()
+    })
+
+    const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)
+    if (currentHolding) {
+      if (type === 'buy') {
+        currentHolding.shares = (currentHolding.shares || 0) + shares
+      } else if (type === 'sell') {
+        const currentShares = currentHolding.shares || 0
+        if (shares > currentShares) {
+          closeToast()
+          showToast(`减仓份额超过持仓份额(当前${currentShares.toFixed(2)}份)`)
+          return
+        }
+        currentHolding.shares = currentShares - shares
+      }
+      currentHolding.currentValue = netValue
+      holdingStore.addOrUpdateHolding(currentHolding)
+    }
+
+    closeToast()
+    showToast({
+      message: `${type === 'buy' ? '加仓' : '减仓'}成功`,
+      duration: 2000
+    })
+    showTradeDialog.value = false
+  } catch (error) {
+    console.error('交易提交失败:', error)
+    closeToast()
+    showToast('交易提交失败')
   }
 }
 
@@ -1732,6 +1951,7 @@ function handleNameClick(code: string, name: string) {
       }"
       @click.stop
     >
+      <button class="action-bar-btn" @click="handleActionTrade">交易</button>
       <button class="action-bar-btn" @click="handleActionConvert">转换</button>
       <button class="action-bar-btn" @click="handleActionAdjust">调仓</button>
       <button class="action-bar-btn" @click="handleActionSource">来源</button>
@@ -1879,6 +2099,89 @@ function handleNameClick(code: string, name: string) {
         <div class="dialog-footer">
           <van-button @click="showSourceDialog = false">取消</van-button>
           <van-button type="primary" @click="submitSourceAdjust">确定</van-button>
+        </div>
+      </div>
+    </van-popup>
+
+    <!-- 交易弹窗 -->
+    <van-popup
+      v-model:show="showTradeDialog"
+      position="center"
+      round
+      :style="{ width: '88%', maxWidth: '380px' }"
+    >
+      <div class="cost-dialog">
+        <div class="dialog-header">
+          <span>交易操作</span>
+          <van-icon name="cross" @click="showTradeDialog = false" />
+        </div>
+
+        <div class="dialog-content">
+          <div class="trade-type-group">
+            <span 
+              class="trade-type-tab" 
+              :class="{ active: tradeFormData.type === 'buy', buy: tradeFormData.type === 'buy' }"
+              @click="tradeFormData.type = 'buy'"
+            >
+              加仓
+            </span>
+            <span 
+              class="trade-type-tab" 
+              :class="{ active: tradeFormData.type === 'sell', sell: tradeFormData.type === 'sell' }"
+              @click="tradeFormData.type = 'sell'"
+            >
+              减仓
+            </span>
+          </div>
+
+          <van-field
+            :model-value="`${selectedFundForAction?.name} (${selectedFundForAction?.code})`"
+            label="基金"
+            readonly
+          />
+
+          <van-field
+            v-model="tradeFormData.amount"
+            label="交易金额"
+            type="number"
+            placeholder="请输入金额"
+          />
+
+          <van-field
+            v-model="tradeFormData.netValue"
+            label="成交净值"
+            type="number"
+            placeholder="请输入净值"
+          >
+            <template #left-icon>
+              <span v-if="tradeFormData.isEstimate" class="net-value-tag estimate-tag">估值</span>
+              <span v-else class="net-value-tag nav-tag">净值</span>
+            </template>
+          </van-field>
+
+          <div class="net-value-info" v-if="tradeFormData.isEstimate">
+            <span>使用实时估值，晚上净值更新后自动重算份额</span>
+          </div>
+
+          <van-field
+            v-model="tradeFormData.date"
+            label="交易日期"
+            type="date"
+            @update:model-value="onTradeDateChange"
+          />
+
+          <div class="trade-preview">
+            <span>预计份额: {{ 
+              tradeFormData.netValue && tradeFormData.amount 
+                ? (parseFloat(tradeFormData.amount) / parseFloat(tradeFormData.netValue)).toFixed(2) 
+                : '--' 
+            }} 份</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <van-button @click="showTradeDialog = false">取消</van-button>
+          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -4353,6 +4656,81 @@ function handleNameClick(code: string, name: string) {
   bottom: 0;
   z-index: 9998;
   background: transparent;
+}
+
+/* ========== 交易弹窗 ========== */
+.trade-type-group {
+  display: flex;
+  margin: 8px 16px 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.trade-type-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+}
+
+.trade-type-tab.active.buy {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+}
+
+.trade-type-tab.active.sell {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+}
+
+.trade-preview {
+  margin: 8px 16px 0;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.trade-preview span {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.net-value-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+.estimate-tag {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+  border: 1px solid rgba(246, 70, 93, 0.3);
+}
+
+.nav-tag {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+  border: 1px solid rgba(14, 203, 129, 0.3);
+}
+
+.net-value-info {
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #f0b90b;
+  font-style: italic;
 }
 
 /* ========== AI追踪添加弹窗 ========== */
