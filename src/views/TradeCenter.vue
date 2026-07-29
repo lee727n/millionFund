@@ -60,12 +60,21 @@ async function loadTrades() {
     return b.createdAt - a.createdAt
   })
   
-  // 获取每个基金的当前净值用于计算涨跌幅
+  // 获取每个基金的当前估值用于计算涨跌幅
+  // 优先使用估值（实时），没有估值时回退到净值，都没有时使用currentValue（智能选择）
   const fundCodes = [...new Set(enrichedTrades.map(t => t.code))] as string[]
   const requests = fundCodes.map(async (code) => {
     try {
       const data = await fetchFundAccurateData(code)
-      fundNavMap.value.set(code, (data.nav || data.estimate || 0) as number)
+      // 优先级：估值 > 净值 > 智能选择的currentValue
+      const currentValue = data.estimate > 0 
+        ? data.estimate 
+        : (data.nav > 0 
+            ? data.nav 
+            : (data.currentValue || 0))
+      if (currentValue > 0) {
+        fundNavMap.value.set(code, currentValue)
+      }
     } catch (e) {
       // 静默失败
     }
