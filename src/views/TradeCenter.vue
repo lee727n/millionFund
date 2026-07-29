@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { getTrades, removeTrade, getHoldings } from '@/utils/storage'
-import { fetchFundAccurateData } from '@/api/fundFast'
+import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import type { TradeRecord } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
 // @ts-ignore
@@ -16,6 +16,7 @@ import jdIcon from '@/assets/JD.jpg'
 const router = useRouter()
 
 const loading = ref(true)
+const refreshing = ref(false)
 const fundNavMap = ref<Map<string, number>>(new Map())
 
 // 账户图标映射
@@ -82,6 +83,27 @@ async function loadTrades() {
   
   await Promise.all(requests)
   loading.value = false
+}
+
+// 刷新数据：清除缓存后重新获取最新估值
+async function refreshData() {
+  if (refreshing.value) return
+  
+  refreshing.value = true
+  try {
+    // 获取所有基金代码并清除缓存
+    const trades = getTrades()
+    const fundCodes = [...new Set(trades.map(t => t.code))] as string[]
+    fundCodes.forEach(code => clearFundCache(code))
+    
+    // 重新加载数据
+    await loadTrades()
+    showToast('刷新成功')
+  } catch (e) {
+    showToast('刷新失败')
+  } finally {
+    refreshing.value = false
+  }
 }
 
 // 筛选后的交易记录
@@ -205,6 +227,15 @@ onMounted(() => {
         </button>
       </div>
       <div class="header-right">
+        <button 
+          class="refresh-btn" 
+          :class="{ 'is-refreshing': refreshing }"
+          @click="refreshData"
+          title="刷新估值"
+          :disabled="refreshing"
+        >
+          <span class="refresh-icon">↻</span>
+        </button>
         <button class="ai-entry-btn" @click="goToAITracking">
           <span>AI追踪</span>
         </button>
@@ -309,6 +340,44 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 刷新按钮 */
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.3s;
+  color: var(--text-primary);
+}
+
+.refresh-btn:active {
+  transform: scale(0.95);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  font-size: 18px;
+  font-weight: bold;
+  transition: transform 0.5s;
+}
+
+.refresh-btn.is-refreshing .refresh-icon {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .title-icon {

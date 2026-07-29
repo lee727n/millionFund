@@ -15,6 +15,8 @@ const props = defineProps<{
   realtimeChange: number
   lastClose: number
   trades?: TradeRecord[]
+  // 持仓成本净值，用于绘制成本线
+  costNavValue?: number
 }>()
 
 const themeStore = useThemeStore()
@@ -385,6 +387,11 @@ async function loadData() {
     
     await nextTick()
     drawChart()
+    
+    // [WHY] 数据加载完成后，如果costNavValue有效，确保重绘成本线
+    if (props.costNavValue && props.costNavValue > 0) {
+      setTimeout(() => drawChart(), 100)
+    }
   } catch (err) {
     console.error('加载图表数据失败:', err)
   } finally {
@@ -460,6 +467,33 @@ function drawPerformanceChart(
   ctx.strokeStyle = colors.borderColor
   ctx.lineWidth = 1.5
   ctx.stroke()
+  
+  // ========== 绘制持仓成本线（蓝色虚线） ==========
+  if (props.costNavValue && props.costNavValue > 0) {
+    // 获取基金的起始净值作为基准
+    const fundFirstValue = filteredData.value[0]?.value || props.lastClose || 1
+    if (fundFirstValue > 0) {
+      const costReturn = ((props.costNavValue - fundFirstValue) / fundFirstValue) * 100
+      const costY = toY(costReturn)
+      
+      // 绘制成本线
+      ctx.beginPath()
+      ctx.moveTo(padding.left, costY)
+      ctx.lineTo(width - padding.right, costY)
+      ctx.strokeStyle = '#1677ff' // 蓝色
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([6, 4]) // 虚线样式
+      ctx.stroke()
+      ctx.setLineDash([]) // 恢复实线
+      
+      // 绘制成本线标签
+      ctx.fillStyle = '#1677ff'
+      ctx.font = '10px Arial'
+      ctx.textAlign = 'left'
+      const costLabel = `成本 ${props.costNavValue.toFixed(4)}`
+      ctx.fillText(costLabel, padding.left + 5, costY - 4)
+    }
+  }
   
   // ========== 绘制基金曲线（蓝色实线） ==========
   const fundPoints = perfData.map((d, i) => ({ x: toX(i), y: toY(d.fundReturn), value: d.fundReturn }))
@@ -689,6 +723,32 @@ function drawChart() {
     const value = maxValue - valueRange * i / 4
     const y = padding.top + (mainHeight - padding.top) * i / 4
     ctx.fillText(value.toFixed(4), width - padding.right + 5, y + 3)
+  }
+  
+  // ========== 绘制持仓成本线（蓝色虚线） ==========
+  if (props.costNavValue && props.costNavValue > 0) {
+    const costValue = props.costNavValue
+    // 只有当成本线在可见范围内时才绘制
+    if (costValue >= minValue && costValue <= maxValue) {
+      const costY = padding.top + (mainHeight - padding.top) * (1 - (costValue - minValue) / valueRange)
+      
+      // 绘制成本线
+      ctx.beginPath()
+      ctx.moveTo(padding.left, costY)
+      ctx.lineTo(width - padding.right, costY)
+      ctx.strokeStyle = '#1677ff' // 蓝色
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([6, 4]) // 虚线样式
+      ctx.stroke()
+      ctx.setLineDash([]) // 恢复实线
+      
+      // 绘制成本线标签（右侧）
+      ctx.fillStyle = '#1677ff'
+      ctx.font = '10px Arial'
+      ctx.textAlign = 'left'
+      const costLabel = `成本 ${costValue.toFixed(4)}`
+      ctx.fillText(costLabel, padding.left + 5, costY - 4)
+    }
   }
   
   // ========== 绘制价格线/K线 ==========
@@ -1314,6 +1374,18 @@ watch(() => props.trades, () => {
   nextTick(drawChart)
 }, { deep: true })
 
+// [WHY] 监控成本净值变化，重绘成本线
+watch(() => props.costNavValue, (newVal) => {
+  if (newVal && newVal > 0) {
+    // 立即尝试绘制
+    nextTick(() => {
+      drawChart()
+      // 如果数据可能还在加载中，稍后再尝试一次
+      setTimeout(() => drawChart(), 300)
+    })
+  }
+}, { immediate: true })
+
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
@@ -1448,7 +1520,7 @@ onUnmounted(() => {
 
 /* [WHAT] 图表头部（模式切换 + 时间周期） */
 .chart-header {
-  margin-top: 16px;
+  padding-top: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 

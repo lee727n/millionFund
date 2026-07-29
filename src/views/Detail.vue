@@ -391,8 +391,10 @@ const holdingDetails = computed(() => {
   const currentValue = shares * currentPrice
   // 持有收益 = (当前净值 - 成本净值) × 持有份额
   const profit = (currentPrice - buyNetValue) * shares
-  // 收益率
-  const profitRate = amount > 0 ? (profit / amount) * 100 : 0
+  // 收益率 = (当前净值 - 成本净值) / 成本净值，与交易记录涨跌幅计算一致
+  const profitRate = buyNetValue > 0 && currentPrice > 0
+    ? ((currentPrice - buyNetValue) / buyNetValue) * 100
+    : 0
   // 持仓占比（相对于总市值）
   const totalValue = holdingStore.summary.totalValue || 1
   const ratio = (currentValue / totalValue) * 100
@@ -871,7 +873,9 @@ function formatPercent(num: number): string {
             <span class="info-divider">|</span>
             <span class="estimate-tag">收益 {{ formatMoney(holdingDetails.profit) }}</span>
             <span class="info-divider">|</span>
-            <span class="estimate-tag">占比 {{ holdingDetails.ratio.toFixed(2) }}%</span>
+            <span class="estimate-tag" :class="holdingDetails.profitRate >= 0 ? 'up' : 'down'">
+              收益率 {{ holdingDetails.profitRate >= 0 ? '+' : '' }}{{ holdingDetails.profitRate.toFixed(2) }}%
+            </span>
           </div>
         </div>
       </div>
@@ -989,6 +993,7 @@ function formatPercent(num: number): string {
         :realtime-change="priceChangePercent"
         :last-close="fundInfo?.dwjz ? parseFloat(fundInfo.dwjz) : 0"
         :trades="trades"
+        :cost-nav-value="holdingInfo?.buyNetValue || 0"
       />
     </div>
 
