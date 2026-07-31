@@ -245,6 +245,14 @@ export function getTradesByCode(code: string): TradeRecord[] {
  * 添加交易记录
  */
 export function addTrade(trade: TradeRecord): void {
+  // [DEBUG] 打印添加的交易记录
+  console.log('[addTrade] 添加交易:', {
+    type: trade.type,
+    date: trade.date,
+    netValue: trade.netValue,
+    estimated: trade.estimated,
+    code: trade.code
+  })
   const trades = getTrades()
   trades.push({ ...trade, id: generateId(), createdAt: Date.now() })
   saveTrades(trades)
@@ -274,24 +282,46 @@ export function updateTradeNetValue(id: string, netValue: number): void {
 
 /**
  * 更新某基金所有交易记录的净值（估值转正式净值）
- * [WHY] 只有当 navDate >= trade.date 时才更新，避免用旧净值覆盖新交易
+ * [WHY] 只要获取到了最新净值（nav > 0），就可以更新估值交易记录
+ * [FIX] 更新条件：
+ *   1. t.estimated === true 且 t.date <= navDate（估值转净值，且交易日期在净值日期之前或相同）
+ *   2. t.date === navDate（今天的交易，净值刚更新，可能之前用了错误的值）
+ *       这是为了修复之前bug导致的错误净值（用了估值或旧净值，但标记为"净"）
  */
 export function updateTradesByCode(code: string, netValue: number, navDate?: string): void {
   const trades = getTrades()
   let changed = false
   trades.forEach(t => {
-    if (t.code === code && t.estimated && netValue > 0) {
-      // 如果有 navDate，只有当 navDate >= 交易日期才更新
-      if (navDate && navDate < t.date) {
-        return
+    if (t.code === code && netValue > 0) {
+      // [FIX] 满足以下条件之一就更新：
+      // 1. estimated === true 且 tradeDate <= navDate（估值转净值，日期有效）
+      // 2. navDate === t.date（今天的交易，净值刚更新，强制更新）
+      const isEstimatedAndOldDate = t.estimated && navDate && t.date <= navDate
+      const isTodayTrade = navDate && t.date === navDate
+      const shouldUpdate = isEstimatedAndOldDate || isTodayTrade
+      
+      if (shouldUpdate) {
+        // 避免重复更新相同的值
+        if (Math.abs(t.netValue - netValue) < 0.0001 && !t.estimated) {
+          return
+        }
+        console.log('[updateTradesByCode] 更新交易:', {
+          id: t.id,
+          tradeDate: t.date,
+          navDate: navDate,
+          oldNetValue: t.netValue,
+          newNetValue: netValue,
+          wasEstimated: t.estimated
+        })
+        t.netValue = netValue
+        t.shares = t.amount / netValue
+        t.estimated = false
+        changed = true
       }
-      t.netValue = netValue
-      t.shares = t.amount / netValue
-      t.estimated = false
-      changed = true
     }
   })
   if (changed) {
     saveTrades(trades)
+    console.log('[updateTradesByCode] 保存成功')
   }
 }

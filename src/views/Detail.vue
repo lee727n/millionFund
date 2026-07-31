@@ -21,7 +21,7 @@ import {
   predictTrend, calculateReturnAnalysis, calculateFundScore,
   type TrendPrediction, type ReturnAnalysis, type FundScore
 } from '@/utils/statistics'
-import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade } from '@/utils/storage'
+import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade, getTrades, saveTrades } from '@/utils/storage'
 import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import type { TradeRecord, TradeType } from '@/types/fund'
 
@@ -37,37 +37,115 @@ const fundCode = computed(() => route.params.code as string)
 const trades = ref<TradeRecord[]>([])
 
 // [WHAT] 带涨跌幅的交易记录（按日期排序）
+// [FIX] 简单逻辑：
+// 1. 最新值：今天净值更新了用净值，没更新用估值
+// 2. 交易成本：trade.netValue（已经保存了交易时的估值或净值）
+// 3. 涨跌幅 = (最新值 - 交易成本) / 交易成本
 const tradesWithReturn = computed(() => {
-  const currentNav = parseFloat(fundInfo.value?.gsz || fundInfo.value?.dwjz || '0')
+  const currentNav = parseFloat(fundInfo.value?.dwjz || '0')
+  const currentEstimate = parseFloat(fundInfo.value?.gsz || '0')
+  const dataSource = fundInfo.value?.dataSource
+  
+  // 选择最新值：今天净值更新了用净值，没更新用估值
+  let currentValue = 0
+  if (dataSource === 'nav' && currentNav > 0) {
+    currentValue = currentNav
+  } else if (currentEstimate > 0) {
+    currentValue = currentEstimate
+  } else {
+    currentValue = currentNav
+  }
+  
   return [...trades.value]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map(trade => {
-      const postReturn = currentNav > 0 && trade.netValue > 0
-        ? ((currentNav - trade.netValue) / trade.netValue) * 100
-        : 0
+      let postReturn = 0
+      
+      if (currentValue > 0 && trade.netValue > 0) {
+        postReturn = ((currentValue - trade.netValue) / trade.netValue) * 100
+      }
+      
       return { ...trade, postReturn }
     })
 })
 
 async function loadTrades() {
   if (!fundCode.value) return
-  const allTrades = getTradesByCode(fundCode.value)
+  
+  // 第一步：立即显示本地存储的交易记录
+  trades.value = getTradesByCode(fundCode.value)
+  
+  const today = new Date().toLocaleDateString('en-CA')
+  const allTrades = trades.value
   const estimatedTrades = allTrades.filter(t => t.estimated)
+  const todayTradesNotEstimated = allTrades.filter(t => t.date === today && !t.estimated)
+  console.log('[Detail.loadTrades] 交易记录:', allTrades.length, '估值交易:', estimatedTrades.length, '今天待修复:', todayTradesNotEstimated.length)
 
-  // 如果有估值交易，检查是否已有正式净值可更新
-  if (estimatedTrades.length > 0) {
-    try {
-      const data = await fetchFundAccurateData(fundCode.value)
-      // 只有当 navDate >= 交易日期（即净值已在交易日期之后公布）才更新
-      if (data.nav > 0 && data.navDate) {
+  // 第二步：异步检查是否需要更新估值状态（不阻塞显示）
+  if (estimatedTrades.length > 0 || todayTradesNotEstimated.length > 0) {
+    checkAndUpdateTradeCalculations(today)
+  }
+}
+
+// [FIX] 异步检查并更新交易记录的计算数据
+async function checkAndUpdateTradeCalculations(today: string) {
+  try {
+    const data = await fetchFundAccurateData(fundCode.value, false, true)
+    console.log('[Detail.loadTrades] 获取到的数据:', {
+      nav: data.nav,
+      navDate: data.navDate,
+      estimate: data.estimate,
+      dataSource: data.dataSource,
+      today
+    })
+    
+    // [FIX] 关键逻辑：
+    // 1. data.nav 是最新的净值（可能是昨天或更早的）
+    // 2. data.navDate 是这个净值的日期
+    // 3. 如果有估值交易的日期 <= data.navDate，说明这些交易应该用净值而不是估值
+    if (data.nav > 0 && data.navDate) {
+      const allTrades = getTrades()
+      let needUpdate = false
+      
+      allTrades.forEach(t => {
+        if (t.code === fundCode.value && t.estimated && t.date <= data.navDate) {
+          console.log('[Detail.loadTrades] 发现需要更新的交易:', {
+            id: t.id,
+            tradeDate: t.date,
+            navDate: data.navDate,
+            oldNetValue: t.netValue,
+            newNetValue: data.nav
+          })
+          needUpdate = true
+        }
+      })
+      
+      if (needUpdate) {
         updateTradesByCode(fundCode.value, data.nav, data.navDate)
       }
-    } catch (e) {
-      console.error('检查交易估值更新失败:', e)
     }
+    
+    // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
+    if (data.dataSource !== 'nav') {
+      const allTrades = getTrades()
+      let needSave = false
+      allTrades.forEach(t => {
+        if (t.code === fundCode.value && t.date === today && !t.estimated) {
+          console.log('[Detail.loadTrades] 修复交易记录:', t.id, '恢复为 estimated: true')
+          t.estimated = true
+          needSave = true
+        }
+      })
+      if (needSave) {
+        saveTrades(allTrades)
+      }
+    }
+    
+    // 刷新交易记录显示
+    trades.value = getTradesByCode(fundCode.value)
+  } catch (e) {
+    console.error('检查交易估值更新失败:', e)
   }
-
-  trades.value = getTradesByCode(fundCode.value)
 }
 watch(fundCode, () => {
   loadTrades()
@@ -125,7 +203,7 @@ async function openTradeDialog() {
     type: 'buy',
     amount: '',
     netValue: fundInfo.value?.gsz || fundInfo.value?.dwjz || '',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('en-CA'), // 本地时间 YYYY-MM-DD
     isEstimate: true
   }
   showTradeDialog.value = true
@@ -149,23 +227,57 @@ async function openTradeDialog() {
   }
 
   tasks.push(
-    fetchFundAccurateData(fundCode.value).then(data => {
-      const today = new Date().toISOString().split('T')[0]
+    // [FIX] 使用 forceRefresh 强制获取最新数据
+    fetchFundAccurateData(fundCode.value, false, true).then(data => {
+      const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
       const estimateVal = data.estimate || 0
       const navVal = data.nav || 0
       const navDate = data.navDate || ''
-      const isNavUpdated = navDate === today
       
-      if (isNavUpdated && navVal > 0) {
+      // [FIX] 使用 dataSource 判断，不要再加多余条件
+      // dataSource === 'nav' 表示净值已更新，应该用净值
+      // dataSource === 'estimate' 表示应该用估值（即使 estimateVal 为0，因为非交易时间）
+      const shouldUseNav = data.dataSource === 'nav' && navVal > 0
+      const shouldUseEstimate = data.dataSource === 'estimate'
+      
+      // [DEBUG] 打印交易弹窗数据
+      console.log('[openTradeDialog] 实时数据:', {
+        estimateVal,
+        navVal,
+        navDate,
+        dataSource: data.dataSource,
+        currentValue: data.currentValue,
+        today,
+        shouldUseNav,
+        shouldUseEstimate
+      })
+      
+      if (shouldUseNav) {
         tradeRealTimeValue = navVal
         tradeRealTimeIsEstimate = false
-      } else if (estimateVal > 0) {
-        tradeRealTimeValue = estimateVal
-        tradeRealTimeIsEstimate = true
+      } else if (shouldUseEstimate) {
+        // [FIX] 即使 estimateVal 为0，也使用 data.currentValue（可能是上一个净值）
+        tradeRealTimeValue = estimateVal > 0 ? estimateVal : data.currentValue
+        tradeRealTimeIsEstimate = true  // 关键：标记为估值
       } else {
-        tradeRealTimeValue = navVal
-        tradeRealTimeIsEstimate = false
+        // Fallback: 如果 dataSource 逻辑有问题，使用日期比较
+        const isNavUpdated = navDate === today
+        if (isNavUpdated && navVal > 0) {
+          tradeRealTimeValue = navVal
+          tradeRealTimeIsEstimate = false
+        } else {
+          tradeRealTimeValue = estimateVal > 0 ? estimateVal : navVal
+          tradeRealTimeIsEstimate = true  // 关键：标记为估值
+        }
       }
+      
+      // [DEBUG] 打印最终结果
+      console.log('[openTradeDialog] 最终选择:', {
+        tradeRealTimeValue,
+        tradeRealTimeIsEstimate,
+        shouldUseNav,
+        shouldUseEstimate
+      })
       
       if (tradeHistoryFund !== fundCode.value) {
         tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
@@ -184,7 +296,7 @@ async function openTradeDialog() {
 // [WHAT] 根据日期查找净值；今天/未来用实时数据，过去用历史
 function lookupNetValue(date: string) {
   if (!date) return
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
 
   // 今天或未来日期 → 使用实时数据（可能是估值或净值）
   if (date >= today) {
@@ -233,7 +345,7 @@ function onTradeDateChange(newDate: string) {
   if (newDate && tradeNetValueHistory.value.length > 0) {
     lookupNetValue(newDate)
   }
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA') // 本地时间
   if (newDate >= today && tradeRealTimeValue > 0) {
     tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
     tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
@@ -255,9 +367,18 @@ async function submitTrade() {
 
   const amount = parseFloat(tradeFormData.value.amount)
   const netValue = parseFloat(tradeFormData.value.netValue)
-  const date = tradeFormData.value.date || new Date().toISOString().split('T')[0]
+  const date = tradeFormData.value.date || new Date().toLocaleDateString('en-CA') // 本地时间
   const type = tradeFormData.value.type
   const isEstimate = tradeFormData.value.isEstimate
+  
+  // [DEBUG] 打印提交交易时的状态
+  console.log('[submitTrade] 提交交易:', {
+    type,
+    date,
+    netValue,
+    isEstimate,
+    tradeFormData: tradeFormData.value
+  })
 
   if (!amount || amount <= 0) {
     showToast('请输入有效的交易金额')
@@ -283,6 +404,8 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
+      // [FIX] 保存交易时的估值快照，用于后续涨跌幅计算
+      estimateAtTrade: isEstimate ? netValue : undefined,
       source: holding.source,
       createdAt: Date.now()
     })
@@ -449,7 +572,8 @@ async function loadFundData() {
   try {
     // [WHAT] 获取QDII标识，从持仓信息或默认false
     const isQDII = holdingInfo.value?.isQDII || false
-    const accurateData = await fetchFundAccurateData(fundCode.value, isQDII).catch(() => null)
+    // [FIX] 使用 forceRefresh 强制获取最新数据
+    const accurateData = await fetchFundAccurateData(fundCode.value, isQDII, true).catch(() => null)
     
     if (accurateData) {
       // 将 FundAccurateData 转换为 FundEstimate 格式

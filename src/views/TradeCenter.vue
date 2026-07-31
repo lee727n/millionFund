@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
-import { getTrades, removeTrade, getHoldings } from '@/utils/storage'
+import { getTrades, removeTrade, getHoldings, updateTradesByCode, saveTrades } from '@/utils/storage'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import type { TradeRecord } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
@@ -18,6 +18,11 @@ const router = useRouter()
 const loading = ref(true)
 const refreshing = ref(false)
 const fundNavMap = ref<Map<string, number>>(new Map())
+const calculatingReturns = ref(true) // 涨跌幅计算中
+
+// [FIX] 保存每个基金的完整数据（估值、净值、数据源）
+// 用于根据交易记录的类型选择合适的当前值进行涨跌幅计算
+const fundDataMap = ref<Map<string, { estimate: number; nav: number; currentValue: number; dataSource: string }>>(new Map())
 
 // 账户图标映射
 const accountIcons: Record<string, string> = {
@@ -33,9 +38,19 @@ const accountFilter = ref<string>('')
 const allTrades = ref<TradeRecord[]>([])
 
 // 加载交易记录
+// [FIX] 分两步加载：先显示基础数据，再异步加载涨跌幅
 async function loadTrades() {
-  loading.value = true
+  // 第一步：立即显示本地存储的交易记录（不需要等待网络请求）
   const trades = getTrades()
+  
+  // 如果没有交易记录，不需要计算
+  if (trades.length === 0) {
+    calculatingReturns.value = false
+    loading.value = false
+    return
+  }
+  
+  calculatingReturns.value = true  // 开始计算
   
   // 获取持仓中的基金来源信息，用于自动匹配
   const holdings = getHoldings()
@@ -56,33 +71,135 @@ async function loadTrades() {
   
   // 按基金分组排序
   allTrades.value = enrichedTrades.sort((a, b) => {
-    // 先按基金代码分组，组内按时间倒序
     if (a.code !== b.code) return a.code.localeCompare(b.code)
     return b.createdAt - a.createdAt
   })
   
-  // 获取每个基金的当前估值用于计算涨跌幅
-  // 优先使用估值（实时），没有估值时回退到净值，都没有时使用currentValue（智能选择）
-  const fundCodes = [...new Set(enrichedTrades.map(t => t.code))] as string[]
-  const requests = fundCodes.map(async (code) => {
+  // 立即显示，不再等待网络请求
+  loading.value = false
+  
+  // 第二步：异步加载需要计算的数据（估值检查、涨跌幅等）
+  // 使用 Promise.allSettled 确保所有请求都完成
+  loadTradeCalculations(enrichedTrades)
+}
+
+// [FIX] 异步加载交易记录的计算数据（估值检查、涨跌幅等）
+async function loadTradeCalculations(trades: TradeRecord[]) {
+  const today = new Date().toLocaleDateString('en-CA')
+  
+  // 检查是否有估值交易记录（estimated: true），自动更新为净值
+  const estimatedTrades = trades.filter(t => t.estimated)
+  console.log('[TradeCenter.loadCalculations] 估值交易数量:', estimatedTrades.length)
+  
+  // 收集所有需要处理的基金代码
+  const codesToUpdate = new Set<string>()
+  
+  if (estimatedTrades.length > 0) {
+    estimatedTrades.forEach(t => codesToUpdate.add(t.code))
+  }
+  
+  // 检查今天添加的、但被错误标记为 estimated: false 的交易记录
+  const todayTradesNotEstimated = trades.filter(t => t.date === today && !t.estimated)
+  if (todayTradesNotEstimated.length > 0) {
+    todayTradesNotEstimated.forEach(t => codesToUpdate.add(t.code))
+  }
+  
+  // 并发处理所有需要更新的基金
+  const updateRequests = Array.from(codesToUpdate).map(async (code) => {
     try {
-      const data = await fetchFundAccurateData(code)
-      // 优先级：估值 > 净值 > 智能选择的currentValue
-      const currentValue = data.estimate > 0 
-        ? data.estimate 
-        : (data.nav > 0 
-            ? data.nav 
-            : (data.currentValue || 0))
-      if (currentValue > 0) {
-        fundNavMap.value.set(code, currentValue)
+      const data = await fetchFundAccurateData(code, false, true)
+      console.log('[TradeCenter.loadCalculations] 基金', code, 'nav:', data.nav, 'navDate:', data.navDate, 'dataSource:', data.dataSource)
+      
+      // [FIX] 关键逻辑：
+      // 1. data.nav 是最新的净值（可能是昨天或更早的）
+      // 2. data.navDate 是这个净值的日期
+      // 3. 如果有交易的日期 <= data.navDate，说明这些交易应该用净值而不是估值
+      if (data.nav > 0 && data.navDate) {
+        const allTrades = getTrades()
+        let needUpdate = false
+        
+        allTrades.forEach(t => {
+          if (t.code === code && t.estimated && t.date <= data.navDate) {
+            console.log('[TradeCenter.loadCalculations] 发现需要更新的交易:', {
+              id: t.id,
+              tradeDate: t.date,
+              navDate: data.navDate,
+              oldNetValue: t.netValue,
+              newNetValue: data.nav
+            })
+            needUpdate = true
+          }
+        })
+        
+        if (needUpdate) {
+          // 用最新的净值更新所有日期 <= navDate 的估值交易
+          updateTradesByCode(code, data.nav, data.navDate)
+        }
       }
+      
+      // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
+      if (data.dataSource !== 'nav') {
+        const allTrades = getTrades()
+        let needSave = false
+        allTrades.forEach(t => {
+          if (t.code === code && t.date === today && !t.estimated) {
+            console.log('[TradeCenter.loadCalculations] 修复交易记录:', t.id, '恢复为 estimated: true')
+            t.estimated = true
+            needSave = true
+          }
+        })
+        if (needSave) {
+          saveTrades(allTrades)
+        }
+      }
+    } catch (e) {
+      console.error('[TradeCenter.loadCalculations] 获取失败:', code, e)
+    }
+  })
+  
+  // 并发获取所有基金的涨跌幅数据
+  const fundCodes = [...new Set(trades.map(t => t.code))] as string[]
+  const navRequests = fundCodes.map(async (code) => {
+    try {
+      const data = await fetchFundAccurateData(code, false, true)
+      fundDataMap.value.set(code, {
+        estimate: data.estimate || 0,
+        nav: data.nav || 0,
+        currentValue: data.currentValue || 0,
+        dataSource: data.dataSource
+      })
     } catch (e) {
       // 静默失败
     }
   })
   
-  await Promise.all(requests)
-  loading.value = false
+  // 等待所有请求完成
+  await Promise.allSettled([...updateRequests, ...navRequests])
+  
+  // 重新获取更新后的交易记录并刷新显示
+  const updatedTrades = getTrades()
+  const holdings = getHoldings()
+  const fundSourceMap = new Map<string, string>()
+  holdings.forEach(h => {
+    if (h.source) {
+      fundSourceMap.set(h.code, h.source)
+    }
+  })
+  
+  const enrichedTrades = updatedTrades.map(t => {
+    if (!t.source && fundSourceMap.has(t.code)) {
+      return { ...t, source: fundSourceMap.get(t.code) as string }
+    }
+    return t
+  })
+  
+  allTrades.value = enrichedTrades.sort((a, b) => {
+    if (a.code !== b.code) return a.code.localeCompare(b.code)
+    return b.createdAt - a.createdAt
+  })
+  
+  // 计算完成
+  calculatingReturns.value = false
 }
 
 // 刷新数据：清除缓存后重新获取最新估值
@@ -114,31 +231,70 @@ const filteredTrades = computed(() => {
 
 // 按基金分组的交易记录
 const groupedTrades = computed(() => {
+  // 获取当前持仓中的基金代码列表
+  const holdings = getHoldings()
+  const holdingCodes = new Set(holdings.map(h => h.code))
+  
   const groups = new Map<string, {
     code: string
     name: string
     source?: string
+    isCleared: boolean  // 是否已清仓
     trades: (TradeRecord & { postReturn: number })[]
   }>()
 
   filteredTrades.value.forEach(trade => {
     if (!groups.has(trade.code)) {
+      // 判断是否已清仓：不在持仓列表中即为已清仓
+      const isCleared = !holdingCodes.has(trade.code)
       groups.set(trade.code, {
         code: trade.code,
         name: trade.name,
         source: trade.source,
+        isCleared,
         trades: []
       })
     }
     const group = groups.get(trade.code)!
-    const currentNav = fundNavMap.value.get(trade.code) || 0
-    const postReturn = currentNav > 0 && trade.netValue > 0
-      ? ((currentNav - trade.netValue) / trade.netValue) * 100
-      : 0
+    
+    const fundData = fundDataMap.value.get(trade.code)
+    let postReturn = 0
+    
+    if (fundData && trade.netValue > 0) {
+      // [FIX] 简单逻辑：
+      // 1. 最新值：今天净值更新了用净值，没更新用估值
+      // 2. 交易成本：trade.netValue（已经保存了交易时的估值或净值）
+      // 3. 涨跌幅 = (最新值 - 交易成本) / 交易成本
+      
+      let currentValue = 0
+      if (fundData.dataSource === 'nav' && fundData.nav > 0) {
+        // 今天净值已更新，用净值
+        currentValue = fundData.nav
+      } else if (fundData.estimate > 0) {
+        // 今天净值没更新，用估值
+        currentValue = fundData.estimate
+      } else {
+        // Fallback
+        currentValue = fundData.currentValue
+      }
+      
+      if (currentValue > 0) {
+        postReturn = ((currentValue - trade.netValue) / trade.netValue) * 100
+      }
+    }
+    
     group.trades.push({ ...trade, postReturn })
   })
 
-  return Array.from(groups.values())
+  // [FIX] 排序：已清仓的放在后面
+  return Array.from(groups.values()).sort((a, b) => {
+    // 先按是否清仓排序（未清仓在前，已清仓在后）
+    if (a.isCleared !== b.isCleared) {
+      return a.isCleared ? 1 : -1
+    }
+    // 同状态下按基金代码排序
+    return a.code.localeCompare(b.code)
+  })
 })
 
 // 获取账户图标图片
@@ -243,7 +399,7 @@ onMounted(() => {
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
+    <div v-if="loading && allTrades.length === 0" class="loading-state">
       <div class="loading-spinner"></div>
       <span>加载中...</span>
     </div>
@@ -257,12 +413,19 @@ onMounted(() => {
 
     <!-- 基金分组卡片 -->
     <div v-else class="fund-list">
+      <!-- 涨跌幅计算中提示 -->
+      <div v-if="calculatingReturns" class="calculating-hint">
+        <span class="calculating-spinner"></span>
+        <span>正在计算涨跌幅...</span>
+      </div>
+      
       <div 
         v-for="group in groupedTrades" 
         :key="group.code" 
         class="fund-card"
+        :class="{ 'is-cleared': group.isCleared }"
       >
-        <!-- 第一行：账户图标 + 基金名称 + code -->
+        <!-- 第一行：账户图标 + 基金名称 + code + 已清仓标签 -->
         <div class="fund-header" @click="goToDetail(group.code)">
           <img 
             v-if="group.source" 
@@ -272,6 +435,8 @@ onMounted(() => {
           />
           <span class="fund-name">{{ group.name }}</span>
           <span class="fund-code">{{ group.code }}</span>
+          <!-- [FIX] 已清仓的基金显示绿色标签 -->
+          <span v-if="group.isCleared" class="cleared-tag">已清仓</span>
         </div>
 
         <!-- 第二行：交易记录 -->
@@ -292,8 +457,17 @@ onMounted(() => {
                 {{ trade.netValue.toFixed(4) }}
                 <span class="nav-tag">{{ trade.estimated ? '估' : '净' }}</span>
               </span>
-              <span class="trade-return" :class="trade.postReturn >= 0 ? 'up' : 'down'">
-                {{ trade.postReturn >= 0 ? '+' : '' }}{{ trade.postReturn.toFixed(2) }}%
+              <!-- [FIX] 涨跌幅数据加载完成后显示，未完成时显示 "--" -->
+              <span 
+                class="trade-return" 
+                :class="trade.postReturn >= 0 ? 'up' : 'down'"
+              >
+                <template v-if="calculatingReturns">
+                  <span class="return-placeholder">--</span>
+                </template>
+                <template v-else>
+                  {{ trade.postReturn >= 0 ? '+' : '' }}{{ trade.postReturn.toFixed(2) }}%
+                </template>
               </span>
             </div>
             <button class="trade-delete-btn" @click.stop="deleteTrade(trade)">×</button>
@@ -502,6 +676,12 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 
+/* 已清仓的基金卡片 - 视觉区分 */
+.fund-card.is-cleared {
+  opacity: 0.7;
+  border: 1px dashed rgba(14, 203, 129, 0.3);
+}
+
 .fund-header {
   display: flex;
   align-items: center;
@@ -531,6 +711,18 @@ onMounted(() => {
 .fund-code {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* 已清仓标签 - 绿色 */
+.cleared-tag {
+  font-size: 10px;
+  color: #0ecb81;
+  background: rgba(14, 203, 129, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+  font-weight: 500;
+  border: 1px solid rgba(14, 203, 129, 0.3);
 }
 
 /* 交易记录 - 复用 Detail 样式 */
@@ -633,6 +825,39 @@ onMounted(() => {
 
 .trade-return.down {
   color: #0ecb81;
+}
+
+/* 涨跌幅占位符 */
+.return-placeholder {
+  color: var(--text-tertiary, #999);
+  font-weight: 400;
+}
+
+/* 涨跌幅计算中提示 */
+.calculating-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+  background: var(--bg-secondary, #f5f5f5);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.calculating-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-top-color: var(--primary-color, #1890ff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .trade-delete-btn {

@@ -142,7 +142,7 @@ async function confirmAddRecord() {
     let buyNav = 0
     let sellNavEstimated = false
     let buyNavEstimated = false
-    const targetDate = newRecord.value.date || new Date().toISOString().split('T')[0]
+    const targetDate = newRecord.value.date || new Date().toLocaleDateString('en-CA') // 本地时间
 
     if (newRecord.value.date) {
       const historyDays = Math.ceil((new Date().getTime() - new Date(newRecord.value.date).getTime()) / (1000 * 60 * 60 * 24)) + 10
@@ -164,8 +164,9 @@ async function confirmAddRecord() {
         sellNavEstimated = true
         buyNavEstimated = true
         const [sellInfo, buyInfo] = await Promise.all([
-          fetchFundAccurateData(newRecord.value.sellCode),
-          fetchFundAccurateData(newRecord.value.buyCode)
+          // [FIX] 使用 forceRefresh 强制获取最新数据
+          fetchFundAccurateData(newRecord.value.sellCode, false, true),
+          fetchFundAccurateData(newRecord.value.buyCode, false, true)
         ])
         if (sellInfo && sellInfo.currentValue > 0) {
           sellName = sellInfo.name
@@ -277,7 +278,7 @@ async function submitCostAdjust() {
     console.log('[调整成本] 开始获取最新净值，基金代码:', holding.code)
     let latestNetValue: { netValue: number; date: string; changeRate: number } | null = null
     try {
-      const accurateData = await fetchFundAccurateData(holding.code, holding.isQDII)
+      const accurateData = await fetchFundAccurateData(holding.code, holding.isQDII, true)
       if (accurateData && accurateData.nav > 0) {
         latestNetValue = {
           netValue: accurateData.nav,
@@ -407,7 +408,7 @@ function handleActionConvert() {
     newRecord.value.sellCode = selectedFundForAction.value.code
     newRecord.value.sellName = selectedFundForAction.value.name
     // 自动填充今日日期
-    newRecord.value.date = new Date().toISOString().split('T')[0]
+    newRecord.value.date = new Date().toLocaleDateString('en-CA') // 本地时间
   }
 
   // 打开弹窗
@@ -472,7 +473,7 @@ async function handleActionTrade() {
     type: 'buy',
     amount: '',
     netValue: holding.currentValue ? holding.currentValue.toFixed(4) : '',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('en-CA'), // 本地时间
     isEstimate: true
   }
   showTradeDialog.value = true
@@ -497,22 +498,36 @@ async function handleActionTrade() {
   }
 
   tasks.push(
-    fetchFundAccurateData(holding.code, holding.isQDII).then(data => {
-      const today = new Date().toISOString().split('T')[0]
+    // [FIX] 使用 forceRefresh 强制获取最新数据
+    fetchFundAccurateData(holding.code, holding.isQDII, true).then(data => {
+      const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
       const estimateVal = data.estimate || 0
       const navVal = data.nav || 0
       const navDate = data.navDate || ''
-      const isNavUpdated = navDate === today
       
-      if (isNavUpdated && navVal > 0) {
+      // [FIX] 使用 dataSource 判断，不要再加多余条件
+      // dataSource === 'nav' 表示净值已更新，应该用净值
+      // dataSource === 'estimate' 表示应该用估值（即使 estimateVal 为0，因为非交易时间）
+      const shouldUseNav = data.dataSource === 'nav' && navVal > 0
+      const shouldUseEstimate = data.dataSource === 'estimate'
+      
+      if (shouldUseNav) {
         tradeRealTimeValue = navVal
         tradeRealTimeIsEstimate = false
-      } else if (estimateVal > 0) {
-        tradeRealTimeValue = estimateVal
-        tradeRealTimeIsEstimate = true
+      } else if (shouldUseEstimate) {
+        // [FIX] 即使 estimateVal 为0，也使用 data.currentValue（可能是上一个净值）
+        tradeRealTimeValue = estimateVal > 0 ? estimateVal : data.currentValue
+        tradeRealTimeIsEstimate = true  // 关键：标记为估值
       } else {
-        tradeRealTimeValue = navVal
-        tradeRealTimeIsEstimate = false
+        // Fallback: 如果 dataSource 逻辑有问题，使用日期比较
+        const isNavUpdated = navDate === today
+        if (isNavUpdated && navVal > 0) {
+          tradeRealTimeValue = navVal
+          tradeRealTimeIsEstimate = false
+        } else {
+          tradeRealTimeValue = estimateVal > 0 ? estimateVal : navVal
+          tradeRealTimeIsEstimate = true  // 关键：标记为估值
+        }
       }
       
       if (tradeHistoryFund !== holding.code) {
@@ -532,7 +547,7 @@ async function handleActionTrade() {
 // [WHAT] 根据日期从历史净值中查找；今天/未来日期使用实时估值或净值
 function lookupNetValue(date: string) {
   if (!date) return
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
 
   // 今天或未来日期 → 使用实时数据（可能是估值或净值）
   if (date >= today) {
@@ -581,7 +596,7 @@ function onTradeDateChange(newDate: string) {
     lookupNetValue(newDate)
   }
   // 即使历史没加载，也用实时数据处理今天/未来
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA') // 本地时间
   if (newDate >= today && tradeRealTimeValue > 0) {
     tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
     tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
@@ -601,7 +616,7 @@ async function submitTrade() {
 
   const amount = parseFloat(tradeFormData.value.amount)
   const netValue = parseFloat(tradeFormData.value.netValue)
-  const date = tradeFormData.value.date || new Date().toISOString().split('T')[0]
+  const date = tradeFormData.value.date || new Date().toLocaleDateString('en-CA') // 本地时间
   const type = tradeFormData.value.type
   const isEstimate = tradeFormData.value.isEstimate
 
@@ -629,6 +644,8 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
+      // [FIX] 保存交易时的估值快照，用于后续涨跌幅计算
+      estimateAtTrade: isEstimate ? netValue : undefined,
       source: holding.source,
       createdAt: Date.now()
     })
@@ -987,6 +1004,9 @@ const totalTodayProfit = computed(() => {
 })
 
 // [WHAT] 计算当日收益百分比（只计算非观察账户）
+// [FIX] 使用昨日市值作为分母，这样账户利润率才能和基金涨跌幅一致
+// 原公式: todayProfit / currentMarketValue = (prevNav * dayChange%) / currentValue = (prevNav/currentValue) * dayChange%
+// 修正后: todayProfit / (currentMarketValue - todayProfit) = dayChange%
 const totalTodayProfitPercent = computed(() => {
   const totalMarketValue = normalHoldings.value.reduce((total, fund) => {
     return total + (fund.marketValue || 0)
@@ -994,7 +1014,12 @@ const totalTodayProfitPercent = computed(() => {
   
   if (totalMarketValue === 0) return 0
   
-  return (totalTodayProfit.value / totalMarketValue) * 100
+  // 昨日市值 = 当前市值 - 今日盈亏
+  const totalPrevMarketValue = totalMarketValue - totalTodayProfit.value
+  
+  if (totalPrevMarketValue === 0) return 0
+  
+  return (totalTodayProfit.value / totalPrevMarketValue) * 100
 })
 
 // [WHAT] 计算观察账户当日收益

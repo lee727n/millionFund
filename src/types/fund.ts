@@ -162,7 +162,7 @@ export interface TradeRecord {
   date: string
   /** 交易金额（元） */
   amount: number
-  /** 成交净值 */
+  /** 成交净值/估值 */
   netValue: number
   /** 成交份额 */
   shares: number
@@ -170,6 +170,8 @@ export interface TradeRecord {
   fee: number
   /** 是否使用估值（净值未更新时） */
   estimated?: boolean
+  /** 交易时的估值快照（用于计算涨跌幅时的基准） */
+  estimateAtTrade?: number
   /** 备注 */
   remark?: string
   /** 账户来源（ali/TX/JD） */

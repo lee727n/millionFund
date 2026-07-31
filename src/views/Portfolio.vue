@@ -122,7 +122,10 @@ const aliTodayProfit = computed(() => {
 
 const aliTodayProfitPercent = computed(() => {
   if (aliMarketValue.value === 0) return 0
-  return (aliTodayProfit.value / aliMarketValue.value) * 100
+  // [FIX] 使用昨日市值作为分母，这样账户利润率才能和基金涨跌幅一致
+  const prevMarketValue = aliMarketValue.value - aliTodayProfit.value
+  if (prevMarketValue === 0) return 0
+  return (aliTodayProfit.value / prevMarketValue) * 100
 })
 
 const txHoldings = computed(() => {
@@ -160,7 +163,10 @@ const txTodayProfit = computed(() => {
 
 const txTodayProfitPercent = computed(() => {
   if (txMarketValue.value === 0) return 0
-  return (txTodayProfit.value / txMarketValue.value) * 100
+  // [FIX] 使用昨日市值作为分母，这样账户利润率才能和基金涨跌幅一致
+  const prevMarketValue = txMarketValue.value - txTodayProfit.value
+  if (prevMarketValue === 0) return 0
+  return (txTodayProfit.value / prevMarketValue) * 100
 })
 
 const jdHoldings = computed(() => {
@@ -198,7 +204,10 @@ const jdTodayProfit = computed(() => {
 
 const jdTodayProfitPercent = computed(() => {
   if (jdMarketValue.value === 0) return 0
-  return (jdTodayProfit.value / jdMarketValue.value) * 100
+  // [FIX] 使用昨日市值作为分母，这样账户利润率才能和基金涨跌幅一致
+  const prevMarketValue = jdMarketValue.value - jdTodayProfit.value
+  if (prevMarketValue === 0) return 0
+  return (jdTodayProfit.value / prevMarketValue) * 100
 })
 
 const totalMarketValueAll = computed(() => {
@@ -211,7 +220,10 @@ const totalTodayProfitAll = computed(() => {
 
 const totalTodayProfitPercentAll = computed(() => {
   if (totalMarketValueAll.value === 0) return 0
-  return (totalTodayProfitAll.value / totalMarketValueAll.value) * 100
+  // [FIX] 使用昨日市值作为分母，这样账户利润率才能和基金涨跌幅一致
+  const prevMarketValue = totalMarketValueAll.value - totalTodayProfitAll.value
+  if (prevMarketValue === 0) return 0
+  return (totalTodayProfitAll.value / prevMarketValue) * 100
 })
 
 function checkTradingSession() {

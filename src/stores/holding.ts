@@ -21,7 +21,7 @@ import {
   removeHolding as removeFromStorage,
   updateFundNetValue
 } from '@/utils/storage'
-import { fetchFundAccurateData, type FundAccurateData } from '@/api/fundFast'
+import { fetchFundAccurateData, type FundAccurateData, clearHoldingsCache as clearFundHoldingsCache } from '@/api/fundFast'
 import { fetchNetValueHistoryFast } from '@/api/fundFast'
 import { predictTrend, calculateReturnAnalysis, calculateFundScore, type TrendPrediction, type FundScore } from '@/utils/statistics'
 
@@ -431,11 +431,11 @@ export const useHoldingStore = defineStore('holding', () => {
   /**
    * 清除所有基金的持仓缓存
    * [WHY] 用户手动触发更新持仓数据时调用
+   * [FIX] 使用统一的 clearFundHoldingsCache 函数，同时清除内存和持久化缓存
    */
   function clearHoldingsCache() {
     holdings.value.forEach(h => {
-      localStorage.removeItem(`fund_topholdings_persist_${h.code}`)
-      localStorage.removeItem(`fund_topholdings_${h.code}`)
+      clearFundHoldingsCache(h.code)
     })
   }
 

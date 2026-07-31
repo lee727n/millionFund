@@ -385,6 +385,16 @@ async function loadData() {
       console.log('[OKXChart] 基金首值:', kline[0]?.value, '沪深300首值:', hs300Data.value[0]?.value)
     }
     
+    // [DEBUG] 检查图表数据的日期范围
+    if (kline.length > 0) {
+      console.log('[OKXChart] 图表数据日期范围:', {
+        firstDate: kline[0]?.time,
+        lastDate: kline[kline.length - 1]?.time,
+        totalRecords: kline.length,
+        tradeDates: props.trades?.map(t => t.date)
+      })
+    }
+    
     await nextTick()
     drawChart()
     
@@ -1099,6 +1109,16 @@ function drawTradeMarkers(
 
   const data = mode === 'performance' ? performanceData.value : filteredData.value
   if (data.length === 0) return
+
+  // [DEBUG] 调试日志：检查交易标记
+  const tradeDates = trades.map(t => t.date)
+  const dataDates = data.map(d => d.time)
+  const missingDates = tradeDates.filter(d => !dataDates.includes(d))
+  if (missingDates.length > 0) {
+    console.log('[drawTradeMarkers] 警告: 以下交易日期不在图表数据中:', missingDates)
+    console.log('[drawTradeMarkers] 图表数据日期范围:', dataDates[0], '至', dataDates[dataDates.length - 1])
+    console.log('[drawTradeMarkers] 交易日期:', tradeDates)
+  }
 
   // 计算坐标转换函数
   const toX = (index: number) => padding.left + (chartWidth / Math.max(data.length - 1, 1)) * index

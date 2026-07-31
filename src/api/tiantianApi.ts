@@ -93,6 +93,12 @@ export const persistCache = {
     try {
       localStorage.setItem(`fund_${key}`, JSON.stringify(data))
     } catch {}
+  },
+  
+  delete(key: string): void {
+    try {
+      localStorage.removeItem(`fund_${key}`)
+    } catch {}
   }
 }
 

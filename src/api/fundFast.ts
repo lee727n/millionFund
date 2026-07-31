@@ -15,19 +15,36 @@ function getTradingDateStr(date: Date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-// [WHAT] 清除指定基金的缓存数据
+// [WHAT] 清除指定基金的缓存数据（不包括持仓缓存）
+// [FIX] 持仓缓存保持持久化，只有手动刷新时才清除
 export function clearFundCache(code: string): void {
   const keys = ['estimate', 'netvalue', 'kline', 'period']
   keys.forEach(prefix => {
     ;[30, 60, 90, 180, 365, 400].forEach(days => {
-      cache.delete(`${prefix}_${code}_${days}`)
+      const key = `${prefix}_${code}_${days}`
+      cache.delete(key)
+      persistCache.delete(key)
     })
     cache.delete(`${prefix}_${code}`)
+    persistCache.delete(`${prefix}_${code}`)
   })
     // [WHY] 同时清除沪深300缓存，防止之前加载到错误数据
     ;[30, 60, 90, 180, 365, 400].forEach(days => {
       cache.delete(`hs300_history_${days}`)
+      persistCache.delete(`hs300_history_${days}`)
     })
+}
+
+// [WHAT] 清除指定基金的持仓缓存
+// [WHY] 只有用户手动刷新持仓页面时才调用此函数
+export function clearHoldingsCache(code: string): void {
+  cache.delete(`topholdings_${code}`)
+  persistCache.delete(`topholdings_persist_${code}`)
+  // 同时从 localStorage 中删除
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(`fund_topholdings_persist_${code}`)
+  }
+  console.log(`[clearHoldingsCache] ${code} - 持仓缓存已清除`)
 }
 
 // [WHAT] 清除所有缓存
@@ -246,14 +263,22 @@ function findMatchedETF(etfList: any[], keywords: string[]): any | null {
 /**
  * 获取基金实时估值（带缓存）
  * [NOTE] 开盘前使用缓存数据，开盘后获取实时数据
+ * @param code 基金代码
+ * @param forceRefresh 是否强制刷新（忽略缓存）
  */
-export async function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
+export async function fetchFundEstimateFast(code: string, forceRefresh: boolean = false): Promise<FundEstimate> {
   const cacheKey = `estimate_${code}`
 
   const persisted = persistCache.get<FundEstimate>(cacheKey)
 
   try {
-    const holdings = await fetchTopHoldings(code)
+    // 如果强制刷新，先清除缓存
+    if (forceRefresh) {
+      cache.delete(cacheKey)
+      persistCache.delete(cacheKey)
+    }
+
+    const holdings = await fetchTopHoldings(code, forceRefresh)
 
     if (holdings.length === 0) {
       if (persisted) {
@@ -297,8 +322,11 @@ export async function fetchFundEstimateFast(code: string): Promise<FundEstimate>
     const nameCacheKey = `fund_name_${code}`
     const cachedName = cache.get<string>(nameCacheKey)
 
-    const historyResult = await fetchNetValueHistoryFast(code, 1)
-    const prevNav = historyResult.records.length > 0 ? historyResult.records[0].netValue : 0
+    // [FIX] 传递 forceRefresh 确保获取最新净值作为计算基准
+    const historyResult = await fetchNetValueHistoryFast(code, 1, forceRefresh)
+    const latestRecord = historyResult.records.length > 0 ? historyResult.records[0] : null
+    const prevNav = latestRecord ? latestRecord.netValue : 0
+    const prevNavDate = latestRecord ? latestRecord.date : ''
     const fundName = cachedName || historyResult.fundName || ''
 
     if (/ETF/i.test(fundName)) {
@@ -313,6 +341,16 @@ export async function fetchFundEstimateFast(code: string): Promise<FundEstimate>
     }
 
     const estimatedNav = prevNav * (1 + estimatedChange / 100)
+
+    // [DEBUG] 打印估值计算过程
+    console.log('[fetchFundEstimateFast] 估值计算:', {
+      code,
+      prevNav,
+      prevNavDate,
+      estimatedChange: estimatedChange.toFixed(2) + '%',
+      estimatedNav: estimatedNav.toFixed(4),
+      forceRefresh
+    })
 
     const now = new Date()
     const estimateTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -504,45 +542,42 @@ export async function fetchFundEstimatesBatch(codes: string[]): Promise<Map<stri
 /**
  * 获取历史净值（带缓存，使用pingzhongdata接口）
  * [WHY] 使用JSONP方式避免CORS问题
+ * @param code 基金代码
+ * @param days 获取最近N天的数据
+ * @param forceRefresh 是否强制刷新（忽略缓存）
  */
-export async function fetchNetValueHistoryFast(code: string, days = 30): Promise<{ records: NetValueRecord[], fundName: string }> {
+export async function fetchNetValueHistoryFast(code: string, days = 30, forceRefresh = false): Promise<{ records: NetValueRecord[], fundName: string }> {
   const cacheKey = `netvalue_${code}_${days}`
-  const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
-  if (cached) {
-    const tradingDate = getTradingDateStr()
-    const latestDate = cached.records[0]?.date
-    // console.log(`[净值缓存检查] ${code} - 内存缓存命中, latestDate=${latestDate}, tradingDate=${tradingDate}`)
-    if (latestDate === tradingDate) {
-      // console.log(`[净值缓存检查] ${code} - 已有交易日净值，跳过请求`)
-      return cached
-    }
-    const hour = new Date().getHours()
-    if (hour >= 9 && hour < 18) {
-      // console.log(`[净值缓存检查] ${code} - 盘中时段，使用缓存`)
-      return cached
-    }
-    // console.log(`[净值缓存检查] ${code} - 需要刷新净值`)
-  }
 
-  const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
-  if (persistCached && persistCached.records.length > 0) {
-    const tradingDate = getTradingDateStr()
-    const latestDate = persistCached.records[0]?.date
-    // console.log(`[净值缓存检查] ${code} - 持久化缓存命中, latestDate=${latestDate}, tradingDate=${tradingDate}`)
-    if (latestDate === tradingDate) {
-      // console.log(`[净值缓存检查] ${code} - 已有交易日净值，跳过请求`)
-      cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
-      return persistCached
+  // 如果强制刷新，直接跳过缓存
+  if (!forceRefresh) {
+    const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+    if (cached) {
+      const tradingDate = getTradingDateStr()
+      const latestDate = cached.records[0]?.date
+      if (latestDate === tradingDate) {
+        return cached
+      }
+      const hour = new Date().getHours()
+      if (hour >= 9 && hour < 18) {
+        return cached
+      }
     }
-    const hour = new Date().getHours()
-    if (hour >= 9 && hour < 18) {
-      // console.log(`[净值缓存检查] ${code} - 盘中时段，使用缓存`)
-      cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
-      return persistCached
+
+    const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+    if (persistCached && persistCached.records.length > 0) {
+      const tradingDate = getTradingDateStr()
+      const latestDate = persistCached.records[0]?.date
+      if (latestDate === tradingDate) {
+        cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+        return persistCached
+      }
+      const hour = new Date().getHours()
+      if (hour >= 9 && hour < 18) {
+        cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+        return persistCached
+      }
     }
-    // console.log(`[净值刷新] ${code} - 缓存日期=${latestDate}, 交易日=${tradingDate}，请求新数据...`)
-  } else {
-    // console.log(`[净值缓存检查] ${code} - 无持久化缓存，请求新数据...`)
   }
 
   return new Promise((resolve) => {
@@ -683,8 +718,15 @@ export interface HoldingStock {
   market?: string
 }
 
-export async function fetchTopHoldings(code: string): Promise<HoldingStock[]> {
+export async function fetchTopHoldings(code: string, forceRefresh: boolean = false): Promise<HoldingStock[]> {
   const cacheKey = `topholdings_${code}`
+
+  // 如果强制刷新，只清除内存缓存，保留持久化缓存
+  // [FIX] 持仓结构很少变化，只有用户手动刷新时才需要重新解析
+  if (forceRefresh) {
+    cache.delete(cacheKey)
+    // 注意：不清除 persistCache，让持仓数据保持持久化
+  }
 
   const persisted = persistCache.get<HoldingStock[]>(`topholdings_persist_${code}`)
   if (persisted && persisted.length > 0) {
@@ -1550,19 +1592,17 @@ export interface FundAccurateData {
  * [WHY] 同时从估值和净值接口获取，交叉验证确保准确
  * [WHAT] 优先使用公布净值（收盘后），交易时间内使用估值
  * [NOTE] 估值接口和净值接口是同一个 URL，只请求一次
+ * @param code 基金代码
+ * @param isQDII 是否是QDII基金
+ * @param forceRefresh 是否强制刷新（忽略缓存）
  */
-export async function fetchFundAccurateData(code: string, isQDII: boolean = false): Promise<FundAccurateData> {
+export async function fetchFundAccurateData(code: string, isQDII: boolean = false, forceRefresh: boolean = false): Promise<FundAccurateData> {
   const cacheKey = `accurate_${code}`
-  // [WHAT] QDII 基金不使用缓存，因为它们的交易时间与 A 股不同
-  // if (!isQDII) {
-  //   const cached = cache.get<FundAccurateData>(cacheKey)
-  //   if (cached) return cached
-  // }
 
   // [WHAT] 获取估值数据和历史净值数据
   const [estimateData, historyResult] = await Promise.all([
-    fetchFundEstimateFast(code).catch(() => null),
-    fetchNetValueHistoryFast(code, 2).catch(() => ({ records: [], fundName: '' }))  // 只获取最近 2 天的净值
+    fetchFundEstimateFast(code, forceRefresh).catch(() => null),
+    fetchNetValueHistoryFast(code, 2, forceRefresh).catch(() => ({ records: [], fundName: '' }))  // 只获取最近 2 天的净值
   ])
 
   // [DEBUG] 打印获取到的数据
@@ -1650,33 +1690,54 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // console.log(`[数据源判断] ${code}: isWeekday=${isWeekday}, isNavUpdated=${isNavUpdated}, navDate=${result.navDate}, today=${today}, hasTodayNav=${hasTodayNav}, hasYesterdayNavForQDII=${hasYesterdayNavForQDII}, isQDII=${isQDII}`)
   // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}, isEstimateFromToday=${isEstimateFromToday}`)
 
+  // [DEBUG] 打印数据源判断
+  console.log('[数据源判断]', {
+    code,
+    isWeekday,
+    isNavUpdated,
+    navDate: result.navDate,
+    today,
+    hasTodayNav,
+    estimate: result.estimate,
+    nav: result.nav,
+    estimateTime: result.estimateTime
+  })
+
   // [FIX] 根据是否是交易日和净值是否已更新来决定使用估值还是净值
   // [WHY] 交易日：净值已更新用净值，净值未更新用估值
   //       非交易日：使用最新净值
+  // [FIX] 即使非交易时间，只要今天的净值还没更新，也应该标记为'待更新'
   if (isWeekday && isNavUpdated) {
     // [WHAT] 交易日 + 净值已更新，使用净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'
-    // console.log(`[currentValue选择] ${code}: 交易日+净值已更新 → 使用净值 nav=${result.nav}`)
   } else if (isWeekday && result.estimate > 0) {
     // [WHAT] 交易日 + 净值未更新，使用估值
     result.currentValue = result.estimate
-    result.dayChange = result.estimateChange
+    // [FIX] 使用最新净值作为基准计算涨跌幅，而不是依赖API的estimateChange
+    if (result.nav > 0) {
+      result.dayChange = ((result.estimate - result.nav) / result.nav) * 100
+    } else {
+      result.dayChange = result.estimateChange
+    }
     result.dataSource = 'estimate'
-    // console.log(`[currentValue选择] ${code}: 交易日+净值未更新 → 使用估值 estimate=${result.estimate}`)
+  } else if (isWeekday && !isNavUpdated && result.nav > 0) {
+    // [FIX] 交易日 + 净值未更新 + 无估值（非交易时间），使用上一个净值但标记为'待更新'
+    // 这样交易记录会标记为估值，等今天净值更新后自动刷新
+    result.currentValue = result.nav
+    result.dayChange = result.navChange
+    result.dataSource = 'estimate'  // 关键：标记为 estimate，让调用方知道这不是今天的净值
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
     result.dataSource = 'nav'
-    // console.log(`[currentValue选择] ${code}: 非交易日 → 使用净值 nav=${result.nav}`)
   } else if (result.estimate > 0) {
     // [EDGE] 无净值但有估值，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
-    // console.log(`[currentValue选择] ${code}: 无净值 → 使用估值 estimate=${result.estimate}`)
   } else {
     // [EDGE] 无数据可用，使用昨日净值
     const dwjz = parseFloat(estimateData?.dwjz || '0')
@@ -1684,7 +1745,6 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
       result.currentValue = dwjz
       result.dayChange = 0
       result.dataSource = 'fallback'
-      // console.log(`[currentValue选择] ${code}: 无数据 → 使用备用 dwjz=${dwjz}`)
     }
   }
 
