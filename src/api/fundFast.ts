@@ -601,6 +601,18 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
           const fundName = (window as any).fS_name || ''
 
           if (trend.length === 0) {
+            // [FIX] 如果API返回空数据，但有缓存数据，返回缓存
+            const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+            if (cached && cached.records.length > 0) {
+              resolve(cached)
+              return
+            }
+            const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+            if (persistCached && persistCached.records.length > 0) {
+              cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+              resolve(persistCached)
+              return
+            }
             resolve({ records: [], fundName })
             return
           }
@@ -1690,23 +1702,9 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // console.log(`[数据源判断] ${code}: isWeekday=${isWeekday}, isNavUpdated=${isNavUpdated}, navDate=${result.navDate}, today=${today}, hasTodayNav=${hasTodayNav}, hasYesterdayNavForQDII=${hasYesterdayNavForQDII}, isQDII=${isQDII}`)
   // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}, isEstimateFromToday=${isEstimateFromToday}`)
 
-  // [DEBUG] 打印数据源判断
-  console.log('[数据源判断]', {
-    code,
-    isWeekday,
-    isNavUpdated,
-    navDate: result.navDate,
-    today,
-    hasTodayNav,
-    estimate: result.estimate,
-    nav: result.nav,
-    estimateTime: result.estimateTime
-  })
-
   // [FIX] 根据是否是交易日和净值是否已更新来决定使用估值还是净值
   // [WHY] 交易日：净值已更新用净值，净值未更新用估值
   //       非交易日：使用最新净值
-  // [FIX] 即使非交易时间，只要今天的净值还没更新，也应该标记为'待更新'
   if (isWeekday && isNavUpdated) {
     // [WHAT] 交易日 + 净值已更新，使用净值
     result.currentValue = result.nav
@@ -1724,10 +1722,9 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     result.dataSource = 'estimate'
   } else if (isWeekday && !isNavUpdated && result.nav > 0) {
     // [FIX] 交易日 + 净值未更新 + 无估值（非交易时间），使用上一个净值但标记为'待更新'
-    // 这样交易记录会标记为估值，等今天净值更新后自动刷新
     result.currentValue = result.nav
     result.dayChange = result.navChange
-    result.dataSource = 'estimate'  // 关键：标记为 estimate，让调用方知道这不是今天的净值
+    result.dataSource = 'estimate'
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
