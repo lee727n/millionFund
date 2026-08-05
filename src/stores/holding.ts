@@ -315,11 +315,6 @@ export const useHoldingStore = defineStore('holding', () => {
     let addedGain: number | undefined
     if (holding.buyNetValue && holding.buyNetValue > 0 && currentValue > 0) {
       addedGain = ((currentValue - holding.buyNetValue) / holding.buyNetValue) * 100
-      // console.log(`========== [收益计算-累计涨幅] ${code} ==========`)
-      // console.log(`  买入净值 (buyNetValue): ${holding.buyNetValue}`)
-      // console.log(`  当前净值 (currentValue): ${currentValue}`)
-      // console.log(`  累计涨幅 (addedGain): (${currentValue} - ${holding.buyNetValue}) / ${holding.buyNetValue} = ${addedGain.toFixed(2)}%`)
-      // console.log(`=============================================`)
     }
 
     // console.log('更新状态判断:', {

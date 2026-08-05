@@ -12,6 +12,8 @@ import aliIcon from '@/assets/ali.jpg'
 import txIcon from '@/assets/TX.jpg'
 // @ts-ignore
 import jdIcon from '@/assets/JD.jpg'
+// @ts-ignore
+import eyeIcon from '@/assets/eye.png'
 
 const router = useRouter()
 
@@ -28,7 +30,8 @@ const fundDataMap = ref<Map<string, { estimate: number; nav: number; currentValu
 const accountIcons: Record<string, string> = {
   ali: aliIcon,
   TX: txIcon,
-  JD: jdIcon
+  JD: jdIcon,
+  observe: eyeIcon
 }
 
 // 当前账户筛选 (''=全部, 'ali', 'TX', 'JD')
@@ -172,7 +175,7 @@ async function loadTradeCalculations(trades: TradeRecord[]) {
       // 静默失败
     }
   })
-  
+
   // 等待所有请求完成
   await Promise.allSettled([...updateRequests, ...navRequests])
   
@@ -308,7 +311,21 @@ function getSourceName(source?: string): string {
     case 'ali': return '支付宝'
     case 'TX': return '腾讯'
     case 'JD': return '京东'
+    case 'observe': return '观察'
     default: return ''
+  }
+}
+
+// [FIX] 获取基金logo URL（东方财富）
+function getFundLogoUrl(code: string): string {
+  return `https://logo.eastmoney.com/${code}.png`
+}
+
+// [FIX] logo加载失败时隐藏
+function onLogoError(e: Event) {
+  const img = e.target as HTMLImageElement
+  if (img) {
+    img.style.display = 'none'
   }
 }
 
@@ -425,8 +442,15 @@ onMounted(() => {
         class="fund-card"
         :class="{ 'is-cleared': group.isCleared }"
       >
-        <!-- 第一行：账户图标 + 基金名称 + code + 已清仓标签 -->
+        <!-- 第一行：基金logo + 账户图标 + 基金名称 + code + 已清仓标签 -->
         <div class="fund-header" @click="goToDetail(group.code)">
+          <!-- [FIX] 基金logo -->
+          <img 
+            :src="getFundLogoUrl(group.code)" 
+            class="fund-logo"
+            @error="onLogoError"
+          />
+          <!-- 账户图标 -->
           <img 
             v-if="group.source" 
             :src="getSourceIconSrc(group.source)" 
@@ -688,6 +712,16 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 10px;
   cursor: pointer;
+}
+
+/* [FIX] 基金logo样式 */
+.fund-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
 }
 
 .fund-header:active {

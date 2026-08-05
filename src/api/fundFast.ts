@@ -18,21 +18,37 @@ function getTradingDateStr(date: Date = new Date()): string {
 // [WHAT] 清除指定基金的缓存数据（不包括持仓缓存）
 // [FIX] 持仓缓存保持持久化，只有手动刷新时才清除
 export function clearFundCache(code: string): void {
-  const keys = ['estimate', 'netvalue', 'kline', 'period']
-  keys.forEach(prefix => {
-    ;[30, 60, 90, 180, 365, 400].forEach(days => {
-      const key = `${prefix}_${code}_${days}`
-      cache.delete(key)
-      persistCache.delete(key)
-    })
+  const prefixes = ['estimate', 'netvalue', 'kline', 'period', 'accurate']
+
+  // [FIX] 清除内存缓存中所有匹配的键
+  prefixes.forEach(prefix => {
     cache.delete(`${prefix}_${code}`)
-    persistCache.delete(`${prefix}_${code}`)
+      ;[1, 2, 30, 60, 90, 180, 365, 400].forEach(days => {
+        cache.delete(`${prefix}_${code}_${days}`)
+      })
   })
-    // [WHY] 同时清除沪深300缓存，防止之前加载到错误数据
-    ;[30, 60, 90, 180, 365, 400].forEach(days => {
-      cache.delete(`hs300_history_${days}`)
-      persistCache.delete(`hs300_history_${days}`)
-    })
+
+  // [FIX] 遍历 localStorage 清除所有持久化缓存（包括 days=1, 2 等之前遗漏的键）
+  if (typeof localStorage !== 'undefined') {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key) continue
+      // 匹配 fund_estimate_020640, fund_netvalue_020640_2 等所有变体
+      prefixes.forEach(prefix => {
+        if (key === `fund_${prefix}_${code}` || key.startsWith(`fund_${prefix}_${code}_`)) {
+          keysToRemove.push(key)
+        }
+      })
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key))
+  }
+
+  // [WHY] 同时清除沪深300缓存，防止之前加载到错误数据
+  ;[30, 60, 90, 180, 365, 400].forEach(days => {
+    cache.delete(`hs300_history_${days}`)
+    persistCache.delete(`hs300_history_${days}`)
+  })
 }
 
 // [WHAT] 清除指定基金的持仓缓存
@@ -329,6 +345,18 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
     const prevNavDate = latestRecord ? latestRecord.date : ''
     const fundName = cachedName || historyResult.fundName || ''
 
+    // [FIX] 如果 prevNav=0（JSONP 获取净值历史失败），不要用 0 计算估值
+    // [WHY] prevNav=0 会导致 estimatedNav=0，gsz="0.0000" 被写入 persistCache
+    //       之后刷新时 fetchFundAccurateData 拿到 estimate=0，回退到旧净值，市值计算错误
+    //       应该返回旧的 persisted 估值（如果有）或抛出错误，避免污染缓存
+    if (prevNav <= 0) {
+      console.log(`[fetchFundEstimateFast] ${code} prevNav=0（JSONP失败），返回持久化缓存或抛错`)
+      if (persisted) {
+        return persisted
+      }
+      throw new Error('Failed to get net value history for estimate calculation')
+    }
+
     if (/ETF/i.test(fundName)) {
       const validChanges = holdings
         .map(h => h.change)
@@ -558,9 +586,15 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
       if (latestDate === tradingDate) {
         return cached
       }
+      // [FIX] 交易时间内，只有当缓存包含上一个交易日数据时才使用
+      // [WHY] 交易时间内今日净值尚未发布，最新可用的是上一个交易日的净值
+      //       如果缓存比上一个交易日还旧（如跨周末/节假日），必须重新获取
       const hour = new Date().getHours()
       if (hour >= 9 && hour < 18) {
-        return cached
+        const prevWorkday = getPrevWorkdaySync(tradingDate)
+        if (latestDate === prevWorkday) {
+          return cached
+        }
       }
     }
 
@@ -572,10 +606,15 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
         cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
         return persistCached
       }
+      // [FIX] 交易时间内，只有当缓存包含上一个交易日数据时才使用持久化缓存
+      // [WHY] 防止跨设备恢复后使用旧缓存导致市值计算错误
       const hour = new Date().getHours()
       if (hour >= 9 && hour < 18) {
-        cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
-        return persistCached
+        const prevWorkday = getPrevWorkdaySync(tradingDate)
+        if (latestDate === prevWorkday) {
+          cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+          return persistCached
+        }
       }
     }
   }
@@ -1595,7 +1634,7 @@ export interface FundAccurateData {
   currentValue: number
   dayChange: number
   // 数据源状态
-  dataSource: 'nav' | 'estimate' | 'fallback'
+  dataSource: 'nav' | 'estimate' | 'fallback' | 'local_cache'
   updateTime: string
 }
 
@@ -1721,10 +1760,21 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     }
     result.dataSource = 'estimate'
   } else if (isWeekday && !isNavUpdated && result.nav > 0) {
-    // [FIX] 交易日 + 净值未更新 + 无估值（非交易时间），使用上一个净值但标记为'待更新'
-    result.currentValue = result.nav
-    result.dayChange = result.navChange
-    result.dataSource = 'estimate'
+    // [FIX] 交易日 + 净值未更新 + 无估值
+    // [WHY] 交易时间内估值获取失败时，不能用旧净值覆盖 currentValue
+    //       否则会导致市值从 21.6W 变成 17W（用旧净值 2.62 代替估值 3.19）
+    //       设置 currentValue=0 让 updateHoldingWithAccurateData 跳过更新，保持之前的数据
+    if (inTradingTime) {
+      console.log(`[fetchFundAccurateData] ${code} 交易时间内估值失败，跳过更新保持之前数据`)
+      result.currentValue = 0
+      result.dayChange = 0
+      result.dataSource = 'fallback'
+    } else {
+      // 非交易时间（如盘前），使用上一个净值
+      result.currentValue = result.nav
+      result.dayChange = result.navChange
+      result.dataSource = 'estimate'
+    }
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
@@ -1736,12 +1786,28 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     result.dayChange = result.estimateChange
     result.dataSource = 'estimate'
   } else {
-    // [EDGE] 无数据可用，使用昨日净值
+    // [EDGE] 无数据可用，按优先级尝试多个fallback
+    // 1. 使用estimateData中的dwjz（当前净值）
     const dwjz = parseFloat(estimateData?.dwjz || '0')
     if (dwjz > 0) {
       result.currentValue = dwjz
       result.dayChange = 0
       result.dataSource = 'fallback'
+    } else {
+      // [FIX] 2. 使用localStorage中保存的净值映射（用于跨设备恢复）
+      try {
+        const netValuesStr = localStorage.getItem('fund_net_values')
+        if (netValuesStr) {
+          const netValues = JSON.parse(netValuesStr)
+          if (netValues[code] && netValues[code] > 0) {
+            result.currentValue = netValues[code]
+            result.dayChange = 0
+            result.dataSource = 'local_cache'
+          }
+        }
+      } catch (e) {
+        // 静默失败
+      }
     }
   }
 

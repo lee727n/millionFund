@@ -9,6 +9,7 @@ import { recognizeHoldings, recognizeText, recognizeTextLocal, parseHoldingTextO
 import { searchFund, fetchFundEstimate, fetchFundList } from '@/api/fund'
 import { fetchLatestNetValue, fetchFundAccurateData } from '@/api/fundFast'
 import { useHoldingStore } from '@/stores/holding'
+import { addTrade } from '@/utils/storage'
 import type { HoldingRecord, FundInfo } from '@/types/fund'
 
 const props = defineProps<{
@@ -495,56 +496,56 @@ async function confirmImport() {
     for (const h of toImport) {
       try {
         let netValue = h.netValue || 1
-        
+
         // [FIX] 使用 fetchFundAccurateData 获取最新净值
-        // 但不用于反推买入净值，而是直接使用截图中的盈亏
         let currentNav = h.netValue || 1
+        let navDate = new Date().toLocaleDateString('en-CA') // 默认今天
         try {
           const accurateData = await fetchFundAccurateData(h.code, h.fundInfo?.type?.includes('QDII'))
           if (accurateData && accurateData.currentValue > 0) {
             currentNav = accurateData.currentValue
-            console.log('[截图导入-净值]', h.code, {
-              currentValue: accurateData.currentValue,
-              nav: accurateData.nav,
-              navDate: accurateData.navDate,
-              dataSource: accurateData.dataSource
-            })
+            // [FIX] 用净值日期作为买入日期，因为份额是用这天的净值算的
+            navDate = accurateData.navDate || navDate
           }
         } catch (error) {
           console.error('获取净值失败，使用默认值:', error)
         }
-        
-        // [DEBUG] 计算份额和买入净值
+
         const shares = h.amount / currentNav
-        const buyNetValue = h.profit !== 0 && shares > 0 
-          ? (h.amount - h.profit) / shares  // 反推买入净值（仅供参考）
+        const buyNetValue = h.profit !== 0 && shares > 0
+          ? (h.amount - h.profit) / shares
           : currentNav
-        
-        console.log(`========== [截图导入-计算过程] ${h.code} ==========`)
-        console.log(`持仓金额 (marketValue): ${h.amount}`)
-        console.log(`持仓收益 (profit): ${h.profit}`)
-        console.log(`最新净值 (currentNav): ${currentNav}`)
-        console.log(`--- 份额计算 ---`)
-        console.log(`  份额 (shares) = 持仓市值 / 最新净值 = ${h.amount} / ${currentNav} = ${shares}`)
-        console.log(`--- 买入净值计算 ---`)
-        console.log(`  成本 = 持仓市值 - 持仓收益 = ${h.amount} - ${h.profit} = ${h.amount - h.profit}`)
-        console.log(`  买入净值 (buyNetValue) = 成本 / 份额 = (${h.amount} - ${h.profit}) / ${shares} = ${buyNetValue}`)
-        console.log(`=============================================`)
-        
-        // [FIX] 不保留小数，使用原始精度，保证后续计算精准
+
+        const cost = h.amount - h.profit // 买入成本
+
         const record: HoldingRecord = {
           code: h.code,
           name: h.name || h.fundInfo?.name || h.code,
           buyNetValue: buyNetValue,
           shares: shares,
-          buyDate: new Date().toISOString().split('T')[0],
+          buyDate: navDate, // [FIX] 用净值日期作为买入日期
           holdingDays: 0,
           createdAt: Date.now(),
-          // [FIX] 添加 profit 字段，存储截图中的原始盈亏
           profit: h.profit
         }
-        
+
         await holdingStore.addOrUpdateHolding(record)
+
+        // [FIX] 创建交易记录，K线图上标记买入点
+        addTrade({
+          id: '',
+          code: h.code,
+          name: record.name,
+          type: 'buy',
+          date: navDate, // 标记在净值日期
+          amount: cost,
+          netValue: buyNetValue,
+          shares: shares,
+          fee: 0,
+          estimated: false,
+          createdAt: Date.now()
+        })
+
         imported++
       } catch (error) {
         console.error(`导入基金 ${h.code} 失败:`, error)

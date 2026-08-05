@@ -9,10 +9,10 @@ import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
-import { fetchFundAccurateData } from '@/api/fundFast'
+import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
-import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades } from '@/utils/storage'
+import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getFundNetValues, saveFundNetValues } from '@/utils/storage'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
@@ -528,7 +528,12 @@ function restoreHoldings() {
           
           // 保存处理后的持仓数据到本地存储
           saveHoldings(processedHoldings)
-          
+
+          // [FIX] 清除所有基金的净值/估值缓存，防止恢复后使用旧缓存
+          processedHoldings.forEach((h: any) => {
+            if (h.code) clearFundCache(h.code)
+          })
+
           // 刷新持仓状态
           holdingStore.initHoldings()
           
@@ -654,7 +659,9 @@ async function cloudBackupHoldings() {
       summary: holdingStore.summary,
       aiTracking: aiTrackingForBackup,
       baiduOcrConfig: getBaiduOcrConfig(),
-      trades: getTrades()
+      trades: getTrades(),
+      // [FIX] 保存净值映射，用于跨设备恢复时保持数据一致
+      fundNetValues: getFundNetValues()
     }
     
     const jsonData = JSON.stringify(backupData, null, 2)
@@ -737,7 +744,14 @@ async function cloudRestoreHoldings() {
       
       // 保存处理后的持仓数据到本地存储
       saveHoldings(processedHoldings)
-      
+
+      // [FIX] 清除所有基金的净值/估值缓存，防止跨设备恢复后使用旧缓存
+      // [WHY] 云恢复只更新持仓数据，但 persistCache 中仍残留旧设备的净值历史
+      //       导致 refreshEstimates 计算市值时使用过期的 currentValue
+      processedHoldings.forEach((h: any) => {
+        if (h.code) clearFundCache(h.code)
+      })
+
       // 刷新持仓状态
       holdingStore.initHoldings()
       
@@ -749,6 +763,11 @@ async function cloudRestoreHoldings() {
       // 恢复交易记录
       if (jsonData.trades && Array.isArray(jsonData.trades)) {
         saveTrades(jsonData.trades)
+      }
+      
+      // [FIX] 恢复净值映射
+      if (jsonData.fundNetValues && typeof jsonData.fundNetValues === 'object') {
+        saveFundNetValues(jsonData.fundNetValues)
       }
       
       // 恢复百度 OCR 配置
@@ -959,13 +978,13 @@ async function batchImport() {
 
         const industrySectors = item.sectors?.trim() || undefined
 
-        // [FIX] 不保留小数，使用原始精度，保证后续计算精准
+        // [FIX] buyDate 用净值日期，因为份额是用这天的净值算的
         const record: HoldingRecord = {
           code: fundCode,
           name: fundName,
           buyNetValue: buyNetValue,
           shares: shares,
-          buyDate: new Date().toISOString().split('T')[0],
+          buyDate: navDate || new Date().toLocaleDateString('en-CA'),
           holdingDays: 0,
           industrySectors: industrySectors,
           source: item.source,
@@ -975,6 +994,24 @@ async function batchImport() {
 
         console.log('构建记录:', record)
         await holdingStore.addOrUpdateHolding(record)
+
+        // [FIX] 创建交易记录，K线图上标记买入点
+        const cost = marketValue - profit
+        addTrade({
+          id: '',
+          code: fundCode,
+          name: fundName,
+          type: 'buy',
+          date: navDate || new Date().toLocaleDateString('en-CA'), // 标记在净值日期
+          amount: cost,
+          netValue: buyNetValue,
+          shares: shares,
+          fee: 0,
+          estimated: false,
+          source: item.source,
+          createdAt: Date.now()
+        })
+
         console.log('[批量导入] 添加成功:', fundCode, '净值:', navValue, '份额:', shares.toFixed(4))
         results.push(fundCode)
       } catch (error) {
@@ -1245,7 +1282,7 @@ async function refreshHoldingsCache() {
                 {{ holding.profit !== undefined ? (holding.profit >= 0 ? '+' : '') + formatMoney(holding.profit) : '--' }}
               </div>
               <div class="profit-rate">
-                {{ holding.profitRate !== undefined ? formatPercent(holding.profitRate) : '--' }}
+                {{ holding.addedGain !== undefined ? formatPercent(holding.addedGain) : '--' }}
               </div>
             </div>
           </div>
