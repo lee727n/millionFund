@@ -1,0 +1,44 @@
+name: Trivy Security Scan
+
+# [WHY] v1.12 安全加固：文件系统/依赖漏洞 + 密钥泄漏 + 错误配置扫描，结果上报 GitHub Security 面板。
+# [WHAT] 推送/PR 到 main 时运行；每周一定时扫描。
+# [SEC] 注意 2026-03 Trivy 供应链攻击（CVE-2026-33634）：仅使用 v0.35.0+（攻击后重建的安全版本）。
+#        严禁使用 0.0.1–0.34.2 区间标签或 master 浮动引用，避免拉取被篡改的代码。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1' # 每周一 02:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy:
+    name: Trivy filesystem & dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0 # 安全版本（已修复 CVE-2026-33634 供应链攻击）
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln,secret,config'
+          skip-dirs: 'node_modules'
+          severity: 'CRITICAL,HIGH'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0' # 上报到 Security 面板，不阻断 CI；如需强制门禁可改为 1
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

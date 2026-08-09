@@ -1,0 +1,27 @@
+version: 2
+
+# [WHY] v1.12 安全加固：自动接收依赖与 GitHub Actions 的安全补丁，缩短漏洞暴露窗口。
+# [WHAT] npm 依赖与 github-actions 工作流每周检查一次，按 group 聚合 PR 降低噪声。
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    groups:
+      npm-dependencies:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - '*'
