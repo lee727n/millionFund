@@ -263,6 +263,11 @@ jobs:
     if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: 下载全部产物
         uses: actions/download-artifact@v4
         with:
@@ -277,13 +282,23 @@ jobs:
         run: |
           gh release list --json tagName -q '.[].tagName' | grep '^dev-' | while read tag; do
             gh release delete "$tag" --yes || true
+            git push origin ":refs/tags/$tag" || true
           done
+
+      - name: 创建/更新移动 Tag dev-latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f dev-latest ${{ github.sha }}
+          git push -f origin refs/tags/dev-latest
 
       - name: 创建开发版 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev-${{ github.sha }}
-          name: AI百万资产 开发版 (${{ github.sha }})
+          tag_name: dev-latest
+          name: AI百万资产 开发版 (dev-latest)
           body: |
             🔧 开发版本 - 基于最新代码构建！
 
