@@ -1,11 +1,12 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock vue lifecycle hooks - must be before imports
-vi.mock('vue', () => {
-  const actual = vi.mocked(require('vue'))
+// Mock vue 生命周期钩子 - 必须位于 import 之前（vitest 会提升）
+// 使用 importOriginal 以 ESM 安全方式获取真实的 ref/computed，仅覆写 onMounted/onUnmounted
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>()
   return {
     ...actual,
-    onMounted: vi.fn((fn: Function) => fn()),
+    onMounted: vi.fn((fn: () => void) => fn()),
     onUnmounted: vi.fn(),
   }
 })
@@ -39,12 +40,10 @@ vi.mock('@/composables/useWebSocket', () => ({
 describe('useHomeData.ts', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    vi.clearAllMocks()
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.restoreAllMocks()
   })
 
   test('loadIndices 加载大盘指数', async () => {
@@ -101,7 +100,7 @@ describe('useHomeData.ts', () => {
     const { useHomeData } = await import('@/composables/useHomeData')
     const { tradingSession, currentTime } = useHomeData()
 
-    // onMounted 会自动调用 init()
+    // onMounted 会自动调用 init()（vue mock 中 onMounted 立即执行）
     expect(tradingSession.value).toBeDefined()
     expect(currentTime.value).toBeInstanceOf(Date)
   })

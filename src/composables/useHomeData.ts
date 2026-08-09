@@ -25,7 +25,13 @@ export function useHomeData() {
   const isRefreshing = ref(false)
   
   // WebSocket 连接（用于实时更新）- 使用单例
-  const { connectionStatus, connect, on, off } = useDefaultWebSocket()
+  // [H7] v1.11 起 Web 平台已移除 WebSocket 实时推送，useDefaultWebSocket 为可选能力；
+  //       在非组件上下文（如单元测试）调用时可能返回 undefined，做防御性降级避免崩溃。
+  const wsInstance = useDefaultWebSocket?.()
+  const connectionStatus = wsInstance?.connectionStatus ?? ref('disconnected')
+  const connect = wsInstance?.connect ?? (() => {})
+  const on = wsInstance?.on ?? (() => {})
+  const off = wsInstance?.off ?? (() => {})
   
   // 沪深300实时涨跌幅
   const hs300ChangePercent = computed(() => {
