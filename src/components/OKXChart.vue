@@ -5,6 +5,7 @@
 
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { fetchSimpleKLineData, calculatePeriodReturns, clearFundCache, fetchHS300History, type SimpleKLineData, type PeriodReturn } from '@/api/fundFast'
+import { aggregateKLine, type KLineCandle } from '@/api/fundNetValue'
 import { logger } from '@/utils/logger'
 import { useThemeStore } from '@/stores/theme'
 import { isTradingTime } from '@/api/tiantianApi'
@@ -64,13 +65,16 @@ const chartMode = ref('performance')
 
 
 // [WHAT] 时间周期配置（适配基金每日净值数据）
-const periods = [
+// [WHY] 新增周K/月K 聚合视图：unit 标记聚合粒度，days 仅用于区间过滤模式
+const periods: { key: string; label: string; days: number; unit?: 'week' | 'month' }[] = [
   { key: '1d', label: '当日', days: 0 },    // 当日实时走势
   { key: '5d', label: '5日', days: 5 },     // 近5个交易日
   { key: '1m', label: '1月', days: 30 },    // 近1个月
   { key: '3m', label: '3月', days: 90 },    // 近3个月
   { key: '6m', label: '6月', days: 180 },   // 近6个月
   { key: '1y', label: '1年', days: 365 },   // 近1年
+  { key: 'week', label: '周K', days: 0, unit: 'week' },   // 周线聚合
+  { key: 'month', label: '月K', days: 0, unit: 'month' }, // 月线聚合
 ]
 
 // [WHAT] 计算业绩走势收益率数据（基于当前选中的周期）
@@ -83,6 +87,16 @@ interface PerformancePoint {
 
 // [WHAT] 判断是否是当日分时模式
 const isIntradayMode = computed(() => activePeriod.value === '1d')
+
+// [WHAT] 周K/月K 蜡烛模式
+const isCandleMode = computed(() => activePeriod.value === 'week' || activePeriod.value === 'month')
+
+// [WHAT] 周/月聚合蜡烛数据（客户端从已加载的每日净值聚合，无需额外请求）
+const candleData = computed<KLineCandle[]>(() => {
+  if (!isCandleMode.value) return []
+  const unit = activePeriod.value === 'week' ? 'week' : 'month'
+  return aggregateKLine(chartData.value, unit)
+})
 
 // [WHAT] 只有当日模式且有实时数据时才显示分时图样式
 // [WHY] 当日模式显示昨日数据 + 今日估值
@@ -275,18 +289,30 @@ const hs300PerformanceChange = computed(() => {
   return performanceData.value[performanceData.value.length - 1]?.hs300Return || 0
 })
 
-// [WHAT] 统计数据
-const stats = computed(() => {
-  const data = filteredData.value
-  if (data.length === 0) return { open: 0, high: 0, low: 0, close: 0 }
-  const values = data.map(d => d.value)
-  return {
-    open: data[0]?.value || 0,
-    high: Math.max(...values),
-    low: Math.min(...values),
-    close: data[data.length - 1]?.value || 0
-  }
-})
+  // [WHAT] 统计数据
+  const stats = computed(() => {
+    if (isCandleMode.value) {
+      const c = candleData.value
+      if (c.length === 0) return { open: 0, high: 0, low: 0, close: 0 }
+      const highs = c.map(x => x.high)
+      const lows = c.map(x => x.low)
+      return {
+        open: c[0]!.open,
+        high: Math.max(...highs),
+        low: Math.min(...lows),
+        close: c[c.length - 1]!.close,
+      }
+    }
+    const data = filteredData.value
+    if (data.length === 0) return { open: 0, high: 0, low: 0, close: 0 }
+    const values = data.map(d => d.value)
+    return {
+      open: data[0]?.value || 0,
+      high: Math.max(...values),
+      low: Math.min(...values),
+      close: data[data.length - 1]?.value || 0,
+    }
+  })
 
 // ========== 分时数据 ==========
 function addIntradayPoint(value: number) {
@@ -542,6 +568,82 @@ function drawPerformanceChart(
   }
 }
 
+// ========== 周/月 K 线蜡烛图 ==========
+function drawCandleChart(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  mainHeight: number,
+  padding: { top: number; right: number; bottom: number; left: number },
+  chartWidth: number,
+  colors: ReturnType<typeof getThemeColors>
+) {
+  const candles = candleData.value
+  if (candles.length === 0) return
+
+  const highs = candles.map(c => c.high)
+  const lows = candles.map(c => c.low)
+  let maxV = Math.max(...highs)
+  let minV = Math.min(...lows)
+  const margin = (maxV - minV) * 0.1 || 0.01
+  maxV += margin
+  minV -= margin
+  const range = maxV - minV || 1
+
+  const toY = (v: number) => padding.top + (mainHeight - padding.top) * (1 - (v - minV) / range)
+  const toX = (i: number) => padding.left + (chartWidth / Math.max(candles.length, 1)) * (i + 0.5)
+
+  // 网格 + Y 轴标签
+  ctx.strokeStyle = colors.gridColor
+  ctx.lineWidth = 1
+  ctx.fillStyle = colors.textSecondary
+  ctx.font = '10px sans-serif'
+  for (let i = 0; i <= 4; i++) {
+    const v = maxV - range * i / 4
+    const y = toY(v)
+    ctx.beginPath()
+    ctx.moveTo(padding.left, y)
+    ctx.lineTo(width - padding.right, y)
+    ctx.stroke()
+    ctx.fillText(v.toFixed(3), width - padding.right + 4, y + 3)
+  }
+
+  const upColor = '#f6465d'   // 涨（红，A股惯例）
+  const downColor = '#0ecb81' // 跌（绿）
+  const candleW = Math.max((chartWidth / candles.length) * 0.6, 2)
+
+  candles.forEach((c, i) => {
+    const x = toX(i)
+    const isUp = c.close >= c.open
+    const color = isUp ? upColor : downColor
+
+    // 影线（high -> low）
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(x, toY(c.high))
+    ctx.lineTo(x, toY(c.low))
+    ctx.stroke()
+
+    // 实体（open -> close）
+    ctx.fillStyle = color
+    const yOpen = toY(c.open)
+    const yClose = toY(c.close)
+    const top = Math.min(yOpen, yClose)
+    const h = Math.max(Math.abs(yClose - yOpen), 1)
+    ctx.fillRect(x - candleW / 2, top, candleW, h)
+  })
+
+  // X 轴日期标签（均匀取 5 个）
+  const labelCount = Math.min(5, candles.length)
+  for (let k = 0; k < labelCount; k++) {
+    const idx = Math.floor((k / Math.max(labelCount - 1, 1)) * (candles.length - 1))
+    const x = toX(idx)
+    const label = candles[idx]!.time.slice(-5) // MM-DD 或 YYYY-MM 取后5位
+    ctx.fillText(label, Math.min(Math.max(x - 14, padding.left), width - padding.right - 30), height - 8)
+  }
+}
+
 // ========== Canvas 绘图（专业风格） ==========
 function drawChart() {
   const canvas = canvasRef.value
@@ -557,7 +659,7 @@ function drawChart() {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   
-  if (data.length === 0) return
+  if (data.length === 0 && !isCandleMode.value) return
   
   const dpr = window.devicePixelRatio || 1
   const rect = canvas.getBoundingClientRect()
@@ -588,8 +690,14 @@ function drawChart() {
   ctx.fillRect(0, 0, width, height)
   
   // ========== 业绩走势模式 ==========
-  if (chartMode.value === 'performance' && performanceData.value.length > 0) {
+  if (chartMode.value === 'performance' && !isCandleMode.value && performanceData.value.length > 0) {
     drawPerformanceChart(ctx, width, height, mainHeight, padding, chartWidth, colors)
+    return
+  }
+
+  // ========== 周/月 K 线（蜡烛图）模式 ==========
+  if (isCandleMode.value && candleData.value.length > 0) {
+    drawCandleChart(ctx, width, height, mainHeight, padding, chartWidth, colors)
     return
   }
   

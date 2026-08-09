@@ -253,6 +253,67 @@ export async function fetchSimpleKLineData(code: string, days = 60): Promise<Sim
   return klineData
 }
 
+// ========== K线聚合（周线/月线） ==========
+
+/**
+ * 周/月 K 线聚合后的单根蜡烛
+ */
+export interface KLineCandle {
+  /** 周期起始标识（周线=该周周一 YYYY-MM-DD；月线=YYYY-MM） */
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  /** 周期内涨跌幅 (%)，(close-open)/open*100 */
+  change: number
+}
+
+/**
+ * 将每日净值序列聚合为周线/月线蜡烛（OHLC）
+ * [WHY] 基金无真实 OHLC 行情，以每日净值为基础构造周期开/高/低/收，
+ *       用于 K 线周/月视图。open=周期内首日净值，close=末日净值。
+ * [NOTE] 纯函数，便于单元测试；聚合在客户端完成，无需额外请求。
+ */
+export function aggregateKLine(data: SimpleKLineData[], unit: 'week' | 'month'): KLineCandle[] {
+  if (data.length === 0) return []
+
+  const sorted = [...data].sort(
+    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
+  )
+
+  const buckets = new Map<string, SimpleKLineData[]>()
+  for (const item of sorted) {
+    const d = new Date(item.time)
+    let key: string
+    if (unit === 'week') {
+      // 以周一为该周起始
+      const day = d.getDay() // 0=周日
+      const diffToMonday = day === 0 ? -6 : 1 - day
+      const monday = new Date(d)
+      monday.setDate(d.getDate() + diffToMonday)
+      key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+    } else {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(item)
+    else buckets.set(key, [item])
+  }
+
+  const candles: KLineCandle[] = []
+  for (const [key, items] of buckets) {
+    const values = items.map(i => i.value)
+    const open = items[0]!.value
+    const close = items[items.length - 1]!.value
+    const high = Math.max(...values)
+    const low = Math.min(...values)
+    const change = open > 0 ? Number((((close - open) / open) * 100).toFixed(2)) : 0
+    candles.push({ time: key, open, high, low, close, change })
+  }
+  return candles
+}
+
 // ========== 阶段涨幅（直接计算，不依赖外部API） ==========
 
 /**
