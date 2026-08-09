@@ -41,6 +41,27 @@
 
 ## 更新记录
 
+### v1.12.0 (2026-07-29) - 多资产行情 & 工具补全
+
+**多资产行情 📈**
+- 统一多资产行情入口（基金 / 股票 / 可转债 / 加密货币）基础版
+- Watchlist 自选页：列表渲染 + 下拉刷新 + 删除（拖拽排序待下版）
+
+**基金高级工具 💰**
+- 基金对比工具（2-5 只横向对比：收益率 / 风险 / 规模）
+- 基金筛选器（类型 / 收益率 / 风险 / 规模；评级排序 + 默认按代码排序）
+- 资产导入 / 导出（JSON 备份恢复 + CSV 导出）
+
+**性能与质量 ⚡**
+- 持仓增量刷新（refreshSingleHolding，O(n)→O(1) 网络请求）
+- CJK 分词器修复（Jaccard 2-gram bigram）
+- tsconfig 开启 noUnusedLocals / noUnusedParameters
+- E2E 测试补全（4 spec / 22 场景：home / fund-compare / news / fund-search）
+
+**安全加固 🔒**
+- 审计整改 Batch A/B/C + LOW 全清（HIGH / MEDIUM / LOW 风险项）
+- 清理遗留密钥与冗余代码
+
 ### v1.11.0 (2026-07-18) - 数据统一 & 安全加固
 
 **数据层统一 🏗**
