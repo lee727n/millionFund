@@ -2,7 +2,7 @@
 // [WHY] 自选列表页面 - 独立页面展示用户收藏的基金
 // [WHAT] 复用 FundCard 组件渲染 watchlist，支持下拉刷新、左滑删除、点击跳转详情
 
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showConfirmDialog, showToast } from 'vant'
@@ -12,6 +12,9 @@ import { useFundStore } from '@/stores/fund'
 const { t } = useI18n()
 const router = useRouter()
 const fundStore = useFundStore()
+
+// [WHY] 拖拽重排（Task #48）：记录正在拖拽的项索引，落点时提交新顺序
+const draggingIndex = ref(-1)
 
 onMounted(() => {
   fundStore.loadWatchlist()
@@ -27,6 +30,22 @@ function goToDetail(code: string) {
 
 function goToSearch() {
   router.push('/search')
+}
+
+function onDragStart(index: number) {
+  draggingIndex.value = index
+}
+
+function onDragOver(index: number) {
+  // 仅用于触发 drop；视觉反馈由 draggingIndex 与 dragOverIndex 共同决定
+  void index
+}
+
+async function onDrop(index: number) {
+  if (draggingIndex.value >= 0 && draggingIndex.value !== index) {
+    await fundStore.reorderWatchlist(draggingIndex.value, index)
+  }
+  draggingIndex.value = -1
 }
 
 async function handleDelete(code: string) {
@@ -54,13 +73,24 @@ async function handleDelete(code: string) {
           <span>{{ t('common.last_refresh') }}: {{ fundStore.lastRefreshTime }}</span>
         </div>
 
-        <FundCard
-          v-for="fund in fundStore.watchlist"
+        <div
+          v-for="(fund, index) in fundStore.watchlist"
           :key="fund.code"
-          :fund="fund"
-          @delete="handleDelete"
-          @click="goToDetail(fund.code)"
-        />
+          class="watch-item"
+          :class="{ 'is-dragging': draggingIndex === index }"
+          draggable="true"
+          @dragstart="onDragStart(index)"
+          @dragover.prevent="onDragOver(index)"
+          @drop="() => onDrop(index)"
+          @dragend="draggingIndex = -1"
+        >
+          <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+          <FundCard
+            :fund="fund"
+            @delete="handleDelete"
+            @click="goToDetail(fund.code)"
+          />
+        </div>
       </template>
 
       <!-- 空状态引导 -->
@@ -89,6 +119,36 @@ async function handleDelete(code: string) {
   color: var(--text-secondary);
   padding: 8px 0;
   background: var(--bg-primary);
+}
+
+.watch-item {
+  position: relative;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.watch-item.is-dragging {
+  opacity: 0.4;
+}
+
+/* 拖拽手柄：提示用户可拖拽重排 */
+.drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  opacity: 0.5;
+  padding: 8px 4px;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .empty-state {

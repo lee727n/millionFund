@@ -49,7 +49,10 @@ const presetFunds = computed(() => {
 })
 
 // [WHY] 页面加载时，如果有预设基金代码，自动添加
+// [Task #44] 进入对比页前先确保自选列表已初始化，避免 watchlist 为空导致
+// getFundNameFromStore / handleAddFromWatchlist 读到空数据（深链直入或快速导航的竞态）。
 onMounted(async () => {
+  await fundStore.initWatchlist().catch(() => {})
   if (presetFunds.value.length > 0) {
     isLoading.value = true
     try {

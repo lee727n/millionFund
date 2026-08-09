@@ -668,11 +668,18 @@ function extractFundBlocks(lines: string[], template: PlatformTemplate): string[
   for (const line of lines) {
     const hasAmount = amountKws.some(kw => line.includes(kw)) ||
       /[\d,]+\.\d{2}/.test(line)
-    const hasName = /[\u4e00-\u9fa5]{2,}/.test(line) && !/收益|金额|份额|净值|日期/.test(line)
+    // [FIX #7] 允许行内含「金额」关键字（支付宝/蚂蚁财富持有列表为「名称 持有金额 ¥X」同款布局），
+    //          仅排除 收益/份额/净值/日期 这类汇总行，避免把「累计收益」误当基金名。
+    const hasName = /[\u4e00-\u9fa5]{2,}/.test(line) && !/收益|份额|净值|日期/.test(line)
 
     if (hasName && !inBlock) {
-      inBlock = true
-      currentBlock = [line]
+      if (hasAmount) {
+        // 同一行内同时含名称与金额（支付宝持有列表常见）→ 直接作为单块
+        blocks.push([line])
+      } else {
+        inBlock = true
+        currentBlock = [line]
+      }
     } else if (inBlock && hasAmount) {
       currentBlock.push(line)
       blocks.push([...currentBlock])
@@ -741,6 +748,8 @@ function parseFundBlock(block: string[], template: PlatformTemplate): Recognized
     }
   }
 
+  // [FIX #7] 既无名也无代码的条目无意义（如孤立的「持有金额 ¥X」行），直接丢弃
+  if (!name && !code) return null
   if (!name && !code && amount === 0) return null
   if (amount < 100 && !code) return null
 

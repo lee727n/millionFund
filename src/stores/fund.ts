@@ -9,6 +9,7 @@ import { fetchFundEstimateFast, fetchFundAccurateData, fetchFundBasicInfo } from
 import { getCache } from '@/api/cache'
 import {
   getWatchlist,
+  saveWatchlist,
   addToWatchlist as addToStorage,
   removeFromWatchlist as removeFromStorage,
   isInWatchlist
@@ -256,6 +257,29 @@ export const useFundStore = defineStore('fund', () => {
     return watchlistCodes.value.includes(code)
   }
 
+  /**
+   * 拖拽重排自选列表顺序
+   * [WHY] 用户希望按自己的优先级手动排列自选基金
+   * [WHAT] 在内存数组中将 fromIndex 项移动到 toIndex，并把新顺序持久化到存储
+   * [EDGE] 越界索引直接忽略，保证不抛错、不改变列表
+   */
+  async function reorderWatchlist(fromIndex: number, toIndex: number) {
+    const list = watchlist.value
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= list.length ||
+      toIndex >= list.length ||
+      fromIndex === toIndex
+    ) {
+      return
+    }
+    const [moved] = list.splice(fromIndex, 1)
+    if (!moved) return
+    list.splice(toIndex, 0, moved)
+    await saveWatchlist(list.map((item) => item.code))
+  }
+
   return {
     // State
     watchlist,
@@ -271,6 +295,7 @@ export const useFundStore = defineStore('fund', () => {
     refreshSingleFund,
     addFund,
     removeFund,
+    reorderWatchlist,
     isFundInWatchlist
   }
 })

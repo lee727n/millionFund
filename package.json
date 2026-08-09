@@ -26,6 +26,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:report": "playwright show-report",
+    "fix:native": "node scripts/fix-capacitor-http-namespace.mjs",
     "update-funds": "node scripts/fetch-fund-list.mjs",
     "cap:init": "npx cap init",
     "cap:add:android": "npx cap add android",

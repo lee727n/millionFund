@@ -63,10 +63,10 @@ jobs:
           node -e "
             const c = parseFloat(process.argv[1]);
             if (c < 60) {
-              console.log('::error::覆盖率低于 70% 门禁！当前 ' + c + '%，请补充单元测试');
+              console.log('::error::覆盖率低于 60% 门禁！当前 ' + c + '%，请补充单元测试');
               process.exit(1);
             } else {
-              console.log('✅ 覆盖率检查通过: ' + c + '% ≥ 70%');
+              console.log('✅ 覆盖率检查通过: ' + c + '% ≥ 60%');
             }
           " "$COVERAGE"
 
@@ -153,13 +153,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: 修补废弃插件 AGP8 兼容 (注入 namespace)
+        run: npm run fix:native
 
       - name: Build Web + Sync Capacitor
         run: |

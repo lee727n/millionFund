@@ -160,7 +160,7 @@ describe('OCR 工具函数', () => {
       expect(result).toHaveLength(1)
       expect(result[0].name).toBe('华夏成长混合A')
       expect(result[0].amount).toBe(10000)
-      expect(result[0].confidence).toBe(0.7)
+      expect(result[0].confidence).toBe(0.75)
     })
 
     test('去除名称中的噪音字符', () => {
