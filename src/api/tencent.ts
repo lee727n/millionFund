@@ -6,6 +6,7 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
 import { parseRssItems } from '@/utils/rss'
+import { generateMockNews } from '@/utils/mockNews'
 
 /**
  * 腾讯财经 RSS URL 列表（多个备份）
@@ -46,7 +47,7 @@ export async function fetchTencentNews(page = 1, pageSize = 20): Promise<ApiNews
   
   // 所有 RSS 都失败，使用模拟数据
   logger.warn('[腾讯财经] 所有 RSS 源失败，使用模拟数据')
-  return generateMockTencentNews(page, pageSize)
+  return generateMockNews('腾讯财经', 'tencent', 'https://finance.qq.com/', page, pageSize)
 }
 
 /**

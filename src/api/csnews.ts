@@ -6,6 +6,7 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
 import { parseRssItems } from '@/utils/rss'
+import { generateMockNews } from '@/utils/mockNews'
 
 /**
  * 中国证券报 RSS URL 列表（多个备份）
@@ -46,7 +47,7 @@ export async function fetchCSNews(page = 1, pageSize = 20): Promise<ApiNewsItem[
   
   // 所有 RSS 都失败，使用模拟数据
   logger.warn('[中国证券报] 所有 RSS 源失败，使用模拟数据')
-  return generateMockCSNews(page, pageSize)
+  return generateMockNews('中国证券报', 'csnews', 'http://www.cs.com.cn/', page, pageSize)
 }
 
 /**

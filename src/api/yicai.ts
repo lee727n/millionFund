@@ -6,6 +6,7 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
 import { parseRssItems } from '@/utils/rss'
+import { generateMockNews } from '@/utils/mockNews'
 
 /**
  * 第一财经 RSS URL 列表（多个备份）
@@ -46,7 +47,7 @@ export async function fetchYicaiNews(page = 1, pageSize = 20): Promise<ApiNewsIt
   
   // 所有 RSS 都失败，使用模拟数据
   logger.warn('[第一财经] 所有 RSS 源失败，使用模拟数据')
-  return generateMockYicaiNews(page, pageSize)
+  return generateMockNews('第一财经', 'yicai', 'https://www.yicai.com/', page, pageSize)
 }
 
 /**

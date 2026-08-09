@@ -6,6 +6,7 @@ import { Http } from '@capacitor-community/http'
 import type { ApiNewsItem } from '../types/news'
 import { logger } from '@/utils/logger'
 import { parseRssItems } from '@/utils/rss'
+import { generateMockNews } from '@/utils/mockNews'
 
 /**
  * 同花顺 RSS URL 列表（多个备份）
@@ -46,7 +47,7 @@ export async function fetch10jqkaNews(page = 1, pageSize = 20): Promise<ApiNewsI
   
   // 所有 RSS 都失败，使用模拟数据
   logger.warn('[同花顺] 所有 RSS 源失败，使用模拟数据')
-  return generateMock10jqkaNews(page, pageSize)
+  return generateMockNews('同花顺', '10jqka', 'https://news.10jqka.com.cn/', page, pageSize)
 }
 
 /**
