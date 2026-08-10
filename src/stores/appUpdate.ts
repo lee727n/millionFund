@@ -18,22 +18,9 @@ const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller', {
   })
 })
 
-// [WHAT] GitHub APK 下载镜像代理列表
-// [WHY] github.com 国内下载极慢(0%), 需要代理加速
-const APK_MIRRORS = [
-  // 直接下载 (VPN 环境可用)
-  { name: 'GitHub 直链', transform: (url: string) => url },
-  // ghproxy 镜像 (国内速度快)
-  { name: 'ghproxy.com', transform: (url: string) => `https://ghproxy.com/${url}` },
-  // mirror.ghproxy.com 镜像
-  { name: 'mirror.ghproxy.com', transform: (url: string) => `https://mirror.ghproxy.com/${url}` },
-  // gh-proxy.com 镜像
-  { name: 'gh-proxy.com', transform: (url: string) => `https://gh-proxy.com/${url}` },
-]
-
 // [WHAT] 下载超时配置
-const DOWNLOAD_STALL_TIMEOUT = 8000 // 8秒无进度则切换
-const DOWNLOAD_CONNECT_TIMEOUT = 15000 // 15秒连接超时
+const DOWNLOAD_CONNECT_TIMEOUT = 30000 // 30s 连接超时
+const DOWNLOAD_STALL_TIMEOUT = 10000  // 10s 无进度则切换
 
 export const useAppUpdateStore = defineStore('appUpdate', () => {
   /** 是否正在检查更新 */
@@ -66,7 +53,6 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
       const result = await checkForUpdate()
       checkResult.value = result
 
-      // [WHAT] 有更新且非静默模式，显示弹窗
       if (result.hasUpdate && !silent) {
         showUpdateDialog.value = true
       }
@@ -87,28 +73,30 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   }
 
   /**
-   * [WHAT] 生成所有可能的下载 URL
-   * [HOW] 组合 v前缀变体 × 镜像代理
+   * [WHAT] 生成下载 URL 列表（按优先级）
+   * [HOW] 1. apkUrlCn 国内源 → 2. GitHub tag 变体
    */
-  function generateDownloadUrls(apkUrl: string): string[] {
-    const urls: string[] = []
+  function generateDownloadUrls(versionInfo: { apkUrl: string, apkUrlCn?: string }): Array<{ url: string, name: string }> {
+    const urls: Array<{ url: string, name: string }> = []
 
-    // 第一步: 生成 v前缀变体
-    const tagVariants: string[] = [apkUrl]
+    // [第一优先级] 国内镜像（如果配置了）
+    if (versionInfo.apkUrlCn) {
+      urls.push({ url: versionInfo.apkUrlCn, name: '国内镜像' })
+    }
+
+    // [第二优先级] GitHub Release 直链（tag 变体）
+    const apkUrl = versionInfo.apkUrl
+    urls.push({ url: apkUrl, name: 'GitHub' })
+
+    // 生成 tag 变体（v前缀 ↔ 无前缀）
     const match = apkUrl.match(/\/download\/([^/]+)\//)
     if (match) {
       const originalTag = match[1]
       const cleanTag = originalTag.startsWith('v') ? originalTag.slice(1) : originalTag
       const altTag = originalTag.startsWith('v') ? cleanTag : `v${cleanTag}`
       if (altTag !== originalTag) {
-        tagVariants.push(apkUrl.replace(`/download/${originalTag}/`, `/download/${altTag}/`))
-      }
-    }
-
-    // 第二步: 对每个 tag 变体应用所有镜像
-    for (const tagUrl of tagVariants) {
-      for (const mirror of APK_MIRRORS) {
-        urls.push(mirror.transform(tagUrl))
+        const altUrl = apkUrl.replace(`/download/${originalTag}/`, `/download/${altTag}/`)
+        urls.push({ url: altUrl, name: 'GitHub' })
       }
     }
 
@@ -116,8 +104,8 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   }
 
   /**
-   * [WHAT] 从 URL 流式下载 APK
-   * [HOW] 边下载边更新进度，卡顿超时自动中断
+   * [WHAT] 流式下载
+   * [HOW] 边下载边更新进度，支持卡顿检测
    */
   async function streamDownload(
     url: string,
@@ -153,9 +141,9 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
 
         onProgress(received, total)
 
-        // [卡顿检测] 8秒无进度变化则中断
+        // [卡顿检测] 超过 DOWNLOAD_STALL_TIMEOUT 无进度则中断
         if (total > 0 && received < total && Date.now() - lastProgressTime > DOWNLOAD_STALL_TIMEOUT) {
-          throw new Error('下载卡顿，切换镜像')
+          throw new Error('下载速度过慢，切换下载源')
         }
       }
     }
@@ -164,8 +152,8 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   }
 
   /**
-   * [WHAT] 下载 APK（含镜像切换）
-   * [HOW] 依次尝试 URL 列表，卡顿/失败自动切换
+   * [WHAT] 下载 APK
+   * [HOW] 依次尝试国内镜像 → GitHub 直链，自动切换
    */
   async function downloadApk(): Promise<string | null> {
     if (!checkResult.value?.versionInfo) {
@@ -178,42 +166,39 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     downloadComplete.value = false
     errorMessage.value = ''
 
-    const { apkUrl, version } = checkResult.value.versionInfo
-    const urls = generateDownloadUrls(apkUrl)
+    const { versionInfo } = checkResult.value
+    const urls = generateDownloadUrls(versionInfo)
     console.log(`[appUpdate] 准备下载 APK, 共 ${urls.length} 个备选 URL`)
 
     let lastError: Error | null = null
 
     for (let i = 0; i < urls.length; i++) {
-      const tryUrl = urls[i]
-      const mirror = APK_MIRRORS[i % APK_MIRRORS.length]
-      currentMirror.value = mirror.name
-
+      const { url, name } = urls[i]
+      currentMirror.value = name
       downloadProgress.value = 0
 
       try {
-        console.log(`[appUpdate] 尝试 ${mirror.name} (${i + 1}/${urls.length}): ${tryUrl}`)
+        console.log(`[appUpdate] 尝试 ${name} (${i + 1}/${urls.length}): ${url}`)
 
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_CONNECT_TIMEOUT)
 
-        const blob = await streamDownload(tryUrl, (received, total) => {
+        const blob = await streamDownload(url, (received, total) => {
           if (total > 0) {
             downloadProgress.value = Math.round((received / total) * 100)
           } else {
-            // 无 Content-Length，用 received bytes 粗略估计
             downloadProgress.value = Math.min(99, Math.round(received / 1024 / 1024))
           }
         }, controller.signal)
 
         clearTimeout(timeoutId)
 
-        // [WHAT] 下载成功，转换并保存
+        // [下载成功]
         downloadProgress.value = 100
 
         const base64 = await blobToBase64(blob)
         const { Filesystem, Directory } = await import('@capacitor/filesystem')
-        const fileName = `fund-app-${version}.apk`
+        const fileName = `fund-app-${versionInfo.version}.apk`
 
         const fileResult = await Filesystem.writeFile({
           path: fileName,
@@ -222,7 +207,7 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
           recursive: true
         })
 
-        console.log(`[appUpdate] APK 下载完成 (${mirror.name}):`, fileResult.uri)
+        console.log(`[appUpdate] APK 下载完成 (${name}):`, fileResult.uri)
         downloadComplete.value = true
         currentMirror.value = ''
         return fileResult.uri
@@ -231,20 +216,21 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
         lastError = err
         currentMirror.value = ''
 
-        // 如果是连接超时/网络错误，且不是最后一个 URL，直接跳到下一个镜像
-        const isNetworkError = err.message?.includes('HTTP') ||
-          err.message?.includes('network') ||
-          err.message?.includes('超时') ||
-          err.message?.includes('卡顿') ||
+        const errMsg = err?.message || ''
+        const isNetworkError = errMsg.includes('HTTP') ||
+          errMsg.includes('network') ||
+          errMsg.includes('超时') ||
+          errMsg.includes('卡顿') ||
+          errMsg.includes('速度过慢') ||
           err.name === 'AbortError'
 
         if (isNetworkError && i < urls.length - 1) {
-          console.warn(`[appUpdate] ${mirror.name} 失败: ${err.message}, 切换下一个镜像...`)
+          console.warn(`[appUpdate] ${name} 失败: ${errMsg}, 切换下一个下载源...`)
           continue
         }
 
         if (i === urls.length - 1) {
-          console.error(`[appUpdate] 所有 ${urls.length} 个 URL 均失败`)
+          console.error(`[appUpdate] 所有 ${urls.length} 个下载源均失败`)
         }
       }
     }

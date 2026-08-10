@@ -36,8 +36,10 @@ export interface VersionInfo {
   version: string
   /** 版本代码（数字），如 190 */
   code: number
-  /** APK 下载地址 */
+  /** APK 下载地址（GitHub Release URL） */
   apkUrl: string
+  /** 国内镜像 APK 下载地址（如腾讯云COS/阿里云OSS，国内下载快） */
+  apkUrlCn?: string
   /** 更新内容描述 */
   updateContent: string
   /** 是否强制更新 */

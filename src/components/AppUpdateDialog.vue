@@ -18,11 +18,11 @@ const forceUpdate = computed(() => updateStore.checkResult?.forceUpdate ?? false
 const statusText = computed(() => {
   if (updateStore.downloading) {
     const mirror = updateStore.currentMirror
-    if (mirror && mirror !== 'GitHub 直链') {
-      return `通过 ${mirror} 下载中 ${updateStore.downloadProgress}%`
+    if (mirror === '国内镜像') {
+      return `通过国内镜像下载中 ${updateStore.downloadProgress}%`
     }
     if (mirror) {
-      return `下载中 ${updateStore.downloadProgress}%`
+      return `从 GitHub 下载中 ${updateStore.downloadProgress}%（速度较慢请耐心等待）`
     }
     return `下载中 ${updateStore.downloadProgress}%`
   }
