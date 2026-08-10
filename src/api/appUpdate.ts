@@ -7,16 +7,20 @@ import { APP_VERSION } from '@/config/version'
 // [HOW] 格式: 用户名/仓库名
 const GITHUB_REPO = 'lee727n/millionFund'
 
+// [WHAT] 本地缓存的版本信息（网络不可用时的回退）
+let cachedVersionInfo: VersionInfo | null = null
+const LAST_CHECK_KEY = 'app_update_last_version'
+
 // [WHAT] version.json 的多个镜像地址（按优先级尝试）
 // [WHY] 国内访问 raw.githubusercontent.com 可能不稳定，提供多个备用地址
-// [FIX] 加时间戳参数避免 CDN 缓存导致获取到旧版本
+// [FIX] 优先级调整：GitHub API（无缓存、国内可访问）> raw（无缓存但需外网）> jsdelivr（有缓存但国内快）
 const VERSION_JSON_URLS = [
-  // [主] jsDelivr CDN（国内访问较快，加时间戳防缓存）
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
+  // [主] GitHub API（无缓存，国内可访问，返回 base64 编码内容）
+  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
   // [备1] GitHub raw（无缓存，但国内可能超时）
   `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json?t=`,
-  // [备2] GitHub API（返回文件内容 base64 编码，有速率限制）
-  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
+  // [备2] jsDelivr CDN（国内访问最快，但有缓存，作为最后回退）
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
 ]
 
 // [WHAT] GitHub Releases API（备用，可获取最新 release 信息）
