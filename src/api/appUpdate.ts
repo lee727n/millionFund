@@ -101,10 +101,25 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
     // [WHAT] GitHub Contents API 返回 { content: base64, encoding: 'base64' }
     if (url.includes('api.github.com/contents')) {
       const apiData = await response.json()
-      if (apiData.content && apiData.encoding === 'base64') {
-        const jsonStr = atob(apiData.content.replace(/\n/g, ''))
-        data = JSON.parse(jsonStr)
-      } else {
+      try {
+        if (apiData.content && apiData.encoding === 'base64') {
+          // [FIX] 处理 URL-safe base64 编码（GitHub API 可能返回）
+          let base64 = apiData.content.replace(/\n/g, '').replace(/-/g, '+').replace(/_/g, '/')
+          // 补齐 padding
+          const pad = base64.length % 4
+          if (pad) base64 += '='.repeat(4 - pad)
+          const jsonStr = atob(base64)
+          data = JSON.parse(jsonStr)
+        } else {
+          console.warn(`[appUpdate] ${url} GitHub API 返回格式异常:`, {
+            hasContent: !!apiData.content,
+            encoding: apiData.encoding,
+            name: apiData.name
+          })
+          return null
+        }
+      } catch (decodeErr) {
+        console.error(`[appUpdate] ${url} base64 解码失败:`, decodeErr)
         return null
       }
     } else {
