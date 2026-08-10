@@ -98,47 +98,59 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
 
     // [WHAT] GitHub Contents API 返回 { content: base64, download_url, ... }
     let data: any
+    const text = await response.text()
 
-    if (url.includes('api.github.com/contents')) {
-      const apiData = await response.json()
+    // [FIX] 优先检测是否是 GitHub Contents API 的元数据格式
+    // [WHY] 用文本检测比 URL 检测更可靠，避免 URL 变化导致判断失败
+    try {
+      const parsed = JSON.parse(text)
+      
+      // [WHAT] GitHub Contents API 返回 { name, path, content, encoding, download_url, ... }
+      if (parsed && parsed.name && parsed.path && parsed.encoding === 'base64') {
+        console.log(`[appUpdate] ${url} 检测到 GitHub Contents API 格式`)
 
-      // [FIX] 优先使用 download_url 直接获取原始 JSON（绕过 base64 解码）
-      if (apiData.download_url) {
-        console.log(`[appUpdate] ${url} 使用 download_url 获取原始 JSON`)
-        try {
-          const rawResponse = await fetchWithTimeout(apiData.download_url, {
-            cache: 'no-cache',
-            headers: { 'Accept': 'application/json' }
-          })
-          if (rawResponse.ok) {
-            data = await rawResponse.json()
-            console.log(`[appUpdate] ${url} download_url 获取成功:`, data.version)
+        // [FIX] 优先使用 download_url 直接获取原始 JSON（绕过 base64 解码）
+        if (parsed.download_url) {
+          console.log(`[appUpdate] ${url} 使用 download_url 获取原始 JSON`)
+          try {
+            const rawResponse = await fetchWithTimeout(parsed.download_url, {
+              cache: 'no-cache',
+              headers: { 'Accept': 'application/json' }
+            })
+            if (rawResponse.ok) {
+              data = await rawResponse.json()
+              console.log(`[appUpdate] ${url} download_url 获取成功:`, data.version)
+            }
+          } catch {
+            console.warn(`[appUpdate] ${url} download_url 获取失败，尝试 base64 解码`)
           }
-        } catch {
-          console.warn(`[appUpdate] ${url} download_url 获取失败，尝试 base64 解码`)
         }
-      }
 
-      // [FALLBACK] 如果 download_url 失败，尝试 base64 解码
-      if (!data && apiData.content && apiData.encoding === 'base64') {
-        try {
-          let base64 = apiData.content.replace(/\n/g, '').replace(/\r/g, '').replace(/-/g, '+').replace(/_/g, '/')
-          const pad = base64.length % 4
-          if (pad) base64 += '='.repeat(4 - pad)
-          const jsonStr = atob(base64)
-          data = JSON.parse(jsonStr)
-          console.log(`[appUpdate] ${url} base64 解码成功:`, data.version)
-        } catch (decodeErr) {
-          console.error(`[appUpdate] ${url} base64 解码失败:`, decodeErr)
+        // [FALLBACK] 如果 download_url 失败，尝试 base64 解码
+        if (!data && parsed.content) {
+          try {
+            let base64 = parsed.content.replace(/\n/g, '').replace(/\r/g, '').replace(/-/g, '+').replace(/_/g, '/')
+            const pad = base64.length % 4
+            if (pad) base64 += '='.repeat(4 - pad)
+            const jsonStr = atob(base64)
+            data = JSON.parse(jsonStr)
+            console.log(`[appUpdate] ${url} base64 解码成功:`, data.version)
+          } catch (decodeErr) {
+            console.error(`[appUpdate] ${url} base64 解码失败:`, decodeErr)
+          }
         }
-      }
 
-      if (!data) {
-        console.warn(`[appUpdate] ${url} 所有解码方式都失败`)
-        return null
+        if (!data) {
+          console.warn(`[appUpdate] ${url} 所有解码方式都失败`)
+          return null
+        }
+      } else {
+        // [WHAT] 普通 JSON 格式（jsdelivr 或 raw 返回的原始 JSON）
+        data = parsed
       }
-    } else {
-      data = await response.json()
+    } catch (parseErr) {
+      console.warn(`[appUpdate] ${url} JSON 解析失败:`, parseErr)
+      return null
     }
 
     // [WHAT] 验证返回的数据格式是否正确
