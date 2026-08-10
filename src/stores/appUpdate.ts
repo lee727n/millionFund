@@ -68,6 +68,59 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   }
 
   /**
+   * [WHAT] 生成备选下载 URL
+   * [WHY] GitHub Release 的 tag 可能带或不带 "v" 前缀，导致 URL 不匹配
+   * @param apkUrl 原始 APK URL
+   */
+  function generateFallbackUrls(apkUrl: string): string[] {
+    const urls = [apkUrl]
+
+    // [WHAT] 从 URL 中提取 tag（download/ 后面的路径段）
+    // 例如: .../download/v3.8.9/fund-app-v3.8.9.apk → tag = "v3.8.9"
+    const match = apkUrl.match(/\/download\/([^/]+)\//)
+    if (!match) return urls
+
+    const originalTag = match[1]
+    const cleanTag = originalTag.startsWith('v') ? originalTag.slice(1) : originalTag
+    const altTag = originalTag.startsWith('v') ? cleanTag : `v${cleanTag}`
+
+    if (altTag !== originalTag) {
+      urls.push(apkUrl.replace(`/download/${originalTag}/`, `/download/${altTag}/`))
+      console.log(`[appUpdate] 生成备选 URL: ${originalTag} → ${altTag}`)
+    }
+
+    return urls
+  }
+
+  /**
+   * [WHAT] 从 URL 下载 APK
+   * [HOW] 支持进度跟踪，失败时自动尝试备选 URL
+   */
+  async function downloadFromUrl(url: string): Promise<Blob> {
+    const urls = generateFallbackUrls(url)
+    let lastError: Error | null = null
+
+    for (let i = 0; i < urls.length; i++) {
+      const tryUrl = urls[i]
+      try {
+        console.log(`[appUpdate] 尝试下载 URL (${i + 1}/${urls.length}):`, tryUrl)
+        const response = await fetch(tryUrl)
+        if (response.ok) {
+          if (i > 0) console.log(`[appUpdate] 备选 URL 下载成功:`, tryUrl)
+          return await response.blob()
+        }
+        lastError = new Error(`下载失败: HTTP ${response.status}`)
+        console.warn(`[appUpdate] URL 失败 (${i + 1}/${urls.length}): HTTP ${response.status}`)
+      } catch (e: any) {
+        lastError = e
+        console.warn(`[appUpdate] URL 异常 (${i + 1}/${urls.length}):`, e?.message)
+      }
+    }
+
+    throw lastError || new Error('所有下载 URL 均失败')
+  }
+
+  /**
    * [WHAT] 下载 APK
    * [HOW] 通过 fetch 下载到内存，再用 Filesystem 写入缓存目录
    * @returns APK 文件路径，失败返回 null
@@ -84,21 +137,14 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     errorMessage.value = ''
 
     try {
-      const apkUrl = checkResult.value.versionInfo.apkUrl
+      const { apkUrl, version } = checkResult.value.versionInfo
       console.log('[appUpdate] 开始下载 APK:', apkUrl)
 
-      // [WHAT] 使用 fetch 下载 APK（支持进度跟踪）
-      const response = await fetch(apkUrl)
-      if (!response.ok) {
-        throw new Error(`下载失败: HTTP ${response.status}`)
-      }
+      const blob = await downloadFromUrl(apkUrl)
 
-      // [WHAT] 获取文件总大小（用于计算进度）
-      const contentLength = response.headers.get('Content-Length')
-      const total = contentLength ? parseInt(contentLength) : 0
-
-      // [WHAT] 读取流数据并跟踪进度
-      const reader = response.body?.getReader()
+      // [WHAT] 读取流数据并跟踪进度（从 blob 重新读取）
+      const total = blob.size
+      const reader = blob.stream().getReader()
       if (!reader) {
         throw new Error('无法读取下载数据')
       }
@@ -121,14 +167,14 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
       }
 
       // [WHAT] 合并所有 chunks
-      const blob = new Blob(chunks as BlobPart[])
-      const base64 = await blobToBase64(blob)
+      const mergedBlob = new Blob(chunks as BlobPart[])
+      const base64 = await blobToBase64(mergedBlob)
 
       // [WHAT] 写入文件系统
       const { Filesystem, Directory } = await import('@capacitor/filesystem')
 
       // [WHAT] 生成文件名
-      const fileName = `fund-app-${checkResult.value.versionInfo.version}.apk`
+      const fileName = `fund-app-${version}.apk`
 
       const fileResult = await Filesystem.writeFile({
         path: fileName,

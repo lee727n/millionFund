@@ -5,7 +5,7 @@
  */
 
 /** 当前应用版本号 */
-export const APP_VERSION = '3.8.9'
+export const APP_VERSION = '3.9.0'
 
 /** 应用名称 */
 export const APP_NAME = 'AI百万实盘'

@@ -12,22 +12,23 @@ let cachedVersionInfo: VersionInfo | null = null
 const LAST_CHECK_KEY = 'app_update_last_version'
 
 // [WHAT] version.json 的多个镜像地址（按优先级尝试）
-// [WHY] 国内访问 raw.githubusercontent.com 可能不稳定，提供多个备用地址
-// [FIX] GitHub API 第一优先级（无缓存、国内可访问），jsdelivr 第二（有缓存），raw 最后
+// [WHY] raw.githubusercontent.com 无缓存始终最新（VPN 环境可用），GitHub API 国内快但易 403，jsDelivr 有 12h 缓存
+// [FIX] 重排序：raw 第一（新鲜），GitHub API 第二（国内快），jsDelivr 最后（缓存兜底）
 const VERSION_JSON_URLS = [
-  // [主] GitHub API（无缓存，国内可访问，返回 base64 编码内容）
-  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
-  // [备1] jsDelivr CDN（国内访问快，有 12 小时缓存）
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
-  // [备2] GitHub raw（无缓存，但国内可能超时）
+  // [主] GitHub raw（无缓存，始终最新，VPN/海外环境可用）
   `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json?t=`,
+  // [备1] GitHub API（无缓存，国内可访问，但易 403 限流）
+  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
+  // [备2] jsDelivr CDN（国内快，但有 12 小时缓存，仅兜底用）
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
 ]
 
 // [WHAT] GitHub Releases API（备用，可获取最新 release 信息）
 const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
 
 // [WHAT] 请求超时时间（ms）
-const REQUEST_TIMEOUT = 10000
+// [FIX] 缩短到 5s，403 限流或网络异常时快速失败，避免长时间等待
+const REQUEST_TIMEOUT = 5000
 
 // [WHAT] 版本信息接口
 export interface VersionInfo {
@@ -104,7 +105,7 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
     // [WHY] 用文本检测比 URL 检测更可靠，避免 URL 变化导致判断失败
     try {
       const parsed = JSON.parse(text)
-      
+
       // [WHAT] GitHub Contents API 返回 { name, path, content, encoding, download_url, ... }
       if (parsed && parsed.name && parsed.path && parsed.encoding === 'base64') {
         console.log(`[appUpdate] ${url} 检测到 GitHub Contents API 格式`)
@@ -174,24 +175,11 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
 }
 
 /**
- * [WHAT] 从 GitHub 获取最新版本信息
- * [HOW] 依次尝试多个镜像地址，第一个成功即返回
- * [FALLBACK] 所有镜像失败时，尝试 Releases API
+ * [WHAT] 从 GitHub Releases API 获取最新版本信息
+ * [HOW] 直接从 latest release 提取版本号和 APK 下载地址
+ * [WHY] Releases API 无 CDN 缓存问题，是获取最新版本的可靠来源
  */
-export async function fetchLatestVersion(): Promise<VersionInfo | null> {
-  // [FIX] 时间戳，避免 CDN 缓存
-  const timestamp = Date.now()
-
-  // [第一步] 依次尝试 version.json 的多个镜像
-  for (const url of VERSION_JSON_URLS) {
-    const result = await fetchVersionJsonFromUrl(url + timestamp)
-    if (result) {
-      return result
-    }
-  }
-
-  // [第二步] 所有 version.json 镜像失败，回退到 Releases API
-  console.warn('[appUpdate] 所有 version.json 镜像失败，尝试 Releases API')
+async function fetchVersionFromReleases(): Promise<VersionInfo | null> {
   try {
     const response = await fetchWithTimeout(RELEASES_API_URL, {
       headers: { 'Accept': 'application/vnd.github.v3+json' }
@@ -204,7 +192,6 @@ export async function fetchLatestVersion(): Promise<VersionInfo | null> {
 
     const release = await response.json()
 
-    // [WHAT] 验证 release 数据格式
     if (!release || !release.tag_name) {
       console.warn('[appUpdate] Releases API 返回数据格式不正确')
       return null
@@ -212,45 +199,87 @@ export async function fetchLatestVersion(): Promise<VersionInfo | null> {
 
     console.log('[appUpdate] 从 Releases API 获取版本信息成功:', release.tag_name)
 
-    // [WHAT] 从 release 信息中提取 APK 下载地址
     const apkAsset = release.assets?.find((asset: any) =>
       asset.name && asset.name.endsWith('.apk')
     )
 
-    if (apkAsset && apkAsset.browser_download_url) {
-      // [WHAT] 提取版本号（移除 v 前缀）
-      const version = release.tag_name.replace(/^v/, '')
-
-      // [FIX] versionCode 应该从 release body 或自定义字段获取，
-      //       不能用 release.id（这是 release 的唯一标识，不是版本号）
-      // [HOW] 从 release body 中尝试提取 versionCode，否则用版本号转换
-      let code = 0
-      const codeMatch = release.body?.match(/versionCode[:\s]*(\d+)/i)
-      if (codeMatch) {
-        code = parseInt(codeMatch[1]) || 0
-      } else {
-        // [FALLBACK] 从版本号转换: 1.9.0 → 190
-        const parts = version.split('.').map(n => parseInt(n) || 0)
-        code = parts[0] * 100 + (parts[1] || 0) * 10 + (parts[2] || 0)
-      }
-
-      return {
-        version,
-        code,
-        apkUrl: apkAsset.browser_download_url,
-        updateContent: release.body || '暂无更新说明',
-        forceUpdate: false,
-        publishDate: release.published_at
-      }
-    } else {
+    if (!apkAsset || !apkAsset.browser_download_url) {
       console.warn('[appUpdate] Releases 中未找到 APK 文件')
+      return null
+    }
+
+    const version = release.tag_name.replace(/^v/, '')
+
+    let code = 0
+    const codeMatch = release.body?.match(/versionCode[:\s]*(\d+)/i)
+    if (codeMatch) {
+      code = parseInt(codeMatch[1]) || 0
+    } else {
+      const parts = version.split('.').map(n => parseInt(n) || 0)
+      code = parts[0] * 100 + (parts[1] || 0) * 10 + (parts[2] || 0)
+    }
+
+    let updateContent = release.body || '暂无更新说明'
+    updateContent = updateContent.replace(/\r\n/g, '\n').replace(/^/gm, '- ')
+
+    return {
+      version,
+      code,
+      apkUrl: apkAsset.browser_download_url,
+      updateContent,
+      forceUpdate: false,
+      publishDate: release.published_at
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
       console.error('[appUpdate] Releases API 请求超时')
     } else {
-      console.error('[appUpdate] 获取 Releases API 失败:', err.message)
+      console.error('[appUpdate] Releases API 请求失败:', err.message)
     }
+    return null
+  }
+}
+
+/**
+ * [WHAT] 从 GitHub 获取最新版本信息
+ * [HOW] 并行尝试 version.json 镜像 + Releases API，取第一个成功的
+ * [WHY] 避免单一来源失败导致无法获取版本，同时绕过 CDN 缓存问题
+ */
+export async function fetchLatestVersion(): Promise<VersionInfo | null> {
+  const timestamp = Date.now()
+
+  // [第一步] 并行获取：version.json 镜像链 + Releases API
+  // Releases API 无 CDN 缓存，即使 version.json 有缓存问题也能兜底
+  const versionJsonPromise = (async () => {
+    for (const url of VERSION_JSON_URLS) {
+      const result = await fetchVersionJsonFromUrl(url + timestamp)
+      if (result) return result
+    }
+    return null
+  })()
+
+  const releasesPromise = fetchVersionFromReleases()
+
+  const [versionJsonResult, releasesResult] = await Promise.all([
+    versionJsonPromise,
+    releasesPromise
+  ])
+
+  // [优先] 使用 version.json 结果（包含更丰富的更新信息）
+  if (versionJsonResult) {
+    // [校验] 如果 version.json 的版本号比 Releases API 还旧，
+    //        说明 CDN 缓存未更新，使用 Releases API 的结果
+    if (releasesResult && compareVersion(releasesResult.version, versionJsonResult.version) > 0) {
+      console.warn(`[appUpdate] version.json 版本(${versionJsonResult.version}) 比 Releases API 版本(${releasesResult.version}) 旧，使用 Releases API`)
+      return releasesResult
+    }
+    return versionJsonResult
+  }
+
+  // [回退] version.json 全部失败，使用 Releases API
+  if (releasesResult) {
+    console.warn('[appUpdate] version.json 全部失败，使用 Releases API 结果')
+    return releasesResult
   }
 
   return null

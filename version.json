@@ -1,8 +1,8 @@
 {
-    "version": "3.8.9",
-    "code": 389,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.9/fund-app-v3.8.9.apk",
-    "updateContent": "- 1.更新githubAPI解析算法\n- 2.版本更新逻辑优化",
+    "version": "3.9.0",
+    "code": 390,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.9.0/fund-app-v3.9.0.apk",
+    "updateContent": "- 1版本更新数据源优先级更新\n- 2.v3.9.0更新测试",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
     "publishDate": "2026-08-10"
