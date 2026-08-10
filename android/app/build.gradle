@@ -7,8 +7,8 @@ android {
         applicationId "com.fundapp.realtime"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 386
-        versionName "3.8.6"
+        versionCode 387
+        versionName "3.8.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
