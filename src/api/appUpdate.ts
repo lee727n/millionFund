@@ -96,33 +96,45 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
       return null
     }
 
+    // [WHAT] GitHub Contents API 返回 { content: base64, download_url, ... }
     let data: any
 
-    // [WHAT] GitHub Contents API 返回 { content: base64, encoding: 'base64' }
     if (url.includes('api.github.com/contents')) {
       const apiData = await response.json()
-      try {
-        if (apiData.content && apiData.encoding === 'base64') {
-          // [FIX] 处理 URL-safe base64 编码（GitHub API 可能返回）
+
+      // [FIX] 优先使用 download_url 直接获取原始 JSON（绕过 base64 解码）
+      if (apiData.download_url) {
+        console.log(`[appUpdate] ${url} 使用 download_url 获取原始 JSON`)
+        try {
+          const rawResponse = await fetchWithTimeout(apiData.download_url, {
+            cache: 'no-cache',
+            headers: { 'Accept': 'application/json' }
+          })
+          if (rawResponse.ok) {
+            data = await rawResponse.json()
+            console.log(`[appUpdate] ${url} download_url 获取成功:`, data.version)
+          }
+        } catch {
+          console.warn(`[appUpdate] ${url} download_url 获取失败，尝试 base64 解码`)
+        }
+      }
+
+      // [FALLBACK] 如果 download_url 失败，尝试 base64 解码
+      if (!data && apiData.content && apiData.encoding === 'base64') {
+        try {
           let base64 = apiData.content.replace(/\n/g, '').replace(/\r/g, '').replace(/-/g, '+').replace(/_/g, '/')
-          // 补齐 padding
           const pad = base64.length % 4
           if (pad) base64 += '='.repeat(4 - pad)
-          console.log(`[appUpdate] GitHub API base64 解码前长度: ${base64.length}`)
           const jsonStr = atob(base64)
-          console.log(`[appUpdate] GitHub API 解码结果:`, jsonStr.substring(0, 200))
           data = JSON.parse(jsonStr)
-          console.log(`[appUpdate] GitHub API 解析成功:`, data)
-        } else {
-          console.warn(`[appUpdate] ${url} GitHub API 返回格式异常:`, {
-            hasContent: !!apiData.content,
-            encoding: apiData.encoding,
-            name: apiData.name
-          })
-          return null
+          console.log(`[appUpdate] ${url} base64 解码成功:`, data.version)
+        } catch (decodeErr) {
+          console.error(`[appUpdate] ${url} base64 解码失败:`, decodeErr)
         }
-      } catch (decodeErr) {
-        console.error(`[appUpdate] ${url} base64 解码失败:`, decodeErr)
+      }
+
+      if (!data) {
+        console.warn(`[appUpdate] ${url} 所有解码方式都失败`)
         return null
       }
     } else {
@@ -130,6 +142,7 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
     }
 
     // [WHAT] 验证返回的数据格式是否正确
+    console.log(`[appUpdate] ${url} 解析后 data:`, data)
     if (!data || typeof data.version !== 'string' || typeof data.apkUrl !== 'string') {
       console.warn(`[appUpdate] ${url} 返回的数据格式不正确:`, data)
       return null
