@@ -629,6 +629,16 @@ async function cloudBackupHoldings() {
     return
   }
   
+  // [FIX] 确认弹窗，避免误操作覆盖云端数据
+  try {
+    await showConfirmDialog({
+      title: '确认云备份',
+      message: '备份将覆盖云端已有的数据，确认要备份吗？',
+    })
+  } catch {
+    return
+  }
+  
   const loading = showLoadingToast({ message: '备份中...' })
   
   try {

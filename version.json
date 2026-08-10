@@ -1,8 +1,8 @@
 {
-    "version": "3.8.0",
-    "code": 380,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.0/fund-app-v3.8.0.apk",
-    "updateContent": "1. 新增版本更新检测功能\n2. 修复云恢复后数据同步问题\n3. 优化持仓页面涨跌幅计算",
+    "version": "3.8.1",
+    "code": 381,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.1/fund-app-v3.8.1.apk",
+    "updateContent": "1. 修复版本更新导致交易记录丢失的问题\n2. 云备份增加确认弹窗防止误操作\n3. 隐藏首页全面版UI的重仓股和分时图按钮",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
     "publishDate": "2026-08-10"

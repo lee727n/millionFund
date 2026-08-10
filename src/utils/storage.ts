@@ -31,11 +31,20 @@ export function checkVersionAndClearCache(): void {
 
     // [WHAT] 清除 localStorage 中的 API 缓存（保留用户数据）
     const keysToRemove: string[] = []
+    // [FIX] 用户数据 key 白名单，版本更新时绝不能删除
+    const preservedKeys: string[] = [
+      STORAGE_KEYS.WATCHLIST,
+      STORAGE_KEYS.HOLDINGS,
+      STORAGE_KEYS.TRADES,
+      STORAGE_KEYS.FUND_NET_VALUES,
+      STORAGE_KEYS.SOURCE_FILTER,
+      STORAGE_KEYS.APP_VERSION
+    ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
       if (key && STORAGE_KEYS.CACHE_PREFIXES.some(prefix => key.startsWith(prefix))) {
-        // [WHAT] 不清除自选和持仓数据
-        if (key !== STORAGE_KEYS.WATCHLIST && key !== STORAGE_KEYS.HOLDINGS) {
+        // [WHAT] 不清除用户数据
+        if (!preservedKeys.includes(key)) {
           keysToRemove.push(key)
         }
       }
@@ -299,7 +308,7 @@ export function updateTradesByCode(code: string, netValue: number, navDate?: str
       const isEstimatedAndOldDate = t.estimated && navDate && t.date <= navDate
       const isTodayTrade = navDate && t.date === navDate
       const shouldUpdate = isEstimatedAndOldDate || isTodayTrade
-      
+
       if (shouldUpdate) {
         // 避免重复更新相同的值
         if (Math.abs(t.netValue - netValue) < 0.0001 && !t.estimated) {

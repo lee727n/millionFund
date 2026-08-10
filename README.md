@@ -13,8 +13,8 @@
 ### 网盘APK快速开始
 - **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平
 
-通过网盘分享的文件：app-v3.7.apk
-链接: https://pan.baidu.com/s/1Vx8JsE3pWmTbt7W0nNSprg 提取码: bamy
+通过网盘分享的文件：fund-app-v3.8.1.apk
+链接: https://pan.baidu.com/s/1f0nPnx15Tc3BUta0omWPSw 提取码: jy99
 
 ### 核心功能
 - **实时估值** - 秒级刷新基金实时估值数据
