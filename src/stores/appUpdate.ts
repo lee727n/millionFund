@@ -18,6 +18,23 @@ const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller', {
   })
 })
 
+// [WHAT] GitHub APK 下载镜像代理列表
+// [WHY] github.com 国内下载极慢(0%), 需要代理加速
+const APK_MIRRORS = [
+  // 直接下载 (VPN 环境可用)
+  { name: 'GitHub 直链', transform: (url: string) => url },
+  // ghproxy 镜像 (国内速度快)
+  { name: 'ghproxy.com', transform: (url: string) => `https://ghproxy.com/${url}` },
+  // mirror.ghproxy.com 镜像
+  { name: 'mirror.ghproxy.com', transform: (url: string) => `https://mirror.ghproxy.com/${url}` },
+  // gh-proxy.com 镜像
+  { name: 'gh-proxy.com', transform: (url: string) => `https://gh-proxy.com/${url}` },
+]
+
+// [WHAT] 下载超时配置
+const DOWNLOAD_STALL_TIMEOUT = 8000 // 8秒无进度则切换
+const DOWNLOAD_CONNECT_TIMEOUT = 15000 // 15秒连接超时
+
 export const useAppUpdateStore = defineStore('appUpdate', () => {
   /** 是否正在检查更新 */
   const checking = ref(false)
@@ -33,6 +50,8 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   const downloadComplete = ref(false)
   /** 错误信息 */
   const errorMessage = ref('')
+  /** 当前使用的下载源名称 */
+  const currentMirror = ref('')
 
   /**
    * [WHAT] 检查更新
@@ -68,62 +87,85 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   }
 
   /**
-   * [WHAT] 生成备选下载 URL
-   * [WHY] GitHub Release 的 tag 可能带或不带 "v" 前缀，导致 URL 不匹配
-   * @param apkUrl 原始 APK URL
+   * [WHAT] 生成所有可能的下载 URL
+   * [HOW] 组合 v前缀变体 × 镜像代理
    */
-  function generateFallbackUrls(apkUrl: string): string[] {
-    const urls = [apkUrl]
+  function generateDownloadUrls(apkUrl: string): string[] {
+    const urls: string[] = []
 
-    // [WHAT] 从 URL 中提取 tag（download/ 后面的路径段）
-    // 例如: .../download/v3.8.9/fund-app-v3.8.9.apk → tag = "v3.8.9"
+    // 第一步: 生成 v前缀变体
+    const tagVariants: string[] = [apkUrl]
     const match = apkUrl.match(/\/download\/([^/]+)\//)
-    if (!match) return urls
+    if (match) {
+      const originalTag = match[1]
+      const cleanTag = originalTag.startsWith('v') ? originalTag.slice(1) : originalTag
+      const altTag = originalTag.startsWith('v') ? cleanTag : `v${cleanTag}`
+      if (altTag !== originalTag) {
+        tagVariants.push(apkUrl.replace(`/download/${originalTag}/`, `/download/${altTag}/`))
+      }
+    }
 
-    const originalTag = match[1]
-    const cleanTag = originalTag.startsWith('v') ? originalTag.slice(1) : originalTag
-    const altTag = originalTag.startsWith('v') ? cleanTag : `v${cleanTag}`
-
-    if (altTag !== originalTag) {
-      urls.push(apkUrl.replace(`/download/${originalTag}/`, `/download/${altTag}/`))
-      console.log(`[appUpdate] 生成备选 URL: ${originalTag} → ${altTag}`)
+    // 第二步: 对每个 tag 变体应用所有镜像
+    for (const tagUrl of tagVariants) {
+      for (const mirror of APK_MIRRORS) {
+        urls.push(mirror.transform(tagUrl))
+      }
     }
 
     return urls
   }
 
   /**
-   * [WHAT] 从 URL 下载 APK
-   * [HOW] 支持进度跟踪，失败时自动尝试备选 URL
+   * [WHAT] 从 URL 流式下载 APK
+   * [HOW] 边下载边更新进度，卡顿超时自动中断
    */
-  async function downloadFromUrl(url: string): Promise<Blob> {
-    const urls = generateFallbackUrls(url)
-    let lastError: Error | null = null
+  async function streamDownload(
+    url: string,
+    onProgress: (received: number, total: number) => void,
+    signal: AbortSignal
+  ): Promise<Blob> {
+    const response = await fetch(url, { signal })
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
 
-    for (let i = 0; i < urls.length; i++) {
-      const tryUrl = urls[i]
-      try {
-        console.log(`[appUpdate] 尝试下载 URL (${i + 1}/${urls.length}):`, tryUrl)
-        const response = await fetch(tryUrl)
-        if (response.ok) {
-          if (i > 0) console.log(`[appUpdate] 备选 URL 下载成功:`, tryUrl)
-          return await response.blob()
+    const total = response.headers.get('Content-Length')
+      ? parseInt(response.headers.get('Content-Length')!)
+      : 0
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    const chunks: Uint8Array[] = []
+    let received = 0
+    let lastProgressTime = Date.now()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      if (value) {
+        chunks.push(value)
+        received += value.length
+        lastProgressTime = Date.now()
+
+        onProgress(received, total)
+
+        // [卡顿检测] 8秒无进度变化则中断
+        if (total > 0 && received < total && Date.now() - lastProgressTime > DOWNLOAD_STALL_TIMEOUT) {
+          throw new Error('下载卡顿，切换镜像')
         }
-        lastError = new Error(`下载失败: HTTP ${response.status}`)
-        console.warn(`[appUpdate] URL 失败 (${i + 1}/${urls.length}): HTTP ${response.status}`)
-      } catch (e: any) {
-        lastError = e
-        console.warn(`[appUpdate] URL 异常 (${i + 1}/${urls.length}):`, e?.message)
       }
     }
 
-    throw lastError || new Error('所有下载 URL 均失败')
+    return new Blob(chunks as BlobPart[])
   }
 
   /**
-   * [WHAT] 下载 APK
-   * [HOW] 通过 fetch 下载到内存，再用 Filesystem 写入缓存目录
-   * @returns APK 文件路径，失败返回 null
+   * [WHAT] 下载 APK（含镜像切换）
+   * [HOW] 依次尝试 URL 列表，卡顿/失败自动切换
    */
   async function downloadApk(): Promise<string | null> {
     if (!checkResult.value?.versionInfo) {
@@ -136,65 +178,79 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     downloadComplete.value = false
     errorMessage.value = ''
 
-    try {
-      const { apkUrl, version } = checkResult.value.versionInfo
-      console.log('[appUpdate] 开始下载 APK:', apkUrl)
+    const { apkUrl, version } = checkResult.value.versionInfo
+    const urls = generateDownloadUrls(apkUrl)
+    console.log(`[appUpdate] 准备下载 APK, 共 ${urls.length} 个备选 URL`)
 
-      const blob = await downloadFromUrl(apkUrl)
+    let lastError: Error | null = null
 
-      // [WHAT] 读取流数据并跟踪进度（从 blob 重新读取）
-      const total = blob.size
-      const reader = blob.stream().getReader()
-      if (!reader) {
-        throw new Error('无法读取下载数据')
-      }
+    for (let i = 0; i < urls.length; i++) {
+      const tryUrl = urls[i]
+      const mirror = APK_MIRRORS[i % APK_MIRRORS.length]
+      currentMirror.value = mirror.name
 
-      const chunks: Uint8Array[] = []
-      let received = 0
+      downloadProgress.value = 0
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        console.log(`[appUpdate] 尝试 ${mirror.name} (${i + 1}/${urls.length}): ${tryUrl}`)
 
-        if (value) {
-          chunks.push(value)
-          received += value.length
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_CONNECT_TIMEOUT)
 
+        const blob = await streamDownload(tryUrl, (received, total) => {
           if (total > 0) {
             downloadProgress.value = Math.round((received / total) * 100)
+          } else {
+            // 无 Content-Length，用 received bytes 粗略估计
+            downloadProgress.value = Math.min(99, Math.round(received / 1024 / 1024))
           }
+        }, controller.signal)
+
+        clearTimeout(timeoutId)
+
+        // [WHAT] 下载成功，转换并保存
+        downloadProgress.value = 100
+
+        const base64 = await blobToBase64(blob)
+        const { Filesystem, Directory } = await import('@capacitor/filesystem')
+        const fileName = `fund-app-${version}.apk`
+
+        const fileResult = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+          recursive: true
+        })
+
+        console.log(`[appUpdate] APK 下载完成 (${mirror.name}):`, fileResult.uri)
+        downloadComplete.value = true
+        currentMirror.value = ''
+        return fileResult.uri
+
+      } catch (err: any) {
+        lastError = err
+        currentMirror.value = ''
+
+        // 如果是连接超时/网络错误，且不是最后一个 URL，直接跳到下一个镜像
+        const isNetworkError = err.message?.includes('HTTP') ||
+          err.message?.includes('network') ||
+          err.message?.includes('超时') ||
+          err.message?.includes('卡顿') ||
+          err.name === 'AbortError'
+
+        if (isNetworkError && i < urls.length - 1) {
+          console.warn(`[appUpdate] ${mirror.name} 失败: ${err.message}, 切换下一个镜像...`)
+          continue
+        }
+
+        if (i === urls.length - 1) {
+          console.error(`[appUpdate] 所有 ${urls.length} 个 URL 均失败`)
         }
       }
-
-      // [WHAT] 合并所有 chunks
-      const mergedBlob = new Blob(chunks as BlobPart[])
-      const base64 = await blobToBase64(mergedBlob)
-
-      // [WHAT] 写入文件系统
-      const { Filesystem, Directory } = await import('@capacitor/filesystem')
-
-      // [WHAT] 生成文件名
-      const fileName = `fund-app-${version}.apk`
-
-      const fileResult = await Filesystem.writeFile({
-        path: fileName,
-        data: base64,
-        directory: Directory.Cache,
-        recursive: true
-      })
-
-      console.log('[appUpdate] APK 下载完成:', fileResult.uri)
-      downloadComplete.value = true
-      downloadProgress.value = 100
-
-      return fileResult.uri
-    } catch (err: any) {
-      console.error('[appUpdate] 下载 APK 失败:', err)
-      errorMessage.value = err?.message || '下载失败'
-      return null
-    } finally {
-      downloading.value = false
     }
+
+    errorMessage.value = lastError?.message || '下载失败'
+    return null
   }
 
   /**
@@ -205,15 +261,12 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     try {
       console.log('[appUpdate] 开始安装 APK:', fileUri)
 
-      // [WHAT] 从 fileUri 中提取路径
       let filePath = fileUri
       if (fileUri.startsWith('file://')) {
         filePath = fileUri.substring(7)
       }
 
-      // [WHAT] 调用自定义插件安装 APK
       await ApkInstaller.installApk({ filePath })
-
       console.log('[appUpdate] APK 安装界面已启动')
     } catch (err: any) {
       console.error('[appUpdate] 安装 APK 失败:', err)
@@ -250,6 +303,7 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     downloading.value = false
     downloadComplete.value = false
     errorMessage.value = ''
+    currentMirror.value = ''
   }
 
   return {
@@ -260,6 +314,7 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
     downloading,
     downloadComplete,
     errorMessage,
+    currentMirror,
     check,
     downloadApk,
     installApk,
@@ -278,7 +333,6 @@ function blobToBase64(blob: Blob): Promise<string> {
     const reader = new FileReader()
     reader.onloadend = () => {
       const result = reader.result as string
-      // [WHAT] 移除 data:application/octet-stream;base64, 前缀
       const base64 = result.split(',')[1] || result
       resolve(base64)
     }

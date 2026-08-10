@@ -1,8 +1,8 @@
 {
-    "version": "3.9.0",
-    "code": 390,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.9.0/fund-app-v3.9.0.apk",
-    "updateContent": "- 1版本更新数据源优先级更新\n- 2.v3.9.0更新测试",
+    "version": "3.9.1",
+    "code": 391,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.9.1/fund-app-v3.9.1.apk",
+    "updateContent": "- 1.ghproxy.com镜像多组数据源(多组)\n- 2.流式下载+实时进度\n- 3.智能生成URL \n- 4.UI显示镜像源",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
     "publishDate": "2026-08-10"
