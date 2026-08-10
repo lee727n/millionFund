@@ -135,7 +135,13 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
             let base64 = parsed.content.replace(/\n/g, '').replace(/\r/g, '').replace(/-/g, '+').replace(/_/g, '/')
             const pad = base64.length % 4
             if (pad) base64 += '='.repeat(4 - pad)
-            const jsonStr = atob(base64)
+            // [FIX] 使用 TextDecoder 解码 base64，支持 UTF-8 中文
+            const binaryStr = atob(base64)
+            const bytes = new Uint8Array(binaryStr.length)
+            for (let i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i)
+            }
+            const jsonStr = new TextDecoder('utf-8').decode(bytes)
             data = JSON.parse(jsonStr)
             console.log(`[appUpdate] ${url} base64 解码成功:`, data.version)
           } catch (decodeErr) {

@@ -63,8 +63,10 @@ if [ ! -f "$APK_PATH" ]; then
 fi
 
 # 尝试覆盖安装（保留数据）
+# -r: 覆盖安装保留数据
+# -d: 允许版本降级（用于测试时降低版本号场景）
 echo -e "${YELLOW}  覆盖安装（保留数据）...${NC}"
-if adb install -r "$APK_PATH"; then
+if adb install -r -d "$APK_PATH"; then
     echo -e "${GREEN}✓ 覆盖安装成功${NC}"
 else
     # 如果覆盖安装失败（签名不匹配），则卸载重装
