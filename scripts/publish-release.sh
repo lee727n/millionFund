@@ -17,7 +17,20 @@ if [ -z "$VERSION" ]; then
 fi
 
 if [ -z "$UPDATE_CONTENT" ]; then
-  UPDATE_CONTENT="版本 $VERSION 更新"
+  echo ""
+  echo "请输入更新内容（每行一条，输入空行结束）："
+  UPDATE_CONTENT=""
+  while IFS= read -r line; do
+    [ -z "$line" ] && break
+    if [ -n "$UPDATE_CONTENT" ]; then
+      UPDATE_CONTENT="${UPDATE_CONTENT}\\n- ${line}"
+    else
+      UPDATE_CONTENT="- ${line}"
+    fi
+  done
+  if [ -z "$UPDATE_CONTENT" ]; then
+    UPDATE_CONTENT="版本 $VERSION 更新"
+  fi
 fi
 
 echo "=========================================="

@@ -1,8 +1,8 @@
 {
-    "version": "3.8.5",
-    "code": 385,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.5/fund-app-v3.8.5.apk",
-    "updateContent": "- GitHub API 优先（无缓存，国内可访问）\n- raw.githubusercontent.com 备用（无缓存，需外网）\n- jsdelivr CDN 兜底（12小时缓存）",
+    "version": "3.8.6",
+    "code": 386,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.6/fund-app-v3.8.5.apk",
+    "updateContent": "- 1.优化rease更新脚本\n- 2.更新版本v3.8.6",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
     "publishDate": "2026-08-10"
