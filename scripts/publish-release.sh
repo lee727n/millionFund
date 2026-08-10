@@ -61,7 +61,7 @@ cat > version.json << EOF
 {
   "version": "$VERSION",
   "code": $VERSION_CODE,
-  "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v$VERSION/fund-app.apk",
+  "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v$VERSION/fund-app-v$VERSION.apk",
   "updateContent": "$UPDATE_CONTENT",
   "forceUpdate": false,
   "minSupportVersion": "1.0.0",
@@ -89,7 +89,7 @@ echo "   a. 打开 https://github.com/lee727n/millionFund/releases/new"
 echo "   b. Tag: v$VERSION (选择 'Create new tag: v$VERSION on publish')"
 echo "   c. Title: v$VERSION"
 echo "   d. Description: $UPDATE_CONTENT"
-echo "   e. 上传 APK: 选择 $APK_PATH 文件，重命名为 fund-app.apk"
+echo "   e. 上传 APK: 选择 $APK_PATH 文件，重命名为 fund-app-v$VERSION.apk"
 echo "   f. 点击 'Publish release'"
 echo ""
 echo "3. 验证更新:"
