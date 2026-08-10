@@ -49,6 +49,7 @@ function handleClose() {
     :close-on-popstate="false"
     confirm-button-text="立即更新"
     cancel-button-text="稍后再说"
+    class="update-dialog"
     @confirm="handleDownloadAndInstall"
     @cancel="handleClose"
   >
@@ -100,6 +101,13 @@ function handleClose() {
 </template>
 
 <style scoped>
+/* [FIX] 弹窗最小宽度，避免内容少时弹窗过窄 */
+:global(.van-dialog) {
+  min-width: 300px !important;
+  width: 85vw !important;
+  max-width: 400px !important;
+}
+
 .update-title {
   display: flex;
   align-items: center;
