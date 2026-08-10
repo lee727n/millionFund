@@ -104,12 +104,15 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
       try {
         if (apiData.content && apiData.encoding === 'base64') {
           // [FIX] 处理 URL-safe base64 编码（GitHub API 可能返回）
-          let base64 = apiData.content.replace(/\n/g, '').replace(/-/g, '+').replace(/_/g, '/')
+          let base64 = apiData.content.replace(/\n/g, '').replace(/\r/g, '').replace(/-/g, '+').replace(/_/g, '/')
           // 补齐 padding
           const pad = base64.length % 4
           if (pad) base64 += '='.repeat(4 - pad)
+          console.log(`[appUpdate] GitHub API base64 解码前长度: ${base64.length}`)
           const jsonStr = atob(base64)
+          console.log(`[appUpdate] GitHub API 解码结果:`, jsonStr.substring(0, 200))
           data = JSON.parse(jsonStr)
+          console.log(`[appUpdate] GitHub API 解析成功:`, data)
         } else {
           console.warn(`[appUpdate] ${url} GitHub API 返回格式异常:`, {
             hasContent: !!apiData.content,
