@@ -8,6 +8,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppUpdateDialog: typeof import('./src/components/AppUpdateDialog.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']

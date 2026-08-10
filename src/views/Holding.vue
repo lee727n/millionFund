@@ -8,6 +8,8 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
+import { useAppUpdateStore } from '@/stores/appUpdate'
+import { APP_VERSION } from '@/config/version'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
@@ -17,6 +19,7 @@ import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
+import AppUpdateDialog from '@/components/AppUpdateDialog.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
 import { 
@@ -32,6 +35,16 @@ const router = useRouter()
 const holdingStore = useHoldingStore()
 const aiTrackingStore = useAITrackingStore()
 const themeStore = useThemeStore()
+const appUpdateStore = useAppUpdateStore()
+
+// [WHAT] 检查更新
+async function checkUpdate() {
+  if (appUpdateStore.checking) return
+  const result = await appUpdateStore.check(false)
+  if (!result.hasUpdate) {
+    showToast(result.error || '已是最新版本')
+  }
+}
 
 // ========== 表单相关 ==========
 const showAddDialog = ref(false)
@@ -1081,7 +1094,11 @@ async function refreshHoldingsCache() {
     <div class="custom-nav-bar">
       <!-- 第一行：标题 -->
       <div class="nav-title-row">
-        <div class="version-badge">v3.7</div>
+        <div class="version-badge" @click="checkUpdate">
+          v{{ APP_VERSION }}
+          <span v-if="appUpdateStore.checking" class="checking-dot">...</span>
+          <span v-else-if="appUpdateStore.checkResult?.hasUpdate" class="update-dot">●</span>
+        </div>
         <div class="nav-title">我的持仓</div>
         <!-- 移动端操作按钮 -->
         <div class="nav-cloud-actions mobile-only">
@@ -1625,6 +1642,9 @@ async function refreshHoldingsCache() {
         </div>
       </div>
     </van-popup>
+
+    <!-- [WHAT] 应用更新弹窗 -->
+    <AppUpdateDialog />
   </div>
 </template>
 
@@ -1783,6 +1803,31 @@ async function refreshHoldingsCache() {
   padding: 2px 8px;
   border-radius: 10px;
   border: 1px solid var(--primary-color);
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.version-badge:active {
+  opacity: 0.7;
+}
+
+.update-dot {
+  color: #ee0a24;
+  font-size: 10px;
+  animation: pulse 1.5s infinite;
+}
+
+.checking-dot {
+  font-size: 10px;
+  color: #969799;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 .nav-btn {

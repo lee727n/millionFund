@@ -1,0 +1,296 @@
+// [WHY] 应用更新 API - 通过 GitHub Releases 检测和下载新版本
+// [WHAT] 提供版本检查、APK 下载、安装功能
+
+import { APP_VERSION } from '@/config/version'
+
+// [WHAT] GitHub 仓库配置
+// [HOW] 格式: 用户名/仓库名
+const GITHUB_REPO = 'lee727n/millionFund'
+
+// [WHAT] version.json 的多个镜像地址（按优先级尝试）
+// [WHY] 国内访问 raw.githubusercontent.com 可能不稳定，提供多个备用地址
+const VERSION_JSON_URLS = [
+  // [主] GitHub raw（推送后立即可用，无缓存）
+  `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json`,
+  // [备1] jsDelivr CDN（国内访问较快，但缓存约10分钟，新推送可能延迟）
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json`,
+  // [备2] GitHub API（返回文件内容 base64 编码，有速率限制）
+  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json`,
+]
+
+// [WHAT] GitHub Releases API（备用，可获取最新 release 信息）
+const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
+
+// [WHAT] 请求超时时间（ms）
+const REQUEST_TIMEOUT = 10000
+
+// [WHAT] 版本信息接口
+export interface VersionInfo {
+  /** 版本号字符串，如 "1.9.0" */
+  version: string
+  /** 版本代码（数字），如 190 */
+  code: number
+  /** APK 下载地址 */
+  apkUrl: string
+  /** 更新内容描述 */
+  updateContent: string
+  /** 是否强制更新 */
+  forceUpdate: boolean
+  /** 最低兼容版本（低于此版本必须更新） */
+  minSupportVersion?: string
+  /** 发布日期 */
+  publishDate?: string
+}
+
+// [WHAT] 版本检查结果
+export interface CheckUpdateResult {
+  /** 是否有新版本 */
+  hasUpdate: boolean
+  /** 最新版本信息 */
+  versionInfo: VersionInfo | null
+  /** 当前版本号 */
+  currentVersion: string
+  /** 是否需要强制更新 */
+  forceUpdate: boolean
+  /** 错误信息 */
+  error?: string
+}
+
+/**
+ * [WHAT] 带超时的 fetch 请求
+ * [WHY] 移动端网络不稳定，需要超时机制避免长时间等待
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * [WHAT] 从单个 URL 获取 version.json
+ * [HOW] 处理 GitHub API 返回的 base64 编码内容
+ */
+async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null> {
+  try {
+    const response = await fetchWithTimeout(url, {
+      cache: 'no-cache',
+      headers: { 'Accept': 'application/json' }
+    })
+
+    if (!response.ok) {
+      console.warn(`[appUpdate] ${url} 返回 ${response.status}`)
+      return null
+    }
+
+    let data: any
+
+    // [WHAT] GitHub Contents API 返回 { content: base64, encoding: 'base64' }
+    if (url.includes('api.github.com/contents')) {
+      const apiData = await response.json()
+      if (apiData.content && apiData.encoding === 'base64') {
+        const jsonStr = atob(apiData.content.replace(/\n/g, ''))
+        data = JSON.parse(jsonStr)
+      } else {
+        return null
+      }
+    } else {
+      data = await response.json()
+    }
+
+    // [WHAT] 验证返回的数据格式是否正确
+    if (!data || typeof data.version !== 'string' || typeof data.apkUrl !== 'string') {
+      console.warn(`[appUpdate] ${url} 返回的数据格式不正确:`, data)
+      return null
+    }
+
+    console.log(`[appUpdate] 从 ${url} 获取版本信息成功:`, data.version)
+    return data as VersionInfo
+  } catch (err: any) {
+    // [WHAT] AbortController 超时
+    if (err.name === 'AbortError') {
+      console.warn(`[appUpdate] ${url} 请求超时`)
+    } else {
+      console.warn(`[appUpdate] ${url} 请求失败:`, err.message)
+    }
+    return null
+  }
+}
+
+/**
+ * [WHAT] 从 GitHub 获取最新版本信息
+ * [HOW] 依次尝试多个镜像地址，第一个成功即返回
+ * [FALLBACK] 所有镜像失败时，尝试 Releases API
+ */
+export async function fetchLatestVersion(): Promise<VersionInfo | null> {
+  // [第一步] 依次尝试 version.json 的多个镜像
+  for (const url of VERSION_JSON_URLS) {
+    const result = await fetchVersionJsonFromUrl(url)
+    if (result) {
+      return result
+    }
+  }
+
+  // [第二步] 所有 version.json 镜像失败，回退到 Releases API
+  console.warn('[appUpdate] 所有 version.json 镜像失败，尝试 Releases API')
+  try {
+    const response = await fetchWithTimeout(RELEASES_API_URL, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' }
+    })
+
+    if (!response.ok) {
+      console.warn(`[appUpdate] Releases API 返回 ${response.status}`)
+      return null
+    }
+
+    const release = await response.json()
+
+    // [WHAT] 验证 release 数据格式
+    if (!release || !release.tag_name) {
+      console.warn('[appUpdate] Releases API 返回数据格式不正确')
+      return null
+    }
+
+    console.log('[appUpdate] 从 Releases API 获取版本信息成功:', release.tag_name)
+
+    // [WHAT] 从 release 信息中提取 APK 下载地址
+    const apkAsset = release.assets?.find((asset: any) =>
+      asset.name && asset.name.endsWith('.apk')
+    )
+
+    if (apkAsset && apkAsset.browser_download_url) {
+      // [WHAT] 提取版本号（移除 v 前缀）
+      const version = release.tag_name.replace(/^v/, '')
+
+      // [FIX] versionCode 应该从 release body 或自定义字段获取，
+      //       不能用 release.id（这是 release 的唯一标识，不是版本号）
+      // [HOW] 从 release body 中尝试提取 versionCode，否则用版本号转换
+      let code = 0
+      const codeMatch = release.body?.match(/versionCode[:\s]*(\d+)/i)
+      if (codeMatch) {
+        code = parseInt(codeMatch[1]) || 0
+      } else {
+        // [FALLBACK] 从版本号转换: 1.9.0 → 190
+        const parts = version.split('.').map(n => parseInt(n) || 0)
+        code = parts[0] * 100 + (parts[1] || 0) * 10 + (parts[2] || 0)
+      }
+
+      return {
+        version,
+        code,
+        apkUrl: apkAsset.browser_download_url,
+        updateContent: release.body || '暂无更新说明',
+        forceUpdate: false,
+        publishDate: release.published_at
+      }
+    } else {
+      console.warn('[appUpdate] Releases 中未找到 APK 文件')
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error('[appUpdate] Releases API 请求超时')
+    } else {
+      console.error('[appUpdate] 获取 Releases API 失败:', err.message)
+    }
+  }
+
+  return null
+}
+
+/**
+ * [WHAT] 比较版本号
+ * [HOW] 语义化版本比较: 1.8.0 < 1.9.0 < 2.0.0
+ * @returns -1: v1 < v2, 0: v1 == v2, 1: v1 > v2
+ */
+export function compareVersion(v1: string, v2: string): number {
+  // [FIX] 清理版本号（移除 v 前缀和空格）
+  const cleanV1 = v1.replace(/^v/, '').trim()
+  const cleanV2 = v2.replace(/^v/, '').trim()
+
+  const parts1 = cleanV1.split('.').map(n => parseInt(n) || 0)
+  const parts2 = cleanV2.split('.').map(n => parseInt(n) || 0)
+  const maxLen = Math.max(parts1.length, parts2.length)
+
+  for (let i = 0; i < maxLen; i++) {
+    const p1 = parts1[i] || 0
+    const p2 = parts2[i] || 0
+    if (p1 < p2) return -1
+    if (p1 > p2) return 1
+  }
+  return 0
+}
+
+/**
+ * [WHAT] 检查是否有新版本
+ * [HOW] 对比当前版本与 GitHub 上的最新版本
+ */
+export async function checkForUpdate(): Promise<CheckUpdateResult> {
+  const currentVersion = APP_VERSION
+
+  try {
+    const latestVersion = await fetchLatestVersion()
+
+    // [WHAT] 无法获取版本信息
+    if (!latestVersion) {
+      return {
+        hasUpdate: false,
+        versionInfo: null,
+        currentVersion,
+        forceUpdate: false,
+        error: '无法获取版本信息，请检查网络连接'
+      }
+    }
+
+    // [WHAT] 验证版本号格式
+    if (!latestVersion.version) {
+      return {
+        hasUpdate: false,
+        versionInfo: null,
+        currentVersion,
+        forceUpdate: false,
+        error: '版本信息格式错误'
+      }
+    }
+
+    const hasUpdate = compareVersion(currentVersion, latestVersion.version) < 0
+
+    // [WHAT] 检查是否强制更新（低于最低兼容版本）
+    let forceUpdate = latestVersion.forceUpdate || false
+    if (latestVersion.minSupportVersion) {
+      if (compareVersion(currentVersion, latestVersion.minSupportVersion) < 0) {
+        forceUpdate = true
+      }
+    }
+
+    console.log('[appUpdate] 版本检查结果:', {
+      current: currentVersion,
+      latest: latestVersion.version,
+      hasUpdate,
+      forceUpdate
+    })
+
+    return {
+      hasUpdate,
+      versionInfo: latestVersion,
+      currentVersion,
+      forceUpdate
+    }
+  } catch (err: any) {
+    console.error('[appUpdate] 检查更新失败:', err)
+    return {
+      hasUpdate: false,
+      versionInfo: null,
+      currentVersion,
+      forceUpdate: false,
+      error: err?.message || '检查更新失败'
+    }
+  }
+}

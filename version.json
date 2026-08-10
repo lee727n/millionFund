@@ -1,0 +1,9 @@
+{
+    "version": "3.7.0",
+    "code": 370,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.7.0/fund-app.apk",
+    "updateContent": "1. 新增版本更新检测功能\n2. 修复云恢复后数据同步问题\n3. 优化持仓页面涨跌幅计算",
+    "forceUpdate": false,
+    "minSupportVersion": "1.0.0",
+    "publishDate": "2026-08-10"
+}
