@@ -9,13 +9,14 @@ const GITHUB_REPO = 'lee727n/millionFund'
 
 // [WHAT] version.json 的多个镜像地址（按优先级尝试）
 // [WHY] 国内访问 raw.githubusercontent.com 可能不稳定，提供多个备用地址
+// [FIX] 加时间戳参数避免 CDN 缓存导致获取到旧版本
 const VERSION_JSON_URLS = [
-  // [主] GitHub raw（推送后立即可用，无缓存）
-  `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json`,
-  // [备1] jsDelivr CDN（国内访问较快，但缓存约10分钟，新推送可能延迟）
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json`,
+  // [主] jsDelivr CDN（国内访问较快，加时间戳防缓存）
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
+  // [备1] GitHub raw（无缓存，但国内可能超时）
+  `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json?t=`,
   // [备2] GitHub API（返回文件内容 base64 编码，有速率限制）
-  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json`,
+  `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
 ]
 
 // [WHAT] GitHub Releases API（备用，可获取最新 release 信息）
@@ -131,9 +132,12 @@ async function fetchVersionJsonFromUrl(url: string): Promise<VersionInfo | null>
  * [FALLBACK] 所有镜像失败时，尝试 Releases API
  */
 export async function fetchLatestVersion(): Promise<VersionInfo | null> {
+  // [FIX] 时间戳，避免 CDN 缓存
+  const timestamp = Date.now()
+
   // [第一步] 依次尝试 version.json 的多个镜像
   for (const url of VERSION_JSON_URLS) {
-    const result = await fetchVersionJsonFromUrl(url)
+    const result = await fetchVersionJsonFromUrl(url + timestamp)
     if (result) {
       return result
     }
