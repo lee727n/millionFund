@@ -1,7 +1,7 @@
 {
     "version": "3.8.7",
     "code": 387,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.7/fund-app-v3.8.5.apk",
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.8.7/fund-app-v3.8.7.apk",
     "updateContent": "- 1.更新rademe介绍\n- 2.优化更新弹窗UI",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
