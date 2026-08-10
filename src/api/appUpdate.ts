@@ -13,12 +13,12 @@ const LAST_CHECK_KEY = 'app_update_last_version'
 
 // [WHAT] version.json 的多个镜像地址（按优先级尝试）
 // [WHY] 国内访问 raw.githubusercontent.com 可能不稳定，提供多个备用地址
-// [FIX] 优先级调整：jsdelivr（国内快，有缓存）> GitHub API（需修复 base64 解码）> raw（需外网）
+// [FIX] GitHub API 第一优先级（无缓存、国内可访问），jsdelivr 第二（有缓存），raw 最后
 const VERSION_JSON_URLS = [
-  // [主] jsDelivr CDN（国内访问最快，有 12 小时缓存）
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
-  // [备1] GitHub API（无缓存，国内可访问，但 base64 解码可能有问题）
+  // [主] GitHub API（无缓存，国内可访问，返回 base64 编码内容）
   `https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?t=`,
+  // [备1] jsDelivr CDN（国内访问快，有 12 小时缓存）
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/version.json?t=`,
   // [备2] GitHub raw（无缓存，但国内可能超时）
   `https://raw.githubusercontent.com/${GITHUB_REPO}/main/version.json?t=`,
 ]
