@@ -288,24 +288,6 @@ function getRatioStyle(ratio: number) {
           </span>
         </div>
       </div>
-      <div class="index-holdings mobile-only" v-if="uiMode === 'full'" @click.stop="emit('openTopHoldings', $event)">
-        <span class="top-holdings-label">前十大重仓股</span>
-      </div>
-      <div class="intraday-section mobile-only" v-if="uiMode === 'full'" @click.stop="emit('openIntradayModal', $event)">
-        <span class="intraday-label-mobile">
-          <van-icon name="chart-trending-o" size="12" />
-          当日分时图
-        </span>
-      </div>
-    </div>
-    <div class="index-holdings web-only" v-if="uiMode === 'full'" @click.stop="emit('openTopHoldings', $event)">
-      <span class="top-holdings-label">前10大重仓股 <span class="top-holdings-arrow">›</span></span>
-    </div>
-    <div class="intraday-section web-only" v-if="uiMode === 'full'" @click.stop="emit('openIntradayModal', $event)">
-      <span class="intraday-label">
-        <van-icon name="chart-trending-o" size="12" />
-        当日分时估值
-      </span>
     </div>
     <div class="added-gain-section web-only" v-if="fund.addedGain !== undefined">
       <div class="added-gain-badge" :class="fund.addedGain >= 0 ? 'up' : 'down'">
