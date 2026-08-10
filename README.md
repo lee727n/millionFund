@@ -11,10 +11,10 @@
 ## 功能特点
 
 ### 网盘APK快速开始
-- **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平
-
-通过网盘分享的文件：fund-app-v3.8.5.apk
-链接: https://pan.baidu.com/s/1G63Dkjd8oNEJFgdFBloJFQ 提取码: dsq2
+- **网盘链接** - 通过网盘快速下载APK文件安装，仅支持Android平台
+更新一下最新版本 v3.9.2 已经支持gitee镜像源
+通过网盘分享的文件：fund-app-v3.9.2.apk
+链接: https://pan.baidu.com/s/1TJeAf1C2XSP-Jyejq4QCRw 提取码: n57i
 
 ### 核心功能
 - **实时估值** - 秒级刷新基金实时估值数据

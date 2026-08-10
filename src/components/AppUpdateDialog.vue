@@ -69,6 +69,13 @@ function handleClose() {
     </template>
 
     <div class="update-content" v-if="versionInfo">
+      <!-- 右上角关闭按钮 -->
+      <van-icon
+        v-if="!forceUpdate && !updateStore.downloading"
+        name="cross"
+        class="close-btn"
+        @click="handleClose"
+      />
       <!-- 版本信息 -->
       <div class="version-info">
         <div class="version-row">
@@ -135,6 +142,22 @@ function handleClose() {
 
 .update-content {
   padding: 16px;
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 20px;
+  color: #969799;
+  cursor: pointer;
+  padding: 4px;
+  z-index: 10;
+}
+
+.close-btn:active {
+  color: #646566;
 }
 
 .version-info {
