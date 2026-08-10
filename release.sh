@@ -53,7 +53,7 @@ echo ""
 echo -e "${YELLOW}[4/7] 更新 version.json 版本号...${NC}"
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" version.json
 sed -i '' "s/\"code\": .*/\"code\": $VERSION_CODE,/" version.json
-sed -i '' "s|releases/download/v.*/fund-app|releases/download/v${VERSION}/fund-app|" version.json
+sed -i '' "s|releases/download/v[^\"]*/fund-app-v[^\"]*\.apk|releases/download/v${VERSION}/fund-app-v${VERSION}.apk|" version.json
 echo -e "${GREEN}✓ version.json → version=$VERSION, code=$VERSION_CODE${NC}"
 echo ""
 
