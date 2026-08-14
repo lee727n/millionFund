@@ -334,11 +334,6 @@ function goToDetail(code: string) {
   router.push(`/detail/${code}`)
 }
 
-// 跳转AI追踪
-function goToAITracking() {
-  router.push('/ai-tracking')
-}
-
 // 删除交易记录
 async function deleteTrade(trade: TradeRecord) {
   try {
@@ -408,9 +403,6 @@ onMounted(() => {
           :disabled="refreshing"
         >
           <span class="refresh-icon">↻</span>
-        </button>
-        <button class="ai-entry-btn" @click="goToAITracking">
-          <span>AI追踪</span>
         </button>
       </div>
     </div>
@@ -580,30 +572,6 @@ onMounted(() => {
 
 .title-icon {
   font-size: 20px;
-}
-
-.ai-entry-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
-  transition: all 0.3s;
-}
-
-.ai-entry-btn:active {
-  transform: scale(0.95);
-}
-
-.ai-entry-btn span {
-  letter-spacing: 0.5px;
 }
 
 .trade-count {

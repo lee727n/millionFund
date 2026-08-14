@@ -5,19 +5,7 @@
       <div class="header-row-1">
         <h1 class="page-title">AI 追踪</h1>
         <div class="header-actions">
-          <div class="ui-mode-toggle">
-            <span 
-              class="ui-mode-btn" 
-              :class="{ active: uiMode === 'simple' }"
-              @click="setUiMode('simple')"
-            >简</span>
-            <span 
-              class="ui-mode-btn" 
-              :class="{ active: uiMode === 'full' }"
-              @click="setUiMode('full')"
-            >全</span>
-          </div>
-          <!-- 拖拽模式按钮 - 仅简版UI显示 -->
+          <!-- 简/全切换按钮已隐藏 -->
           <van-icon 
             v-if="uiMode === 'simple'" 
             name="exchange" 
@@ -34,7 +22,12 @@
       </div>
       <!-- 第二行：统计数据 - 横向显示 -->
       <div class="header-row-2 mobile-only" v-if="records.length > 0">
-        <span class="stat-item"><label>调仓成功率</label><span class="value">{{ successRate }}%</span></span>
+        <span class="stat-item">
+          <label>调仓成功率</label>
+          <span class="value">
+            <span class="success-count">{{ successCount }}</span>/<span class="total-count">{{ totalCount }}</span>
+          </span>
+        </span>
         <span class="stat-divider">|</span>
         <span class="stat-item"><label>累计</label><span class="value" :class="totalChangeClass">{{ totalChangeText }}</span></span>
       </div>
@@ -47,8 +40,10 @@
         class="record-card"
         :class="{ 
           'simple-mode': uiMode === 'simple',
-          'dragging': dragMode && draggingIndex === index,
-          'drag-over': dragMode && dragOverIndex === index
+          'dragging': dragMode && dragOverIndex === index,
+          'drag-over': dragMode && dragOverIndex === index,
+          'border-success': getStatusClass(record) === 'success',
+          'border-fail': getStatusClass(record) === 'fail'
         }"
         :draggable="uiMode === 'simple' && dragMode"
         @click="selectRecord(record)"
@@ -61,35 +56,33 @@
         @touchmove="handleTouchMove($event)"
         @touchend="handleTouchEnd"
       >
-        <!-- 简版UI -->
+        <!-- 简版UI - 2行布局 -->
         <div v-if="uiMode === 'simple'" class="record-simple">
-          <!-- 网页端简版UI -->
-          <div class="record-simple-web">
+          <!-- 第一行：日期 + 累计差值 + 今日估值(卖+买+差值) + 删除 -->
+          <div class="simple-row simple-row-header">
             <span class="simple-date">{{ formatDate(record.date) }}</span>
-            <span class="simple-status" :class="getStatusClass(record)">{{ getStatusText(record) }}</span>
-            <div class="simple-funds">
-              <div class="simple-fund-item">
-                <span class="simple-label sell">卖</span>
-                <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.sellName || record.sellCode }}</span>
-                <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
-              </div>
-              <div class="simple-fund-item">
-                <span class="simple-label buy">买</span>
-                <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.buyName || record.buyCode }}</span>
-                <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
-              </div>
-            </div>
+            <span class="simple-diff" :class="getDiffClass(record)">{{ getDiffText(record) }}</span>
+            <span class="simple-day-change-label">今日:</span>
+            <span class="simple-day-change" :class="getDayChangeClass(record, 'sell')">{{ getDayChangeText(record, 'sell') }}</span>
+            <span class="simple-day-change" :class="getDayChangeClass(record, 'buy')">{{ getDayChangeText(record, 'buy') }}</span>
+            <span class="simple-day-diff" :class="getDayDiffClass(record)">{{ getDayDiffText(record) }}</span>
             <span class="simple-delete" @click.stop="deleteRecord(record.id)">
               <van-icon name="delete-o" />
             </span>
           </div>
-          <!-- 移动端简版UI -->
-          <div class="record-simple-mobile">
-            <span class="simple-sell-name" :class="getStatusClass(record)">{{ record.sellName || record.sellCode }}</span>
-            <span class="simple-change sell" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
+          <!-- 第二行：卖 基金名称 累计 | 买 基金名称 累计 -->
+          <div class="simple-row simple-row-funds">
+            <div class="simple-fund-block">
+              <span class="simple-label sell">卖</span>
+              <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.sellName || record.sellCode }}</span>
+              <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
+            </div>
             <span class="simple-arrow">→</span>
-            <span class="simple-buy-name" :class="getStatusClass(record)">{{ record.buyName || record.buyCode }}</span>
-            <span class="simple-change buy" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
+            <div class="simple-fund-block">
+              <span class="simple-label buy">买</span>
+              <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.buyName || record.buyCode }}</span>
+              <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
+            </div>
           </div>
         </div>
         
@@ -220,10 +213,12 @@ function reloadRecords() {
 
 const records = computed(() => aiTrackingStore.records)
 
-const successRate = computed(() => {
+const totalCount = computed(() => records.value.length)
+
+const successCount = computed(() => {
   if (records.value.length === 0) return 0
 
-  let successCount = 0
+  let success = 0
   for (const record of records.value) {
     const sellPrice = fundPrices.value[record.sellCode]?.value || 0
     const buyPrice = fundPrices.value[record.buyCode]?.value || 0
@@ -234,11 +229,16 @@ const successRate = computed(() => {
     const buyChange = ((buyPrice - record.buyNav) / record.buyNav) * 100
 
     if (buyChange >= sellChange) {
-      successCount++
+      success++
     }
   }
 
-  return Math.round((successCount / records.value.length) * 100)
+  return success
+})
+
+const successRate = computed(() => {
+  if (records.value.length === 0) return 0
+  return Math.round((successCount.value / records.value.length) * 100)
 })
 
 // 计算总累计涨跌幅
@@ -675,6 +675,26 @@ function getDayChangeClass(record: AITrackingRecord, type: 'sell' | 'buy') {
   return dayChange >= 0 ? 'up' : 'down'
 }
 
+function getDayDiffText(record: AITrackingRecord): string {
+  const sellDayChange = fundPrices.value[record.sellCode]?.change || 0
+  const buyDayChange = fundPrices.value[record.buyCode]?.change || 0
+  
+  if (!sellDayChange && !buyDayChange) return ''
+  
+  const diff = sellDayChange - buyDayChange
+  return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`
+}
+
+function getDayDiffClass(record: AITrackingRecord): string {
+  const sellDayChange = fundPrices.value[record.sellCode]?.change || 0
+  const buyDayChange = fundPrices.value[record.buyCode]?.change || 0
+  
+  if (!sellDayChange && !buyDayChange) return ''
+  
+  const diff = sellDayChange - buyDayChange
+  return diff >= 0 ? 'diff-up' : 'diff-down'
+}
+
 function getCalcProcess(record: AITrackingRecord, type: 'sell' | 'buy') {
   const code = type === 'sell' ? record.sellCode : record.buyCode
   const nav = type === 'sell' ? record.sellNav : record.buyNav
@@ -735,6 +755,19 @@ function getDiffText(record: AITrackingRecord): string {
   
   const diff = buyChange - sellChange
   return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`
+}
+
+function getDiffClass(record: AITrackingRecord): string {
+  const sellPrice = fundPrices.value[record.sellCode]?.value || 0
+  const buyPrice = fundPrices.value[record.buyCode]?.value || 0
+  
+  if (!sellPrice || !buyPrice || !record.sellNav || !record.buyNav) return ''
+  
+  const sellChange = ((sellPrice - record.sellNav) / record.sellNav) * 100
+  const buyChange = ((buyPrice - record.buyNav) / record.buyNav) * 100
+  
+  const diff = buyChange - sellChange
+  return diff >= 0 ? 'diff-up' : 'diff-down'
 }
 
 // 拖拽排序相关函数
@@ -840,7 +873,7 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .ai-tracking-page {
   height: 100%;
   min-height: 100%;
@@ -910,6 +943,16 @@ onUnmounted(() => {
 
 .stat-item .value {
   font-weight: 600;
+}
+
+.stat-item .success-count {
+  color: #ee0a24;
+  font-weight: 700;
+}
+
+.stat-item .total-count {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .stat-item .up {
@@ -1003,7 +1046,15 @@ onUnmounted(() => {
 }
 
 .record-card.simple-mode {
-  padding: 2px 4px;
+  padding: 10px 12px;
+}
+
+.record-card.border-success {
+  border: 2px solid #ee0a24;
+}
+
+.record-card.border-fail {
+  border: 2px solid #07c160;
 }
 
 /* 拖拽状态样式 */
@@ -1027,30 +1078,38 @@ onUnmounted(() => {
   background: rgba(var(--primary-color-rgb), 0.1);
 }
 
-/* 简版UI - 默认隐藏移动端，显示网页端 */
-.record-simple-mobile {
-  display: none;
+/* ============ 简版UI样式 - 统一移动端和网页端 ============ */
+
+.record-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-.record-simple-web {
+.simple-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
   font-size: 13px;
+}
+
+/* 第一行：日期 + 状态 + 卖今日 + 买今日 + 删除 */
+.simple-row-header {
+  gap: 10px;
+  padding-bottom: 2px;
+  flex-wrap: nowrap;
 }
 
 .simple-date {
   font-size: 12px;
   color: var(--text-muted);
-  min-width: 60px;
+  font-family: var(--font-number);
+  flex-shrink: 0;
 }
 
 .simple-status {
   font-size: 12px;
   font-weight: 500;
-  min-width: 60px;
-  text-align: center;
+  flex-shrink: 0;
 }
 
 .simple-status.success {
@@ -1065,41 +1124,96 @@ onUnmounted(() => {
   color: #999;
 }
 
-.simple-funds {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  gap: 16px;
+.simple-diff {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  font-family: var(--font-number);
 }
 
-.simple-fund-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.simple-diff.diff-up {
+  color: #ee0a24;
+  background: rgba(238, 10, 36, 0.1);
+}
+
+.simple-diff.diff-down {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.1);
+}
+
+.simple-diff:not(.diff-up):not(.diff-down) {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.simple-day-diff {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  font-family: var(--font-number);
+}
+
+.simple-day-diff.diff-up {
+  color: #ee0a24;
+  background: rgba(238, 10, 36, 0.1);
+}
+
+.simple-day-diff.diff-down {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.1);
+}
+
+.simple-delete {
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.simple-delete:hover {
+  color: #ee0a24;
+}
+
+/* 第二行：卖出|买入并排 */
+.simple-row-funds {
+  gap: 6px;
+}
+
+.simple-fund-block {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
 }
 
 .simple-label {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #fff;
   flex-shrink: 0;
 }
 
 .simple-label.sell {
-  background: #ee0a24;
+  background: #07c160;
 }
 
 .simple-label.buy {
-  background: #07c160;
+  background: #ee0a24;
 }
 
 .simple-fund-name {
@@ -1109,6 +1223,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
+  font-size: 13px;
 }
 
 .simple-fund-name.success {
@@ -1119,14 +1234,55 @@ onUnmounted(() => {
   color: #07c160;
 }
 
+.simple-arrow {
+  color: var(--text-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* 今日标签 */
+.simple-day-change-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* 今日估算涨幅 - 第一行使用 */
+.simple-day-change {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: var(--font-number);
+}
+
+.simple-day-change.up {
+  color: #ee0a24;
+  background: rgba(238, 10, 36, 0.1);
+}
+
+.simple-day-change.down {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.1);
+}
+
+.simple-day-change:not(.up):not(.down) {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+/* 累计涨跌幅 */
 .simple-change {
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
+  font-weight: 600;
+  padding: 2px 6px;
   border-radius: 4px;
-  min-width: 55px;
-  text-align: right;
+  min-width: 50px;
+  text-align: center;
+  font-family: var(--font-number);
 }
 
 .simple-change.up {
@@ -1139,54 +1295,27 @@ onUnmounted(() => {
   background: rgba(7, 193, 96, 0.1);
 }
 
-.simple-arrow {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.simple-delete {
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-}
-
-.simple-delete:hover {
-  color: #ee0a24;
-}
-
-/* 移动端样式 */
-@media (max-width: 768px) {
-  .record-simple-mobile {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+/* 网页端更宽的布局 */
+@media (min-width: 769px) {
+  .simple-fund-name {
+    font-size: 14px;
+  }
+  
+  .simple-day-change {
+    font-size: 12px;
+  }
+  
+  .simple-change {
     font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-  }
-
-  .record-simple-web {
-    display: none;
-  }
-
-  .simple-sell-name,
-  .simple-buy-name {
-    flex-shrink: 0;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--text-primary);
+    min-width: 60px;
   }
   
-  .simple-sell-name.success,
-  .simple-buy-name.success {
-    color: #ee0a24;
+  .simple-fund-block {
+    padding: 6px 8px;
   }
   
-  .simple-sell-name.fail,
-  .simple-buy-name.fail {
-    color: #07c160;
+  .simple-row-header {
+    gap: 12px;
   }
 }
 

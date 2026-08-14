@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // [WHY] 根组件，包含路由视图和底部导航
-// [WHAT] 使用 Vant Tabbar 实现底部导航切换
+// [WHAT] 使用自定义 Tabbar 实现底部导航切换
 // [NOTE] 公告和更新检查已移至 Home.vue 中处理
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -30,7 +30,7 @@ onMounted(() => {
   
   plugins.App.addListener('backButton', () => {
     // [WHY] 如果不在主页，正常返回上一页
-    const mainPages = ['home', 'holding']
+    const mainPages = ['home', 'holding', 'ai-tracking', 'trade-center']
     const isMainPage = mainPages.includes(route.name as string)
     
     if (!isMainPage && window.history.length > 1) {
@@ -82,15 +82,12 @@ watch(
   { immediate: true }
 )
 
-// [WHAT] 切换 tab 时跳转路由
-function onTabChange(name: string | number) {
-  const routeMap: Record<string, string> = {
-    home: '/',
-    holding: '/holding'
-  }
-  if (routeMap[name as string]) {
-    router.push(routeMap[name as string])
-  }
+function goToHolding() {
+  router.push('/holding')
+}
+
+function goToHome() {
+  router.push('/')
 }
 
 function goToAITracking() {
@@ -121,126 +118,162 @@ function goToTradeCenter() {
       </router-view>
     </div>
 
-    <!-- 底部导航栏 -->
-    <van-tabbar
-      v-if="showTabbar"
-      v-model="activeTab"
-      @change="onTabChange"
-    >
-      <van-tabbar-item name="holding" icon="balance-list-o">我的持仓</van-tabbar-item>
-      <div class="tabbar-center-placeholder" :class="{ 'is-active': activeTab === 'trader' }" @click="goToTradeCenter">
-        <div class="tabbar-raised-button">
+    <!-- 底部导航栏 - 两个圆形按钮居中布局 -->
+    <!-- [WHY] 布局：我的持仓 | [AI圆形] | [TRADER圆形] | 趋势行情 -->
+    <nav v-if="showTabbar" class="custom-tabbar">
+      <!-- 左侧：我的持仓 -->
+      <div class="tabbar-side-item" :class="{ 'is-active': activeTab === 'holding' }" @click="goToHolding">
+        <van-icon name="balance-list-o" :size="22" />
+        <span>我的持仓</span>
+      </div>
+
+      <!-- 中间左侧：AI追踪圆形按钮 -->
+      <div class="tabbar-center-group">
+        <div 
+          class="tabbar-raised-btn" 
+          :class="{ 'is-active': activeTab === 'ai', 'btn-ai': true }"
+          @click="goToAITracking"
+        >
+          <span>AI<br/>追踪</span>
+        </div>
+
+        <!-- 中间右侧：Trader圆形按钮 -->
+        <div 
+          class="tabbar-raised-btn" 
+          :class="{ 'is-active': activeTab === 'trader', 'btn-trader': true }"
+          @click="goToTradeCenter"
+        >
           <span>Trader</span>
         </div>
       </div>
-      <van-tabbar-item name="home" icon="home-o">趋势行情</van-tabbar-item>
-    </van-tabbar>
+
+      <!-- 右侧：趋势行情 -->
+      <div class="tabbar-side-item" :class="{ 'is-active': activeTab === 'home' }" @click="goToHome">
+        <van-icon name="home-o" :size="22" />
+        <span>趋势行情</span>
+      </div>
+    </nav>
   </div>
 </template>
 
 <style scoped>
 .app-container {
-  /* [WHY] 固定高度，让子组件处理滚动 */
   height: 100%;
-  /* [WHY] 使用主题变量 */
   background: var(--bg-primary);
   transition: background-color 0.3s;
-  /* [WHY] 防止容器本身滚动，由子页面处理 */
   overflow: hidden;
-  /* [WHY] 弹性布局，让 router-view 撑满剩余空间 */
   display: flex;
   flex-direction: column;
-  /* [WHAT] 安全区由子页面自行处理 */
-  /* padding-top: env(safe-area-inset-top, 0px); */
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* [WHY] 页面包装器，撑满 tabbar 之外的所有空间 */
 .page-wrapper {
   flex: 1;
   overflow: hidden;
-  /* [WHY] 相对定位，让子页面可以使用绝对定位或百分比高度 */
   position: relative;
 }
 
-/* [WHY] 全局水印样式 */
-/* [WHAT] 覆盖整个页面，半透明，不可点击 */
-.watermark {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 9999;
-  pointer-events: none; /* [WHY] 不阻挡用户点击 */
-  overflow: hidden;
+/* ============ 自定义 Tabbar 样式 ============ */
+.custom-tabbar {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 60px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  padding: 0 8px;
+  z-index: 100;
 }
 
-.watermark-content {
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
+/* 两侧普通 tab 项 */
+.tabbar-side-item {
+  flex: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  transform: rotate(-30deg); /* [WHY] 斜向排列更美观 */
+  height: 100%;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  font-size: 11px;
+  gap: 2px;
 }
 
-.watermark-text {
-  display: inline-block;
-  padding: 30px 50px;
-  font-size: 16px;
-  font-weight: 500;
-  color: rgba(128, 128, 128, 0.15); /* [WHY] 半透明灰色，不影响阅读 */
-  white-space: nowrap;
-  user-select: none;
+.tabbar-side-item:active {
+  transform: scale(0.95);
 }
 
-/* 选中时的背景色 */
-:deep(.van-tabbar-item--active) {
-  background: linear-gradient(180deg, #0ea5e9, #22d3ee) !important;
-  color: #05263b !important;
+.tabbar-side-item.is-active {
+  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
+  color: #05263b;
   font-weight: 600;
 }
 
-/* 中间占位区域 - 只占小部分宽度 */
-.tabbar-center-placeholder {
-  flex: 0 0 60px;
+/* 中间双圆形按钮容器 */
+.tabbar-center-group {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  height: 100%;
-  position: relative;
+  gap: 12px;
+  z-index: 10;
 }
 
-/* 突出圆形按钮 - 上半圆突出，下半圆在tabbar内 */
-.tabbar-raised-button {
-  width: 70px;
-  height: 70px;
+/* 圆形凸起按钮 - 两个按钮样式统一 */
+.tabbar-raised-btn {
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.5);
+  cursor: pointer;
   z-index: 10;
-  margin-top: -45px;
   transition: all 0.3s;
+  margin-bottom: 12px;
 }
 
-/* 选中时的蓝色渐变 */
-.tabbar-center-placeholder.is-active .tabbar-raised-button {
-  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
+/* AI 按钮 - 紫色系（与 Trader 一致） */
+.tabbar-raised-btn.btn-ai {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.5);
+}
+
+/* Trader 按钮 - 紫色系 */
+.tabbar-raised-btn.btn-trader {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.5);
+}
+
+/* 选中态 - 蓝色统一 */
+.tabbar-raised-btn.is-active {
+  background: linear-gradient(180deg, #0ea5e9, #22d3ee) !important;
   box-shadow: 0 -2px 10px rgba(14, 165, 233, 0.5);
 }
 
-.tabbar-raised-button span {
+.tabbar-raised-btn:active {
+  transform: scale(0.92);
+}
+
+.tabbar-raised-btn span {
   color: #fff;
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
+  line-height: 1.1;
+  text-align: center;
+}
+
+/* 浅色主题适配 */
+[data-theme="light"] .custom-tabbar {
+  background: #ffffff;
+  border-top: 1px solid #e6eaef;
+}
+
+[data-theme="light"] .tabbar-side-item__text {
+  color: #666 !important;
 }
 </style>
