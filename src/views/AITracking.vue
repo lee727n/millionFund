@@ -5,7 +5,7 @@
       <div class="header-row-1">
         <h1 class="page-title">AI 追踪</h1>
         <div class="header-actions">
-          <!-- 简/全切换按钮已隐藏 -->
+          <!-- 拖拽模式按钮 -->
           <van-icon 
             v-if="uiMode === 'simple'" 
             name="exchange" 
@@ -56,33 +56,42 @@
         @touchmove="handleTouchMove($event)"
         @touchend="handleTouchEnd"
       >
-        <!-- 简版UI - 2行布局 -->
+        <!-- 简版UI - Grid两行对齐布局 -->
         <div v-if="uiMode === 'simple'" class="record-simple">
-          <!-- 第一行：日期 + 累计差值 + 今日估值(卖+买+差值) + 删除 -->
-          <div class="simple-row simple-row-header">
-            <span class="simple-date">{{ formatDate(record.date) }}</span>
-            <span class="simple-diff" :class="getDiffClass(record)">{{ getDiffText(record) }}</span>
-            <span class="simple-day-change-label">今日:</span>
-            <span class="simple-day-change" :class="getDayChangeClass(record, 'sell')">{{ getDayChangeText(record, 'sell') }}</span>
-            <span class="simple-day-change" :class="getDayChangeClass(record, 'buy')">{{ getDayChangeText(record, 'buy') }}</span>
-            <span class="simple-day-diff" :class="getDayDiffClass(record)">{{ getDayDiffText(record) }}</span>
+          <!-- 累计差值 -->
+          <span class="simple-diff" :class="getDiffClass(record)">{{ getDiffText(record) }}</span>
+
+          <!-- 移动端专用：删除+估值差值（col1 row2） -->
+          <div class="simple-mobile-actions">
             <span class="simple-delete" @click.stop="deleteRecord(record.id)">
               <van-icon name="delete-o" />
             </span>
+            <span class="simple-today-diff" :class="getDayDiffClass(record)" v-if="getDayDiffText(record)">差值{{ getDayDiffText(record) }}</span>
           </div>
-          <!-- 第二行：卖 基金名称 累计 | 买 基金名称 累计 -->
-          <div class="simple-row simple-row-funds">
-            <div class="simple-fund-block">
-              <span class="simple-label sell">卖</span>
-              <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.sellName || record.sellCode }}</span>
-              <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
-            </div>
-            <span class="simple-arrow">→</span>
-            <div class="simple-fund-block">
-              <span class="simple-label buy">买</span>
-              <span class="simple-fund-name" :class="getStatusClass(record)">{{ record.buyName || record.buyCode }}</span>
-              <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
-            </div>
+
+          <!-- 第一行：卖出基金 + 箭头 + 买入基金 -->
+          <div class="simple-fund-item simple-cell-sell simple-cell-row1">
+            <span class="simple-fund-name">{{ record.sellName || record.sellCode }}</span>
+            <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
+          </div>
+          <span class="simple-arrow simple-cell-arrow">→</span>
+          <div class="simple-fund-item simple-cell-buy simple-cell-row1">
+            <span class="simple-fund-name">{{ record.buyName || record.buyCode }}</span>
+            <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
+          </div>
+
+          <!-- 第二行：卖出估值 + 买入估值 -->
+          <div class="simple-today-sell simple-cell-sell simple-cell-row2">
+            <span class="simple-delete desktop-only" @click.stop="deleteRecord(record.id)">
+              <van-icon name="delete-o" />
+            </span>
+            <span class="simple-today-diff desktop-only" :class="getDayDiffClass(record)" v-if="getDayDiffText(record)">差值: {{ getDayDiffText(record) }}</span>
+            <span class="simple-today-label">卖出估值</span>
+            <span class="simple-today-value" :class="getDayChangeClass(record, 'sell')">{{ getDayChangeText(record, 'sell') }}</span>
+          </div>
+          <div class="simple-today-buy simple-cell-buy simple-cell-row2">
+            <span class="simple-today-label">买入估值</span>
+            <span class="simple-today-value" :class="getDayChangeClass(record, 'buy')">{{ getDayChangeText(record, 'buy') }}</span>
           </div>
         </div>
         
@@ -211,7 +220,21 @@ function reloadRecords() {
   showToast({ message: '数据已重新加载', duration: 1500 })
 }
 
-const records = computed(() => aiTrackingStore.records)
+const records = computed(() => {
+  const list = [...aiTrackingStore.records]
+  list.sort((a, b) => {
+    const getDiff = (record: typeof a) => {
+      const sellPrice = fundPrices.value[record.sellCode]?.value || 0
+      const buyPrice = fundPrices.value[record.buyCode]?.value || 0
+      if (!sellPrice || !buyPrice || !record.sellNav || !record.buyNav) return -Infinity
+      const sellChange = ((sellPrice - record.sellNav) / record.sellNav) * 100
+      const buyChange = ((buyPrice - record.buyNav) / record.buyNav) * 100
+      return buyChange - sellChange
+    }
+    return getDiff(b) - getDiff(a)
+  })
+  return list
+})
 
 const totalCount = computed(() => records.value.length)
 
@@ -681,7 +704,7 @@ function getDayDiffText(record: AITrackingRecord): string {
   
   if (!sellDayChange && !buyDayChange) return ''
   
-  const diff = sellDayChange - buyDayChange
+  const diff = buyDayChange - sellDayChange
   return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`
 }
 
@@ -691,7 +714,7 @@ function getDayDiffClass(record: AITrackingRecord): string {
   
   if (!sellDayChange && !buyDayChange) return ''
   
-  const diff = sellDayChange - buyDayChange
+  const diff = buyDayChange - sellDayChange
   return diff >= 0 ? 'diff-up' : 'diff-down'
 }
 
@@ -1049,14 +1072,6 @@ onUnmounted(() => {
   padding: 10px 12px;
 }
 
-.record-card.border-success {
-  border: 2px solid #ee0a24;
-}
-
-.record-card.border-fail {
-  border: 2px solid #07c160;
-}
-
 /* 拖拽状态样式 */
 .record-card.dragging {
   opacity: 0.5;
@@ -1078,59 +1093,44 @@ onUnmounted(() => {
   background: rgba(var(--primary-color-rgb), 0.1);
 }
 
-/* ============ 简版UI样式 - 统一移动端和网页端 ============ */
+/* ============ 简版UI样式 - 两行对齐布局 ============ */
+
+/* 卡片左侧竖色条 - 加粗 + 阴影 */
+.record-card.border-success {
+  border-top: 1px solid #e5e5e5 !important;
+  border-right: 1px solid #e5e5e5 !important;
+  border-bottom: 1px solid #e5e5e5 !important;
+  border-left: 5px solid #ee0a24 !important;
+  box-shadow: 0 2px 8px rgba(238, 10, 36, 0.15);
+}
+
+.record-card.border-fail {
+  border-top: 1px solid #e5e5e5 !important;
+  border-right: 1px solid #e5e5e5 !important;
+  border-bottom: 1px solid #e5e5e5 !important;
+  border-left: 5px solid #07c160 !important;
+  box-shadow: 0 2px 8px rgba(7, 193, 96, 0.15);
+}
 
 .record-simple {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.simple-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 4px 8px;
   align-items: center;
-  font-size: 13px;
 }
 
-/* 第一行：日期 + 状态 + 卖今日 + 买今日 + 删除 */
-.simple-row-header {
-  gap: 10px;
-  padding-bottom: 2px;
-  flex-wrap: nowrap;
-}
-
-.simple-date {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-number);
-  flex-shrink: 0;
-}
-
-.simple-status {
-  font-size: 12px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.simple-status.success {
-  color: #ee0a24;
-}
-
-.simple-status.fail {
-  color: #07c160;
-}
-
-.simple-status.pending {
-  color: #999;
-}
-
+/* 累计差值 - 移动端在row1，桌面端跨两行 */
 .simple-diff {
+  grid-row: 1;
+  grid-column: 1;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  flex-shrink: 0;
   font-family: var(--font-number);
+  white-space: nowrap;
+  text-align: center;
 }
 
 .simple-diff.diff-up {
@@ -1148,72 +1148,34 @@ onUnmounted(() => {
   background: var(--bg-secondary);
 }
 
-.simple-day-diff {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  font-family: var(--font-number);
+/* Grid 定位 */
+.simple-cell-sell { grid-column: 2; }
+.simple-cell-buy { grid-column: 4; }
+.simple-cell-row1 { grid-row: 1; }
+.simple-cell-row2 { grid-row: 2; }
+.simple-cell-arrow { grid-column: 3; grid-row: 1; }
+
+/* 移动端专用：估值差值+删除（col1 row2） */
+.simple-mobile-actions {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.simple-day-diff.diff-up {
-  color: #ee0a24;
-  background: rgba(238, 10, 36, 0.1);
+/* 桌面端专用元素 - 移动端隐藏 */
+.desktop-only {
+  display: none;
 }
 
-.simple-day-diff.diff-down {
-  color: #07c160;
-  background: rgba(7, 193, 96, 0.1);
-}
-
-.simple-delete {
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.simple-delete:hover {
-  color: #ee0a24;
-}
-
-/* 第二行：卖出|买入并排 */
-.simple-row-funds {
-  gap: 6px;
-}
-
-.simple-fund-block {
-  flex: 1;
+/* 第一行：基金名称 + 累计涨幅 */
+.simple-fund-item {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px;
-  border-radius: 6px;
-  background: var(--bg-tertiary);
-}
-
-.simple-label {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.simple-label.sell {
-  background: #07c160;
-}
-
-.simple-label.buy {
-  background: #ee0a24;
+  overflow: hidden;
 }
 
 .simple-fund-name {
@@ -1224,98 +1186,154 @@ onUnmounted(() => {
   white-space: nowrap;
   color: var(--text-primary);
   font-size: 13px;
+  font-weight: 500;
 }
 
-.simple-fund-name.success {
-  color: #ee0a24;
+.simple-change {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-number);
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
-.simple-fund-name.fail {
-  color: #07c160;
-}
+.simple-change.up { color: #ee0a24; }
+.simple-change.down { color: #07c160; }
 
 .simple-arrow {
   color: var(--text-muted);
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-/* 今日标签 */
-.simple-day-change-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-/* 今日估算涨幅 - 第一行使用 */
-.simple-day-change {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 5px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-family: var(--font-number);
-}
-
-.simple-day-change.up {
-  color: #ee0a24;
-  background: rgba(238, 10, 36, 0.1);
-}
-
-.simple-day-change.down {
-  color: #07c160;
-  background: rgba(7, 193, 96, 0.1);
-}
-
-.simple-day-change:not(.up):not(.down) {
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-}
-
-/* 累计涨跌幅 */
-.simple-change {
-  flex-shrink: 0;
   font-size: 12px;
+  opacity: 0.5;
+}
+
+/* 第二行：卖出估值区域 */
+.simple-today-sell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 第二行：买入估值区域 */
+.simple-today-buy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.simple-today-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* 今日估值数值 - 右对齐，与上面的累计涨幅对齐 */
+.simple-today-value {
+  font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  min-width: 50px;
-  text-align: center;
   font-family: var(--font-number);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
-.simple-change.up {
+.simple-today-value.up { color: #ee0a24; }
+.simple-today-value.down { color: #07c160; }
+
+/* 删除按钮 */
+.simple-delete {
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: all 0.2s;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.simple-delete:hover {
   color: #ee0a24;
-  background: rgba(238, 10, 36, 0.1);
+  opacity: 1;
 }
 
-.simple-change.down {
-  color: #07c160;
-  background: rgba(7, 193, 96, 0.1);
+/* 今日差值 */
+.simple-today-diff {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-/* 网页端更宽的布局 */
-@media (min-width: 769px) {
+.simple-today-diff.diff-up { color: #ee0a24; }
+.simple-today-diff.diff-down { color: #07c160; }
+
+/* ============ 桌面端简版 UI (>= 768px) ============ */
+@media (min-width: 768px) {
+  .record-card.simple-mode {
+    padding: 14px 18px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: box-shadow 0.2s ease;
+  }
+
+  .record-card.simple-mode:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .record-simple {
+    gap: 6px;
+  }
+
+  /* 桌面端：累计差值跨两行垂直居中 */
+  .simple-diff {
+    grid-row: 1 / 3;
+    align-self: center;
+    font-size: 14px;
+    padding: 4px 10px;
+  }
+
+  /* 桌面端：隐藏移动端专用元素 */
+  .simple-mobile-actions {
+    display: none;
+  }
+
+  /* 桌面端：显示桌面专用元素 */
+  .desktop-only {
+    display: inline-flex;
+  }
+
+  .simple-fund-item {
+    gap: 6px;
+  }
+
   .simple-fund-name {
     font-size: 14px;
   }
-  
-  .simple-day-change {
+
+  .simple-change {
     font-size: 12px;
   }
-  
-  .simple-change {
-    font-size: 13px;
-    min-width: 60px;
+
+  .simple-arrow {
+    font-size: 14px;
   }
-  
-  .simple-fund-block {
-    padding: 6px 8px;
+
+  .simple-today-value {
+    font-size: 12px;
   }
-  
-  .simple-row-header {
-    gap: 12px;
+
+  .simple-today-diff {
+    font-size: 12px;
+  }
+
+  .simple-delete {
+    font-size: 16px;
+    padding: 4px 6px;
+    opacity: 0.3;
+  }
+
+  .simple-delete:hover {
+    opacity: 1;
   }
 }
 

@@ -556,53 +556,39 @@ function parseStockHoldingsHtml(html: string): StockHolding[] {
 /**
  * 获取大盘指数数据
  * [WHY] 展示上证、深证、创业板等主要指数
- * [DEPS] 东方财富指数接口
+ * [DEPS] 东方财富指数接口（使用fetch代替JSONP，兼容移动端WebView）
  */
 export async function fetchMarketIndices(): Promise<MarketIndex[]> {
-  return new Promise((resolve) => {
-    const callbackName = `index_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const timeout = setTimeout(() => {
-      cleanup()
-      // [EDGE] 超时返回空数组
-      resolve([])
-    }, 10000)
-
-      ; (window as any)[callbackName] = (data: any) => {
-        cleanup()
-        if (!data || !data.data || !data.data.diff) {
-          // [EDGE] 接口失败时返回空数组，不使用模拟数据
-          resolve([])
-          return
-        }
-
-        const indices: MarketIndex[] = data.data.diff.map((item: any) => ({
-          code: item.f12,
-          name: item.f14,
-          current: item.f2 / 100,
-          change: item.f4 / 100,
-          changeRate: item.f3 / 100,
-          volume: item.f6 / 100000000
-        }))
-        resolve(indices)
-      }
-
-    function cleanup() {
-      clearTimeout(timeout)
-      delete (window as any)[callbackName]
-      const script = document.getElementById(callbackName)
-      if (script) document.body.removeChild(script)
-    }
-
-    const script = document.createElement('script')
-    script.id = callbackName
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
     // [WHAT] 请求上证指数(1.000001)、深证成指(0.399001)、创业板指(0.399006)、科创50(1.000688)
-    script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?cb=${callbackName}&fltt=2&secids=1.000001,0.399001,0.399006,1.000688&fields=f2,f3,f4,f6,f12,f14&_=${Date.now()}`
-    script.onerror = () => {
-      cleanup()
-      resolve([])
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001,0.399001,0.399006,1.000688&fields=f2,f3,f4,f6,f12,f14&_=${Date.now()}`
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      return []
     }
-    document.body.appendChild(script)
-  })
+
+    const data = await response.json()
+    if (!data || !data.data || !data.data.diff) {
+      return []
+    }
+
+    const indices: MarketIndex[] = data.data.diff.map((item: any) => ({
+      code: item.f12,
+      name: item.f14,
+      current: item.f2 / 100,
+      change: item.f4 / 100,
+      changeRate: item.f3 / 100,
+      volume: item.f6 / 100000000
+    }))
+    return indices
+  } catch {
+    // [EDGE] 接口失败时返回空数组，不使用模拟数据
+    return []
+  }
 }
 
 /**

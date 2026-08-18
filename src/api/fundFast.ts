@@ -1295,40 +1295,25 @@ async function fetchHKStockQuotes(holdings: HoldingStock[]) {
 async function fetchHKQuotesViaEastmoney(holdings: HoldingStock[]) {
   try {
     const secids = holdings.map(h => `116.${h.code}`).join(',')
-    const callbackName = `hkquote_${Date.now()}`
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
 
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
 
-        ; (window as any)[callbackName] = (data: any) => {
-          cleanup()
-          try {
-            if (data?.data?.diff) {
-              data.data.diff.forEach((item: any) => {
-                const h = holdings.find(h => h.code === item.f12)
-                if (h) {
-                  if (!h.name) h.name = item.f14
-                  h.change = item.f3 || 0
-                }
-              })
-            }
-          } catch { /* ignore */ }
-          resolve()
+    if (!response.ok) return
+    const data = await response.json()
+
+    if (data?.data?.diff) {
+      data.data.diff.forEach((item: any) => {
+        const h = holdings.find(h => h.code === item.f12)
+        if (h) {
+          if (!h.name) h.name = item.f14
+          h.change = item.f3 || 0
         }
-
-      const script = document.createElement('script')
-      script.id = callbackName
-      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-      script.onerror = () => { cleanup(); resolve() }
-      document.body.appendChild(script)
-
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(callbackName)
-        if (s) document.body.removeChild(s)
-        try { delete (window as any)[callbackName] } catch { /* */ }
-      }
-    })
+      })
+    }
   } catch { /* ignore */ }
 }
 
@@ -1373,41 +1358,26 @@ async function fetchUSStockQuotes(holdings: HoldingStock[]) {
 async function fetchUSQuotesViaEastmoney(holdings: HoldingStock[]) {
   try {
     const secids = holdings.map(h => `105.${h.code}`).join(',')
-    const callbackName = `usquote_${Date.now()}`
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
 
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
 
-        ; (window as any)[callbackName] = (data: any) => {
-          cleanup()
-          try {
-            if (data?.data?.diff) {
-              data.data.diff.forEach((item: any) => {
-                const code = item.f12 || ''
-                const h = holdings.find(h => h.code.toUpperCase() === code.toUpperCase())
-                if (h) {
-                  if (!h.name) h.name = item.f14
-                  h.change = item.f3 || 0
-                }
-              })
-            }
-          } catch { /* ignore */ }
-          resolve()
+    if (!response.ok) return
+    const data = await response.json()
+
+    if (data?.data?.diff) {
+      data.data.diff.forEach((item: any) => {
+        const code = item.f12 || ''
+        const h = holdings.find(h => h.code.toUpperCase() === code.toUpperCase())
+        if (h) {
+          if (!h.name) h.name = item.f14
+          h.change = item.f3 || 0
         }
-
-      const script = document.createElement('script')
-      script.id = callbackName
-      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-      script.onerror = () => { cleanup(); resolve() }
-      document.body.appendChild(script)
-
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(callbackName)
-        if (s) document.body.removeChild(s)
-        try { delete (window as any)[callbackName] } catch { /* */ }
-      }
-    })
+      })
+    }
   } catch { /* ignore */ }
 }
 
@@ -2269,49 +2239,36 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
 
   try {
     const codes = indices.map(i => i.code).join(',')
-    const callbackName = `globalIdx_${Date.now()}`
+    // [WHY] 使用fetch代替JSONP，避免移动端Capacitor WebView对动态script标签的限制
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
 
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => { cleanup(); resolve() }, 8000)
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
 
-        // [WHAT] 设置 JSONP 回调
-        ; (window as any)[callbackName] = (data: any) => {
-          cleanup()
-          try {
-            if (data?.data?.diff) {
-              data.data.diff.forEach((item: any, idx: number) => {
-                if (indices[idx] && item.f2 > 0) {
-                  results.push({
-                    name: indices[idx].name,
-                    code: indices[idx].code,
-                    price: item.f2 / 100,  // 价格需要除以100
-                    change: item.f4 / 100, // 涨跌额
-                    changePercent: item.f3 / 100, // 涨跌幅
-                    region: indices[idx].region
-                  })
-                }
-              })
-            }
-          } catch { /* ignore */ }
-          resolve()
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data?.data?.diff) {
+      data.data.diff.forEach((item: any) => {
+        // [WHAT] 按code匹配（而不是按索引），避免返回顺序不一致
+        const matched = indices.find(i => i.code.endsWith(item.f12) || i.code === item.f12)
+        if (matched && item.f2 > 0) {
+          results.push({
+            name: matched.name,
+            code: matched.code,
+            price: item.f2 / 100,  // 价格需要除以100
+            change: item.f4 / 100, // 涨跌额
+            changePercent: item.f3 / 100, // 涨跌幅
+            region: matched.region
+          })
         }
-
-      const script = document.createElement('script')
-      script.id = callbackName
-      // [DEPS] 东方财富行情接口
-      script.src = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&cb=${callbackName}&_=${Date.now()}`
-
-      script.onerror = () => { cleanup(); resolve() }
-
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(callbackName)
-        if (s) document.body.removeChild(s)
-        try { delete (window as any)[callbackName] } catch { /* */ }
-      }
-
-      document.body.appendChild(script)
-    })
+      })
+    }
 
     if (results.length === 0) return getDefaultGlobalIndices()
 

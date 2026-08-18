@@ -105,35 +105,41 @@ function shouldUpdateHolidays(): boolean {
   }
 }
 
+// 预加载锁，防止重复触发
+let isPreloading = false
+
 /**
- * 批量更新节假日数据（预加载未来3个月）
- * [WHY] 减少API调用次数，一次性获取未来3个月的节假日数据
+ * 批量更新节假日数据（预加载本年度和下年度数据）
+ * [WHY] 减少API调用次数，使用年度API一次性获取全年数据
  */
 async function preloadHolidays(): Promise<void> {
-  if (!shouldUpdateHolidays()) {
-    // console.log('[节假日缓存] 今天已更新过，跳过预加载')
+  // 防止重复触发
+  if (isPreloading) {
     return
   }
 
+  if (!shouldUpdateHolidays()) {
+    return
+  }
+
+  isPreloading = true
+
   try {
     const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() + 1
+    const currentYear = now.getFullYear()
 
-    // 获取当前月份和未来2个月的节假日数据
-    const monthsToLoad = [
-      `${year}-${month.toString().padStart(2, '0')}`,
-      `${year}-${((month + 1) % 12 || 12).toString().padStart(2, '0')}`,
-      `${year}-${((month + 2) % 12 || 12).toString().padStart(2, '0')}`
-    ]
+    // 加载本年度和下一年度的数据（处理跨年场景）
+    const yearsToLoad = [currentYear, currentYear + 1]
 
-    console.log('[节假日缓存] 开始预加载', monthsToLoad.join(', '), '的数据')
+    console.log('[节假日缓存] 开始预加载', yearsToLoad.join(', '), '年的数据')
+
+    let successCount = 0
 
     // 使用timor.tech的年度API批量获取数据
-    for (const monthStr of monthsToLoad) {
-      const apiUrl = `https://timor.tech/api/holiday/year/${monthStr}`
+    for (const year of yearsToLoad) {
+      const apiUrl = `https://timor.tech/api/holiday/year/${year}`
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5秒超时
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8秒超时，手机网络适当放宽
 
       try {
         const response = await fetch(apiUrl, {
@@ -147,28 +153,75 @@ async function preloadHolidays(): Promise<void> {
 
         const data = await response.json()
 
-        // 解析并存储每个月的节假日数据
+        // 解析并存储节假日数据
+        // timor.tech年度API返回格式: { "10-01": { holiday: true, name: "国庆节", wage: 3, ... }, ... }
+        // 需要转换为 HolidayInfo 格式，与单日API返回一致
         if (data && typeof data === 'object') {
           Object.entries(data).forEach(([dateStr, info]) => {
-            if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-              holidayCache.set(dateStr, info as HolidayInfo)
+            let fullDateStr = ''
+            // 年度API返回的是 MM-DD 格式，需要拼接年份
+            if (typeof dateStr === 'string' && dateStr.match(/^\d{2}-\d{2}$/)) {
+              fullDateStr = `${year}-${dateStr}`
+            } else if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              // 兼容完整日期格式
+              fullDateStr = dateStr
+            } else {
+              return
             }
+
+            const rawInfo = info as any
+            // 转换为统一的 HolidayInfo 格式
+            // holiday=true 表示节假日（type=2节日 或 type=3调休放假）
+            // holiday=false 且不是周末时，可能是补班（type=4）
+            let typeNumber = 0
+            if (rawInfo.holiday === true) {
+              typeNumber = 2 // 标记为节日
+            } else if (rawInfo.holiday === false) {
+              // 补班日 holiday=false
+              const d = new Date(fullDateStr)
+              const dayOfWeek = d.getDay()
+              if (dayOfWeek === 0 || dayOfWeek === 6) {
+                typeNumber = 4 // 周末补班
+              }
+            }
+
+            const convertedInfo: HolidayInfo = {
+              code: 0,
+              type: {
+                type: typeNumber,
+                name: rawInfo.name || ''
+              },
+              holiday: rawInfo.holiday !== undefined ? {
+                holiday: rawInfo.holiday,
+                name: rawInfo.name || '',
+                wage: rawInfo.wage || 0,
+                date: fullDateStr,
+                rest: rawInfo.rest || 0
+              } : undefined
+            }
+
+            holidayCache.set(fullDateStr, convertedInfo)
           })
+          successCount++
         }
       } catch (error) {
-        console.warn('[节假日缓存] 预加载失败', monthStr, error)
+        console.warn('[节假日缓存] 预加载失败', year, error)
       }
     }
 
     // 保存到localStorage
     saveCacheToStorage()
 
-    // 记录更新时间
-    localStorage.setItem(LAST_UPDATE_KEY, Date.now().toString())
+    // 只有至少有一个年份加载成功时，才记录更新时间，避免失败后无法重试
+    if (successCount > 0) {
+      localStorage.setItem(LAST_UPDATE_KEY, Date.now().toString())
+    }
 
     console.log('[节假日缓存] 预加载完成，共', holidayCache.size, '条数据')
   } catch (error) {
     console.warn('[节假日缓存] 预加载失败', error)
+  } finally {
+    isPreloading = false
   }
 }
 
@@ -209,8 +262,8 @@ export function isHolidaySync(date: string): boolean {
 
   const isHolidayResult = holidays2026.includes(date)
 
-  // 如果缓存中没有数据，触发预加载
-  if (holidayCache.size === 0) {
+  // 如果缓存中没有数据，触发预加载（使用预加载锁防止重复触发）
+  if (holidayCache.size === 0 && !isPreloading) {
     preloadHolidays().catch(err => {
       console.warn('[节假日缓存] 预加载失败', err)
     })
