@@ -118,8 +118,8 @@ function goToTradeCenter() {
       </router-view>
     </div>
 
-    <!-- 底部导航栏 - 两个圆形按钮居中布局 -->
-    <!-- [WHY] 布局：我的持仓 | [AI圆形] | [TRADER圆形] | 趋势行情 -->
+    <!-- 底部导航栏 - 3按钮 + 中心凸起圆形Trader -->
+    <!-- [WHY] 布局：我的持仓 | AI追踪(中心) | 趋势行情，中心上方凸起圆形Trader -->
     <nav v-if="showTabbar" class="custom-tabbar">
       <!-- 左侧：我的持仓 -->
       <div class="tabbar-side-item" :class="{ 'is-active': activeTab === 'holding' }" @click="goToHolding">
@@ -127,22 +127,18 @@ function goToTradeCenter() {
         <span>我的持仓</span>
       </div>
 
-      <!-- 中间左侧：AI追踪圆形按钮 -->
-      <div class="tabbar-center-group">
-        <div 
-          class="tabbar-raised-btn" 
-          :class="{ 'is-active': activeTab === 'ai', 'btn-ai': true }"
-          @click="goToAITracking"
-        >
-          <span>AI<br/>追踪</span>
+      <!-- 中间：AI追踪 + 上方凸起圆形Trader -->
+      <div class="tabbar-center-slot">
+        <div class="tabbar-center-item" :class="{ 'is-active': activeTab === 'ai' }" @click="goToAITracking">
+          <van-icon name="robot-o" :size="22" />
+          <span>AI追踪</span>
         </div>
-
-        <!-- 中间右侧：Trader圆形按钮 -->
         <div 
-          class="tabbar-raised-btn" 
-          :class="{ 'is-active': activeTab === 'trader', 'btn-trader': true }"
+          class="tabbar-raised-trader" 
+          :class="{ 'is-active': activeTab === 'trader' }"
           @click="goToTradeCenter"
         >
+          <van-icon name="chart-trending-o" :size="26" color="#fff" />
           <span>Trader</span>
         </div>
       </div>
@@ -179,7 +175,7 @@ function goToTradeCenter() {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  height: 60px;
+  height: 64px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   padding: 0 8px;
@@ -199,6 +195,18 @@ function goToTradeCenter() {
   transition: all 0.2s;
   font-size: 11px;
   gap: 2px;
+  position: relative;
+}
+
+.tabbar-side-item::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 24px;
+  background: var(--border-light);
 }
 
 .tabbar-side-item:active {
@@ -211,60 +219,96 @@ function goToTradeCenter() {
   font-weight: 600;
 }
 
-/* 中间双圆形按钮容器 */
-.tabbar-center-group {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
+/* 中间区域 - AI追踪 + Trader圆形 */
+.tabbar-center-slot {
+  flex: 1;
+  position: relative;
   display: flex;
-  gap: 12px;
-  z-index: 10;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
-/* 圆形凸起按钮 - 两个按钮样式统一 */
-.tabbar-raised-btn {
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
+.tabbar-center-slot::before,
+.tabbar-center-slot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 24px;
+  background: var(--border-light);
+}
+
+.tabbar-center-slot::before {
+  left: 0;
+}
+
+.tabbar-center-slot::after {
+  right: 0;
+}
+
+.tabbar-center-item {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  font-size: 11px;
+  gap: 2px;
+  padding-top: 32px;
+}
+
+.tabbar-center-item:active {
+  transform: scale(0.95);
+}
+
+.tabbar-center-item.is-active {
+  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
+  color: #05263b;
+  font-weight: 600;
+}
+
+/* 中心凸起圆形 Trader 按钮 */
+.tabbar-raised-trader {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 -2px 12px rgba(102, 126, 234, 0.5);
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 10;
-  transition: all 0.3s;
-  margin-bottom: 12px;
+  transition: all 0.25s ease;
 }
 
-/* AI 按钮 - 紫色系（与 Trader 一致） */
-.tabbar-raised-btn.btn-ai {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.5);
-}
-
-/* Trader 按钮 - 紫色系 */
-.tabbar-raised-btn.btn-trader {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.5);
-}
-
-/* 选中态 - 蓝色统一 */
-.tabbar-raised-btn.is-active {
-  background: linear-gradient(180deg, #0ea5e9, #22d3ee) !important;
-  box-shadow: 0 -2px 10px rgba(14, 165, 233, 0.5);
-}
-
-.tabbar-raised-btn:active {
-  transform: scale(0.92);
-}
-
-.tabbar-raised-btn span {
+.tabbar-raised-trader span {
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  white-space: nowrap;
-  line-height: 1.1;
-  text-align: center;
+  margin-top: 1px;
+  letter-spacing: 0.3px;
+}
+
+.tabbar-raised-trader.is-active {
+  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
+  box-shadow: 0 -2px 14px rgba(14, 165, 233, 0.6);
+}
+
+.tabbar-raised-trader:active {
+  transform: translateX(-50%) scale(0.92);
 }
 
 /* 浅色主题适配 */
