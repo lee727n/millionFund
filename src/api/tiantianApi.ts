@@ -3,6 +3,7 @@
 // [DEPS] 使用 JSONP 和 fetch 直接请求天天基金接口
 
 import { cache, CACHE_TTL } from './cache'
+import { push2Fetch } from '@/utils/http'
 
 // ========== 交易时间和持久化缓存工具 ==========
 
@@ -415,11 +416,8 @@ export async function fetchHotThemes(): Promise<HotTheme[]> {
   if (cached) return cached
   
   try {
-    // [WHAT] 使用 Eastmoney 板块接口
-    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    
-    const response = await fetch(url)
-    const data = await response.json()
+    const url = 'https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14'
+    const data = await push2Fetch<any>(url, { timeout: 10000 })
     
     if (!data?.data?.diff) return []
     
@@ -1195,23 +1193,19 @@ export async function fetchSectorFunds(): Promise<SectorInfo[]> {
   if (cached) return cached
   
   try {
-    // [WHAT] 获取行业板块
-    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    
-    const response = await fetch(url)
-    const data = await response.json()
+    const url = 'https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14'
+    const data = await push2Fetch<any>(url, { timeout: 10000 })
     
     if (!data?.data?.diff) return []
     
     const sectors: SectorInfo[] = data.data.diff.slice(0, 6).map((item: any) => {
-      // [WHAT] 确保 dayReturn 是数字类型
       const dayReturn = parseFloat(item.f3) || 0
       return {
-        code: item.f12 || '',  // 板块代码
+        code: item.f12 || '',
         name: item.f14 || '',
         streak: dayReturn > 0 ? '连涨1天' : (dayReturn < 0 ? '连跌1天' : ''),
         dayReturn,
-        funds: [] // 先留空，后续可扩展
+        funds: []
       }
     })
     
@@ -1240,11 +1234,8 @@ export async function fetchETFRank(pageSize = 10): Promise<ETFItem[]> {
   if (cached) return cached
   
   try {
-    // [WHAT] 获取ETF排行
-    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=${pageSize}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=b:MK0021,b:MK0022&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    
-    const response = await fetch(url)
-    const data = await response.json()
+    const url = `https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=${pageSize}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=b:MK0021,b:MK0022&fields=f2,f3,f4,f12,f14`
+    const data = await push2Fetch<any>(url, { timeout: 10000 })
     
     if (!data?.data?.diff) return []
     
@@ -1269,11 +1260,9 @@ export async function fetchETFRank(pageSize = 10): Promise<ETFItem[]> {
  */
 export async function checkApiAvailability(): Promise<boolean> {
   try {
-    const response = await fetch(
-      `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&fid=f3&fs=b:MK0021&fields=f12&_=${Date.now()}`,
-      { signal: AbortSignal.timeout(5000) }
-    )
-    return response.ok
+    const url = 'https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=1&fid=f3&fs=b:MK0021&fields=f12'
+    const data = await push2Fetch<any>(url, { timeout: 5000 })
+    return !!(data?.data?.diff)
   } catch {
     return false
   }

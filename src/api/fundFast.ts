@@ -3,6 +3,8 @@
 // [DEPS] 天天基金公开接口
 
 import { cache, CACHE_TTL } from './cache'
+import { push2Fetch } from '@/utils/http'
+import { isMobile } from '@/utils/platform'
 import { isTradingTime, persistCache, fetchETFRank } from './tiantianApi'
 import type { FundEstimate, NetValueRecord } from '@/types/fund'
 import { getPrevWorkdaySync, isHolidaySync, clearHolidayCache } from '../utils/holiday'
@@ -1295,15 +1297,8 @@ async function fetchHKStockQuotes(holdings: HoldingStock[]) {
 async function fetchHKQuotesViaEastmoney(holdings: HoldingStock[]) {
   try {
     const secids = holdings.map(h => `116.${h.code}`).join(',')
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8000)
-
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeoutId)
-
-    if (!response.ok) return
-    const data = await response.json()
+    const url = `https://push2delay.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14`
+    const data = await push2Fetch<any>(url, { timeout: 8000 })
 
     if (data?.data?.diff) {
       data.data.diff.forEach((item: any) => {
@@ -1358,15 +1353,8 @@ async function fetchUSStockQuotes(holdings: HoldingStock[]) {
 async function fetchUSQuotesViaEastmoney(holdings: HoldingStock[]) {
   try {
     const secids = holdings.map(h => `105.${h.code}`).join(',')
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8000)
-
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeoutId)
-
-    if (!response.ok) return
-    const data = await response.json()
+    const url = `https://push2delay.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f4,f12,f14`
+    const data = await push2Fetch<any>(url, { timeout: 8000 })
 
     if (data?.data?.diff) {
       data.data.diff.forEach((item: any) => {
@@ -1928,24 +1916,81 @@ export async function fetchMarketIndicesFast(): Promise<MarketIndexSimple[]> {
   const cached = cache.get<MarketIndexSimple[]>(cacheKey)
   if (cached) return cached
 
+  // [WHAT] 腾讯行情代码
+  const tencentCodes = [
+    { code: 'sh000001', name: '上证指数' },
+    { code: 'sz399001', name: '深证成指' },
+    { code: 'sz399006', name: '创业板指' },
+    { code: 'sh000300', name: '沪深300' },
+  ]
+
   try {
-    // [WHAT] 添加沪深300指数 (1.000300)
-    const url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001,0.399001,0.399006,1.000300&fields=f2,f3,f4,f12,f14'
-    const response = await fetch(url)
-    const data = await response.json()
+    const results = await new Promise<MarketIndexSimple[]>((resolve, reject) => {
+      const scriptId = '__market_indices_fast_' + Date.now()
+      const codes = tencentCodes.map(i => i.code).join(',')
+      const url = 'https://qt.gtimg.cn/q=' + codes
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = url
+      script.async = true
 
-    if (!data?.data?.diff) return []
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('超时'))
+      }, 8000)
 
-    const indices: MarketIndexSimple[] = data.data.diff.map((item: any) => ({
-      code: item.f12,
-      name: item.f14,
-      current: item.f2,
-      change: item.f4,
-      changePercent: item.f3
-    }))
+      const cleanup = () => {
+        clearTimeout(timeout)
+        const s = document.getElementById(scriptId)
+        if (s) {
+          s.removeEventListener('load', onLoad)
+          s.removeEventListener('error', onError)
+          if (s.parentNode) s.parentNode.removeChild(s)
+        }
+      }
 
-    cache.set(cacheKey, indices, CACHE_TTL.MARKET_INDEX)
-    return indices
+      const onLoad = () => {
+        cleanup()
+        const list: MarketIndexSimple[] = []
+        tencentCodes.forEach(({ code, name }) => {
+          const varName = 'v_' + code
+          const data = (window as any)[varName]
+          if (!data) { delete (window as any)[varName]; return }
+          delete (window as any)[varName]
+
+          const parts = data.replace(/^.*?"/, '').replace(/";?\s*$/, '').split('~')
+          if (parts.length < 5) return
+
+          const current = parseFloat(parts[3]) || 0
+          const prevClose = parseFloat(parts[4]) || 0
+          const change = current > 0 && prevClose > 0 ? current - prevClose : 0
+          const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
+
+          if (current <= 0) return
+
+          list.push({
+            code: code.slice(2),
+            name,
+            current,
+            change,
+            changePercent
+          })
+        })
+        resolve(list)
+      }
+
+      const onError = () => {
+        cleanup()
+        reject(new Error('加载失败'))
+      }
+
+      script.addEventListener('load', onLoad)
+      script.addEventListener('error', onError)
+      document.head.appendChild(script)
+    })
+
+    cache.set(cacheKey, results, CACHE_TTL.MARKET_INDEX)
+    return results
   } catch {
     return []
   }
@@ -2085,27 +2130,55 @@ export async function fetchFundRankingFast(
   const cached = cache.get<FundRankItemSimple[]>(cacheKey)
   if (cached) return cached
 
-  try {
-    // [WHY] 使用push2接口获取场内基金排行（ETF/LOF等）
-    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=${pageSize}&po=${order}&np=1&fltt=2&invt=2&fid=f3&fs=b:MK0021&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+  // [WHAT] 使用 fund.eastmoney.com JSONP 接口（非 push2）
+  return new Promise((resolve) => {
+    const callbackName = `rank_fast_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const sortType = 'r'
+    const orderStr = order === 1 ? 'desc' : 'asc'
+    const url = `https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf&ft=all&rs=&gs=0&sc=${sortType}&st=${orderStr}&pi=1&pn=${pageSize}&dx=1&callback=${callbackName}&_=${Date.now()}`
 
-    const response = await fetch(url)
-    const data = await response.json()
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve([])
+    }, 15000)
 
-    if (!data?.data?.diff) return []
+    ;(window as any)[callbackName] = (data: any) => {
+      cleanup()
+      if (!data || !data.Data) {
+        resolve([])
+        return
+      }
 
-    const items: FundRankItemSimple[] = data.data.diff.map((item: any) => ({
-      code: item.f12,
-      name: item.f14,
-      netValue: item.f2 || 0,
-      dayChange: item.f3 || 0
-    }))
+      const items: FundRankItemSimple[] = data.Data.map((item: string) => {
+        const parts = item.split(',')
+        return {
+          code: parts[0] || '',
+          name: parts[1] || '',
+          netValue: parseFloat(parts[4] ?? '0') || 0,
+          dayChange: parseFloat(parts[6] ?? '0') || 0
+        }
+      })
 
-    cache.set(cacheKey, items, 30000)  // 30秒缓存
-    return items
-  } catch (err) {
-    return []
-  }
+      cache.set(cacheKey, items, 30000)
+      resolve(items)
+    }
+
+    function cleanup() {
+      clearTimeout(timeout)
+      delete (window as any)[callbackName]
+      const script = document.getElementById(callbackName)
+      if (script) document.body.removeChild(script)
+    }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    script.src = url
+    script.onerror = () => {
+      cleanup()
+      resolve([])
+    }
+    document.body.appendChild(script)
+  })
 }
 
 // ========== 经理业绩走势 ==========
@@ -2213,61 +2286,120 @@ export interface GlobalIndex {
 }
 
 /**
- * 获取全球主要指数行情
- * [WHY] 帮助投资者了解全球市场走势
- * [DEPS] 使用东方财富 push2 接口
+ * 获取全球主要指数行情（腾讯行情接口）
+ * [WHY] push2.eastmoney.com 不稳定，改用 qt.gtimg.cn 接口
+ * [DEPS] 通过动态 script 标签加载 JSONP 响应
  */
 export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
   const cacheKey = 'global_indices'
   const cached = cache.get<GlobalIndex[]>(cacheKey)
   if (cached) return cached
 
-  // [WHAT] 东方财富全球指数代码
-  // 格式: 市场代码.指数代码
-  const indices = [
-    { code: '1.000001', name: '上证指数', region: 'cn' as const },
-    { code: '0.399001', name: '深证成指', region: 'cn' as const },
-    { code: '0.399006', name: '创业板指', region: 'cn' as const },
-    { code: '100.HSI', name: '恒生指数', region: 'hk' as const },
-    { code: '100.DJIA', name: '道琼斯', region: 'us' as const },
-    { code: '100.NDX', name: '纳斯达克', region: 'us' as const },
-    { code: '100.SPX', name: '标普500', region: 'us' as const },
-    { code: '100.N225', name: '日经225', region: 'asia' as const },
+  // [WHAT] 腾讯行情代码映射
+  // PC 端显示日经指数（通过 push2delay 获取），移动端显示国企指数
+  const mobile = isMobile()
+  const tencentIndices = [
+    { code: 'sh000001', name: '上证指数', region: 'cn' as const },
+    { code: 'sz399001', name: '深证成指', region: 'cn' as const },
+    { code: 'sz399006', name: '创业板指', region: 'cn' as const },
+    { code: 'hkHSI', name: '恒生指数', region: 'hk' as const },
+    ...(mobile
+      ? [{ code: 'hkHSCEI', name: '国企指数', region: 'hk' as const }]
+      : []),
+    { code: 'hkHSTECH', name: '恒生科技', region: 'hk' as const },
+    { code: 'usDJI', name: '道琼斯', region: 'us' as const },
+    { code: 'usIXIC', name: '纳斯达克', region: 'us' as const },
+    { code: 'usINX', name: '标普500', region: 'us' as const },
   ]
 
-  const results: GlobalIndex[] = []
-
   try {
-    const codes = indices.map(i => i.code).join(',')
-    // [WHY] 使用fetch代替JSONP，避免移动端Capacitor WebView对动态script标签的限制
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    const results = await new Promise<GlobalIndex[]>((resolve, reject) => {
+      const scriptId = '__global_index_' + Date.now()
+      const codes = tencentIndices.map(i => i.code).join(',')
+      const url = 'https://qt.gtimg.cn/q=' + codes
+      const script = document.createElement('script')
+      script.id = scriptId
+      script.src = url
+      script.async = true
 
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${codes}&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeoutId)
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('腾讯行情接口超时'))
+      }, 8000)
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
+      const cleanup = () => {
+        clearTimeout(timeout)
+        const s = document.getElementById(scriptId)
+        if (s) {
+          s.removeEventListener('load', onLoad)
+          s.removeEventListener('error', onError)
+          if (s.parentNode) s.parentNode.removeChild(s)
+        }
+      }
 
-    const data = await response.json()
+      const onLoad = () => {
+        cleanup()
+        const list: GlobalIndex[] = []
+        tencentIndices.forEach(({ code, name, region }) => {
+          const varName = 'v_' + code
+          const data = (window as any)[varName]
+          if (!data) { delete (window as any)[varName]; return }
+          delete (window as any)[varName]
 
-    if (data?.data?.diff) {
-      data.data.diff.forEach((item: any) => {
-        // [WHAT] 按code匹配（而不是按索引），避免返回顺序不一致
-        const matched = indices.find(i => i.code.endsWith(item.f12) || i.code === item.f12)
-        if (matched && item.f2 > 0) {
+          const parts = data.replace(/^.*?"/, '').replace(/";?\s*$/, '').split('~')
+          if (parts.length < 50) return
+
+          const current = parseFloat(parts[3]) || 0
+          const prevClose = parseFloat(parts[4]) || 0
+          // [WHAT] 用当前价和昨收价计算涨跌额和涨跌幅，避免不同市场字段位置差异
+          const change = current > 0 && prevClose > 0 ? current - prevClose : 0
+          const changeRate = prevClose > 0 ? (change / prevClose) * 100 : 0
+
+          if (current <= 0) return
+
+          list.push({
+            name,
+            code,
+            price: current,
+            change,
+            changePercent: changeRate,
+            region
+          })
+        })
+        resolve(list)
+      }
+
+      const onError = () => {
+        cleanup()
+        reject(new Error('腾讯行情接口加载失败'))
+      }
+
+      script.addEventListener('load', onLoad)
+      script.addEventListener('error', onError)
+      document.head.appendChild(script)
+    })
+
+    // PC 端：通过 push2delay 获取日经225指数并追加
+    if (!mobile) {
+      try {
+        const nikkeiUrl = 'https://push2delay.eastmoney.com/api/qt/stock/get?secid=100.N225&fields=f43,f44,f45,f169,f170,f57,f58'
+        const nikkeiData = await push2Fetch<any>(nikkeiUrl, { timeout: 8000 })
+        if (nikkeiData?.data?.f43) {
+          const current = nikkeiData.data.f43 / 100
+          // [WHAT] f169=涨跌额, f170=涨跌幅（已乘100），直接使用，不用昨收盘算
+          const change = (nikkeiData.data.f169 || 0) / 100
+          const changeRate = (nikkeiData.data.f170 || 0) / 100
           results.push({
-            name: matched.name,
-            code: matched.code,
-            price: item.f2 / 100,  // 价格需要除以100
-            change: item.f4 / 100, // 涨跌额
-            changePercent: item.f3 / 100, // 涨跌幅
-            region: matched.region
+            name: '日经225',
+            code: 'N225',
+            price: current,
+            change,
+            changePercent: changeRate,
+            region: 'asia'
           })
         }
-      })
+      } catch { /* 忽略日经获取失败 */
+      }
     }
 
     if (results.length === 0) return getDefaultGlobalIndices()

@@ -38,7 +38,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/fundgz/, '')
       },
       '/push2': {
-        target: 'https://push2.eastmoney.com',
+        target: 'https://push2delay.eastmoney.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/push2/, '')
       },

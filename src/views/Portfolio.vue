@@ -378,6 +378,7 @@ onUnmounted(() => {
               :key="fund.code"
               :fund="fund"
               :ui-mode="uiMode"
+              display-mode="portfolio"
               :trading-session="tradingSession"
               @click="router.push(`/detail/${fund.code}`)"
               @open-top-holdings="openTopHoldings(fund, $event)"
@@ -415,6 +416,7 @@ onUnmounted(() => {
               :key="fund.code"
               :fund="fund"
               :ui-mode="uiMode"
+              display-mode="portfolio"
               :trading-session="tradingSession"
               @click="router.push(`/detail/${fund.code}`)"
               @open-top-holdings="openTopHoldings(fund, $event)"
@@ -452,6 +454,7 @@ onUnmounted(() => {
               :key="fund.code"
               :fund="fund"
               :ui-mode="uiMode"
+              display-mode="portfolio"
               :trading-session="tradingSession"
               @click="router.push(`/detail/${fund.code}`)"
               @open-top-holdings="openTopHoldings(fund, $event)"
@@ -514,7 +517,10 @@ onUnmounted(() => {
 
 <style scoped>
 .portfolio-page {
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-primary);
 }
 
@@ -522,18 +528,23 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .market-overview > * {
-  flex-shrink: 0;
   width: 100%;
 }
 
+/* ===== Section Title Bar ===== */
 .section-title-row {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 8px 16px;
   background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
 }
 
 .section-title-left {
@@ -543,86 +554,94 @@ onUnmounted(() => {
 }
 
 .section-dot {
-  width: 8px;
-  height: 8px;
-  background: #4CAF50;
+  width: 6px;
+  height: 6px;
+  background: var(--color-down);
   border-radius: 50%;
   animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.4; }
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .ui-mode-btn {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--bg-primary);
+  font-size: 10px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
 .ui-mode-btn.active {
-  background: var(--color-secondary-bg);
-  color: var(--color-secondary);
+  background: var(--color-secondary);
+  color: #fff;
 }
 
 .sort-buttons {
   display: flex;
-  gap: 8px;
-  margin-left: 12px;
+  gap: 2px;
+  margin-left: 2px;
 }
 
 .sort-web-icon {
-  width: 36px;
-  height: 36px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
-  opacity: 0.6;
-  transition: all 0.2s ease;
-  border-radius: 6px;
-  padding: 4px;
+  opacity: 0.4;
+  transition: all 0.15s ease;
+  border-radius: 3px;
+  padding: 2px;
 }
 
 .sort-web-icon:hover {
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
 .sort-web-icon.active {
   opacity: 1;
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--color-secondary-bg);
 }
 
 .title-center {
   display: flex;
-  gap: 30px;
+  gap: 24px;
   margin-left: auto;
-  margin-right: 20px;
+  margin-right: 16px;
 }
 
 .summary-stat {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
+  gap: 1px;
 }
 
 .summary-label {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .summary-value {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-stat.up .summary-value {
@@ -641,16 +660,17 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 1px;
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .status-time {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 9px;
+  color: var(--text-muted);
 }
 
 .trading-status.trading .status-text {
@@ -658,7 +678,7 @@ onUnmounted(() => {
 }
 
 .trading-status.noon .status-text {
-  color: #FFC107;
+  color: #f0883e;
 }
 
 .trading-status.closed .status-text {
@@ -668,80 +688,96 @@ onUnmounted(() => {
 .refresh-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: 20px;
+  gap: 6px;
+  margin-left: 12px;
 }
 
 .auto-refresh-label {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
+/* ===== Accounts: 3-column grid, fills remaining height ===== */
 .web-accounts-content {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  padding: 16px;
+  gap: 8px;
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .web-account-column {
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
+/* ===== Account Header (compact) ===== */
 .web-account-column-header {
   display: flex;
-  padding: 12px;
+  align-items: center;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-light);
-  gap: 8px;
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
 }
 
 .web-account-col {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 2px;
+  flex: 1;
 }
 
 .web-account-col.account-info {
+  flex: 0 0 auto;
   flex-direction: row;
+  align-items: center;
   gap: 8px;
 }
 
 .web-account-column-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
   object-fit: cover;
 }
 
 .web-account-title-wrap {
   display: flex;
   flex-direction: column;
+  gap: 0;
 }
 
 .web-account-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .web-account-count {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .web-account-stat-label {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .web-account-stat-value {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-primary);
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
 }
 
 .web-account-col.up .web-account-stat-value {
@@ -756,26 +792,295 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
+/* ===== Fund Rows (scrollable within column) ===== */
 .web-account-column-grid {
-  padding: 8px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(calc(50% - 4px), 1fr));
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .web-account-column-grid :deep(.index-item) {
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 8px;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  position: relative;
+  overflow: visible;
+}
+
+.web-account-column-grid :deep(.index-item:last-child) {
+  border-bottom: none;
+}
+
+.web-account-column-grid :deep(.index-item:hover) {
+  background: var(--bg-hover);
+}
+
+.web-account-column-grid :deep(.index-item.up) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.web-account-column-grid :deep(.index-item.down) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.web-account-column-grid :deep(.index-item:active) {
+  transform: scale(0.99);
+}
+
+.web-account-column-grid :deep(.index-bar) {
+  display: none;
+}
+
+/* ===== Fund Name ===== */
+.web-account-column-grid :deep(.index-name) {
+  margin-bottom: 0;
   width: auto;
-  flex-shrink: 1;
+  flex: 0 0 auto;
+  height: auto;
+  line-height: 1.3;
+  max-width: 140px;
+  font-size: 12px;
 }
 
-.web-account-column-grid :deep(.index-holdings.web-only) {
+.web-account-column-grid :deep(.fund-name-content) {
+  gap: 4px;
+  align-items: center;
+}
+
+.web-account-column-grid :deep(.fund-name-right) {
+  max-width: 90px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.web-account-column-grid :deep(.score-inline) {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-left: 0;
+}
+
+.web-account-column-grid :deep(.fund-name-pending) {
+  color: var(--text-secondary) !important;
+}
+
+.web-account-column-grid :deep(.fund-name-not-updated) {
+  color: var(--color-down) !important;
+}
+
+.web-account-column-grid :deep(.fund-name-updated) {
+  color: var(--color-warning) !important;
+}
+
+.web-account-column-grid :deep(.fund-ratio-badge) {
+  font-size: 9px;
+  padding: 1px 4px;
+  height: 14px;
+  line-height: 12px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* ===== Fund Code ===== */
+.web-account-column-grid :deep(.index-content) {
+  margin-bottom: 0;
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.web-account-column-grid :deep(.index-left) {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.web-account-column-grid :deep(.fund-code-wrapper) {
+  justify-content: flex-start;
+}
+
+.web-account-column-grid :deep(.fund-code) {
+  text-align: left;
+  margin-bottom: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-secondary);
+  letter-spacing: -0.2px;
+}
+
+.web-account-column-grid :deep(.fund-sectors) {
   display: none;
 }
 
-.web-account-column-grid :deep(.intraday-section.web-only) {
-  display: none;
+/* ===== Estimated Change ===== */
+.web-account-column-grid :deep(.index-right) {
+  flex: 0 0 auto;
+  text-align: right;
 }
 
+.web-account-column-grid :deep(.index-change) {
+  width: auto;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0;
+  background: transparent;
+  margin-right: 0;
+}
+
+.web-account-column-grid :deep(.index-item.up .index-change) {
+  color: var(--color-up);
+  background: transparent;
+}
+
+.web-account-column-grid :deep(.index-item.down .index-change) {
+  color: var(--color-down);
+  background: transparent;
+}
+
+/* ===== Added Gain ===== */
+.web-account-column-grid :deep(.added-gain-section) {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.web-account-column-grid :deep(.added-gain-badge) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.web-account-column-grid :deep(.added-gain-badge.up) {
+  background: var(--color-up-bg);
+  color: var(--color-up);
+}
+
+.web-account-column-grid :deep(.added-gain-badge.down) {
+  background: var(--color-down-bg);
+  color: var(--color-down);
+}
+
+.web-account-column-grid :deep(.added-gain-label) {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-base);
+  padding: 0 2px;
+}
+
+.web-account-column-grid :deep(.added-gain-value) {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Trend Columns (compact mode) ===== */
+.web-account-column-grid :deep(.index-trend) {
+  padding: 0;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-prediction) {
+  gap: 8px;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-column) {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  padding: 0;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-column-1) {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  border-right: none;
+  padding-right: 0;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-item) {
+  gap: 1px;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-label) {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.web-account-column-grid :deep(.index-trend .trend-value) {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+}
+
+.web-account-column-grid :deep(.index-trend .trend-text) {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* ===== Holdings/Intraday buttons ===== */
+.web-account-column-grid :deep(.intraday-section),
+.web-account-column-grid :deep(.index-holdings) {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.web-account-column-grid :deep(.intraday-label),
+.web-account-column-grid :deep(.top-holdings-label) {
+  width: auto;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.web-account-column-grid :deep(.web-only) {
+  display: flex !important;
+}
+
+/* ===== Top Holdings Popup ===== */
 .top-holdings-popup {
   padding: 20px;
 }
@@ -865,12 +1170,12 @@ onUnmounted(() => {
 
 .thc-change.up {
   color: var(--color-up);
-  background: rgba(255, 107, 107, 0.12);
+  background: var(--color-up-bg);
 }
 
 .thc-change.down {
   color: var(--color-down);
-  background: rgba(81, 207, 102, 0.12);
+  background: var(--color-down-bg);
 }
 
 .thc-weight {
@@ -903,7 +1208,7 @@ onUnmounted(() => {
 .top-holdings-empty {
   text-align: center;
   padding: 30px 0;
-  color: #999;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -912,35 +1217,35 @@ onUnmounted(() => {
   padding: 30px 0;
 }
 
+/* ===== Reference MA Badge ===== */
 .reference-ma-badge {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 6px;
-  margin-left: 8px;
+  padding: 2px 6px;
+  background: var(--color-secondary-bg);
+  border-radius: 3px;
+  margin-left: 2px;
 }
 
 .reference-ma-label {
-  font-size: 12px;
-  color: #3b82f6;
+  font-size: 9px;
+  color: var(--color-secondary);
   font-weight: 500;
 }
 
 .reference-ma-value {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   font-family: var(--font-number);
 }
 
 .reference-ma-value.up {
-  color: #3b82f6;
+  color: var(--color-secondary);
 }
 
 .reference-ma-value.down {
-  color: #3b82f6;
+  color: var(--color-secondary);
 }
 
 </style>

@@ -554,39 +554,100 @@ function parseStockHoldingsHtml(html: string): StockHolding[] {
 // ========== 大盘指数和排行榜 API ==========
 
 /**
- * 获取大盘指数数据
- * [WHY] 展示上证、深证、创业板等主要指数
- * [DEPS] 东方财富指数接口（使用fetch代替JSONP，兼容移动端WebView）
+ * 通过腾讯行情接口获取大盘指数
+ * [WHY] push2.eastmoney.com 经常不可用，改用腾讯 qt.gtimg.cn 接口
+ * [WHAT] 通过动态 script 标签加载 JSONP 响应，PC 和移动端通用
  */
+const TENCENT_INDEX_CODES = [
+  { code: 'sh000001', name: '上证指数' },
+  { code: 'sz399001', name: '深证成指' },
+  { code: 'sz399006', name: '创业板指' },
+  { code: 'sh000688', name: '科创50' },
+]
+
+function fetchTencentIndices(codes: string[]): Promise<Record<string, string>> {
+  return new Promise((resolve, reject) => {
+    const scriptId = '__tencent_index_' + Date.now()
+    const url = 'https://qt.gtimg.cn/q=' + codes.join(',')
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = url
+    script.async = true
+
+    const timeout = setTimeout(() => {
+      cleanup()
+      reject(new Error('腾讯行情接口超时'))
+    }, 8000)
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      const s = document.getElementById(scriptId)
+      if (s) {
+        s.removeEventListener('load', onLoad)
+        s.removeEventListener('error', onError)
+        if (s.parentNode) s.parentNode.removeChild(s)
+      }
+    }
+
+    const onLoad = () => {
+      cleanup()
+      // 从全局变量中提取数据
+      const result: Record<string, string> = {}
+      codes.forEach(code => {
+        const varName = 'v_' + code
+        const data = (window as any)[varName]
+        if (data) {
+          result[code] = data
+        }
+        delete (window as any)[varName]
+      })
+      resolve(result)
+    }
+
+    const onError = () => {
+      cleanup()
+      reject(new Error('腾讯行情接口加载失败'))
+    }
+
+    script.addEventListener('load', onLoad)
+    script.addEventListener('error', onError)
+    document.head.appendChild(script)
+  })
+}
+
 export async function fetchMarketIndices(): Promise<MarketIndex[]> {
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)
-    // [WHAT] 请求上证指数(1.000001)、深证成指(0.399001)、创业板指(0.399006)、科创50(1.000688)
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001,0.399001,0.399006,1.000688&fields=f2,f3,f4,f6,f12,f14&_=${Date.now()}`
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeoutId)
+    const codes = TENCENT_INDEX_CODES.map(i => i.code)
+    const rawData = await fetchTencentIndices(codes)
 
-    if (!response.ok) {
-      return []
-    }
+    const indices: MarketIndex[] = []
+    TENCENT_INDEX_CODES.forEach(({ code, name }) => {
+      const raw = rawData[code]
+      if (!raw) return
 
-    const data = await response.json()
-    if (!data || !data.data || !data.data.diff) {
-      return []
-    }
+      // 腾讯数据格式: 字段用 ~ 分隔
+      // 示例: v_sh000001="1~上证指数~000001~3990.30~3982.65~3979.49~成交量~..."
+      const parts = raw.replace(/^.*?"/, '').replace(/";?s*$/, '').split('~')
+      if (parts.length < 50) return
 
-    const indices: MarketIndex[] = data.data.diff.map((item: any) => ({
-      code: item.f12,
-      name: item.f14,
-      current: item.f2 / 100,
-      change: item.f4 / 100,
-      changeRate: item.f3 / 100,
-      volume: item.f6 / 100000000
-    }))
+      const current = parseFloat(parts[3]) || 0
+      const prevClose = parseFloat(parts[4]) || 0
+      // [WHAT] 用当前价和昨收价计算涨跌额和涨跌幅，避免不同市场字段位置差异
+      const change = current > 0 && prevClose > 0 ? current - prevClose : 0
+      const changeRate = prevClose > 0 ? (change / prevClose) * 100 : 0
+
+      indices.push({
+        code: code.slice(2),  // sh000001 -> 000001
+        name,
+        current,
+        change,
+        changeRate,
+        volume: 0
+      })
+    })
+
     return indices
   } catch {
-    // [EDGE] 接口失败时返回空数组，不使用模拟数据
     return []
   }
 }

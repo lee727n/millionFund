@@ -6,6 +6,7 @@ const props = defineProps<{
   fund: any
   uiMode: 'simple' | 'full'
   tradingSession?: string
+  displayMode?: 'home' | 'portfolio'
 }>()
 
 const emit = defineEmits<{
@@ -160,42 +161,75 @@ function getRatioStyle(ratio: number) {
     @mouseup="handleMouseUp"
     @mouseleave="handleMouseLeave"
   >
-    <div class="index-name web-only">
-      <div class="fund-name-content">
-        <div class="fund-name-left">
-          <img v-if="fund.source === 'ali'" src="@/assets/ali.jpg" class="source-icon-small" alt="支付宝" />
-          <img v-else-if="fund.source === 'TX'" src="@/assets/TX.jpg" class="source-icon-small" alt="腾讯" />
-          <img v-else-if="fund.source === 'JD'" src="@/assets/JD.jpg" class="source-icon-small" alt="京东" />
-          <img v-else-if="fund.source === 'observe'" :src="eyeIcon" class="source-icon-small" alt="观察" />
-        </div>
-        <div class="fund-name-middle">
-          <span v-if="fund.isQDII" class="qdii-tag">QD</span>
-        </div>
-        <div 
-          class="fund-name-right" 
-          :class="getFundNameClass(fund, tradingSession)"
-          @click.stop="emit('openTopHoldings', $event)"
-        >{{ fund.name }}</div>
-        <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
-          {{ fund.ratio.toFixed(1) }}%
-        </div>
-      </div>
-    </div>
-    <div class="index-content web-only">
-      <div class="index-left">
-        <div class="fund-code-wrapper">
-          <div class="fund-code">{{ fund.code }}</div>
-          <span v-if="fund.fundScore" class="score-level" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-        </div>
-        <div class="fund-sectors">{{ fund.industrySectors || '未设置' }}</div>
-      </div>
-      <div class="index-right">
-        <div class="index-change">
-          <van-icon :name="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'arrow-up' : 'arrow-down'" size="14" />
-          <span>{{ fund.todayChange ? (parseFloat(fund.todayChange) >= 0 ? '+' : '') + fund.todayChange + '%' : '--' }}</span>
+    <!-- Home mode: original layout with icons, arrows, full text -->
+    <template v-if="!displayMode || displayMode === 'home'">
+      <div class="index-name web-only">
+        <div class="fund-name-content">
+          <div class="fund-name-left">
+            <img v-if="fund.source === 'ali'" src="@/assets/ali.jpg" class="source-icon-small" alt="支付宝" />
+            <img v-else-if="fund.source === 'TX'" src="@/assets/TX.jpg" class="source-icon-small" alt="腾讯" />
+            <img v-else-if="fund.source === 'JD'" src="@/assets/JD.jpg" class="source-icon-small" alt="京东" />
+            <img v-else-if="fund.source === 'observe'" :src="eyeIcon" class="source-icon-small" alt="观察" />
+          </div>
+          <div class="fund-name-middle">
+            <span v-if="fund.isQDII" class="qdii-tag">QD</span>
+          </div>
+          <div 
+            class="fund-name-right" 
+            :class="getFundNameClass(fund, tradingSession)"
+            @click.stop="emit('openTopHoldings', $event)"
+          >{{ fund.name }}</div>
+          <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
+            {{ fund.ratio.toFixed(1) }}%
+          </div>
         </div>
       </div>
-    </div>
+      <div class="index-content web-only">
+        <div class="index-left">
+          <div class="fund-code-wrapper">
+            <div class="fund-code">{{ fund.code }}</div>
+            <span v-if="fund.fundScore" class="score-level" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
+          </div>
+          <div class="fund-sectors">{{ fund.industrySectors || '未设置' }}</div>
+        </div>
+        <div class="index-right">
+          <div class="index-change">
+            <van-icon :name="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'arrow-up' : 'arrow-down'" size="14" />
+            <span>{{ fund.todayChange ? (parseFloat(fund.todayChange) >= 0 ? '+' : '') + fund.todayChange + '%' : '--' }}</span>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Portfolio mode: compact layout, no icons, no arrows, rating after name -->
+    <template v-else>
+      <div class="index-name web-only">
+        <div class="fund-name-content">
+          <div 
+            class="fund-name-right" 
+            :class="getFundNameClass(fund, tradingSession)"
+            @click.stop="emit('openTopHoldings', $event)"
+          >{{ fund.name }}</div>
+          <span v-if="fund.fundScore" class="score-level score-inline" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
+          <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
+            {{ fund.ratio.toFixed(1) }}%
+          </div>
+        </div>
+      </div>
+      <div class="index-content web-only">
+        <div class="index-left">
+          <div class="fund-code-wrapper">
+            <div class="fund-code">{{ fund.code }}</div>
+          </div>
+          <div class="fund-sectors">{{ fund.industrySectors || '未设置' }}</div>
+        </div>
+        <div class="index-right">
+          <div class="index-change">
+            <span>{{ fund.todayChange ? (parseFloat(fund.todayChange) >= 0 ? '+' : '') + fund.todayChange + '%' : '--' }}</span>
+          </div>
+        </div>
+      </div>
+    </template>
     <div class="index-trend web-only" v-if="uiMode === 'full' && fund.trendPrediction">
       <div class="trend-prediction">
         <div class="trend-column trend-column-1">
@@ -289,10 +323,18 @@ function getRatioStyle(ratio: number) {
         </div>
       </div>
     </div>
-    <div class="added-gain-section web-only" v-if="fund.addedGain !== undefined">
+    <!-- Home mode added gain: full text with arrow -->
+    <div class="added-gain-section web-only" v-if="(!displayMode || displayMode === 'home') && fund.addedGain !== undefined">
       <div class="added-gain-badge" :class="fund.addedGain >= 0 ? 'up' : 'down'">
         <van-icon :name="fund.addedGain >= 0 ? 'arrow-up' : 'arrow-down'" size="14" />
         <span>添加后涨跌幅{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%</span>
+      </div>
+    </div>
+    <!-- Portfolio mode added gain: compact 累 badge -->
+    <div class="added-gain-section web-only" v-if="displayMode === 'portfolio' && fund.addedGain !== undefined">
+      <div class="added-gain-badge" :class="fund.addedGain >= 0 ? 'up' : 'down'">
+        <span class="added-gain-label">累</span>
+        <span class="added-gain-value">{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%</span>
       </div>
     </div>
   </div>

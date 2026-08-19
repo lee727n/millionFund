@@ -249,14 +249,35 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
     try {
       // 优先用代码搜索；若无代码则用名称搜索
       const query = (h.code && h.code.trim()) ? h.code : (h.name || '')
+      // 判断是精确的6位基金代码搜索还是名称搜索
+      const isCodeQuery = /^\d{6}$/.test(query.trim())
       if (query) {
-        let results = await searchFund(query, 1)
+        let results: FundInfo[] = []
+        if (isCodeQuery) {
+          // 代码精确查询：直接取第1条即可
+          results = await searchFund(query, 1)
+        } else {
+          // 名称模糊查询：多取一些候选，再用相似度函数 chooseBestMatch 挑最佳
+          // [WHY] 避免 searchFund 排序把同类名（招商A/招商C/精选A/精选C）排错导致错配
+          const candidates = await searchFund(query, 20)
+          if (candidates && candidates.length > 0) {
+            const best = chooseBestMatch(candidates, h.name || query)
+            if (best) {
+              results = [best]
+            } else {
+              // 找不到高分匹配时，作为兜底仍然取第一条，但降低置信度
+              results = [candidates[0]]
+            }
+          }
+        }
+
+        // 二次兜底：若上一步没找到结果，再用名称广撒网+匹配
         if ((!results || results.length === 0) && h.name) {
-          const broader = await searchFund(h.name, 10)
+          const broader = await searchFund(h.name, 20)
           if (broader && broader.length > 0) {
             const best = chooseBestMatch(broader, h.name)
             if (best) results = [best]
-            else results = broader
+            else results = [broader[0]]
           }
         }
 
@@ -327,6 +348,31 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
 }
 
 // ======== 名称相似度与最佳匹配选择器 ========
+// [WHY] 手机端 OCR (tesseract) 识别质量差，名称常有错字/多字/漏字。
+// 匹配策略：宁可不匹配（让用户手动输入），也不要错误匹配到其他基金。
+
+// 从名称中提取纯中文字符串
+function extractChinese(s: string): string {
+  if (!s) return ''
+  return (s.match(/[\u4e00-\u9fa5]/g) || []).join('')
+}
+
+// 计算两个字符串的中文字符重叠率
+// 返回 { overlap: 两者共同拥有的中文字符数, ratio: 共同占较长一方的比例 }
+function chineseOverlap(a: string, b: string): { overlap: number; ratio: number } {
+  const ca = extractChinese(a)
+  const cb = extractChinese(b)
+  if (!ca || !cb) return { overlap: 0, ratio: 0 }
+  // 计算共同字符（按出现次数计，不重复）
+  const setA = new Set(ca)
+  let overlap = 0
+  for (const ch of cb) {
+    if (setA.has(ch)) overlap++
+  }
+  const maxLen = Math.max(ca.length, cb.length)
+  return { overlap, ratio: overlap / maxLen }
+}
+
 function normalizeNameForMatch(s: string | undefined) {
   if (!s) return ''
   return s
@@ -334,7 +380,33 @@ function normalizeNameForMatch(s: string | undefined) {
     .replace(/\s+/g, '')
     .replace(/[\u0000-\u0020\u2000-\u200B\ufffc\ufffd]/g, '')
     .replace(/[^\u4e00-\u9fa5a-z0-9]/g, '')
-    .replace(/(智选|混合|灵活|配置|主题|基金|指数|股票|债券|发起|发起式|a类|c类)/g, '')
+    .replace(/(发起式|a类|c类|基金|型)$/g, '')
+}
+
+function extractShareSuffix(s: string): string {
+  if (!s) return ''
+  const m = s.trim().match(/([A-Za-z]+)$/)
+  return m ? m[1].toUpperCase() : ''
+}
+
+// [FIX] 新增：检查 OCR 名称是否包含候选名称里"完全没有"的中文词
+// 若 OCR 名中存在一些较长的连续中文片段在候选名中完全找不到，
+// 说明 OCR 识别出了噪声字符，候选名不适合作为匹配结果
+function hasOCRNoiseBlock(ocrChinese: string, candidateChinese: string): boolean {
+  if (!ocrChinese || !candidateChinese) return false
+  // 把 OCR 名按候选名的字符切分，找出"完全找不到"的最长连续片段
+  // 如果有 >= 3 个连续中文字符在候选名中完全不存在，判定为噪声块
+  for (let len = Math.min(5, ocrChinese.length); len >= 3; len--) {
+    for (let i = 0; i <= ocrChinese.length - len; i++) {
+      const segment = ocrChinese.substring(i, i + len)
+      if (!candidateChinese.includes(segment)) {
+        // 检查这段是否是真的"不在候选中"，同时看看是否是典型的 OCR 噪声（如"持有期"这种在支付宝截图列名中的词）
+        // 如果这段噪声在候选名中确实找不到，且长度 >= 3，则认为是噪声块
+        if (len >= 3) return true
+      }
+    }
+  }
+  return false
 }
 
 function matchScore(a: string, b: string) {
@@ -342,8 +414,19 @@ function matchScore(a: string, b: string) {
   b = normalizeNameForMatch(b)
   if (!a || !b) return 0
   if (a === b) return 100
+
+  // 精确子串匹配：一个完全包含另一个
   if (a.includes(b) || b.includes(a)) return 90
 
+  // [FIX] 先做中文字符重叠率检查
+  const { overlap, ratio } = chineseOverlap(a, b)
+  const ca = extractChinese(a)
+  const cb = extractChinese(b)
+
+  // 中文字符重叠率必须 >= 60%，且至少有 4 个共同中文字符
+  if (ratio < 0.6 || overlap < 4) return 0
+
+  // 2-gram 重叠度
   const makeGrams = (str: string) => {
     const grams: string[] = []
     for (let i = 0; i < str.length - 1; i++) grams.push(str.slice(i, i + 2))
@@ -357,20 +440,46 @@ function matchScore(a: string, b: string) {
   for (const g of ag) {
     if (bg.includes(g) && !seen.has(g)) { common++; seen.add(g) }
   }
-  return Math.min(80, common * 25)
+
+  // 综合评分：中文字符重叠率 * 60 + 2-gram 重叠度 * 40
+  const gramScore = Math.min(40, common * 5)
+  return Math.min(95, Math.floor(ratio * 60) + gramScore)
 }
 
 function chooseBestMatch(candidates: any[], originalName: string) {
   if (!candidates || candidates.length === 0) return null
-  let best = null
+  const origSuffix = extractShareSuffix(originalName)
+  const origChinese = extractChinese(originalName)
+
+  let best: any = null
   let bestScore = -1
   for (const c of candidates) {
-    let score = matchScore(c.name || c.p_name || '', originalName)
-    const nameNorm = normalizeNameForMatch(c.name || '')
-    if (nameNorm && nameNorm.includes(normalizeNameForMatch(originalName))) score += 10
+    const candidateName = c.name || c.p_name || ''
+    const candChinese = extractChinese(candidateName)
+
+    // [FIX] 硬规则1：OCR 名含 6+ 中文字符时，候选中文字符数差异不能太悬殊
+    // 若 OCR 名有 10 个中文字符但候选只有 6 个，很可能是错配
+    if (origChinese.length >= 8 && candChinese.length < origChinese.length * 0.6) continue
+    if (candChinese.length >= 8 && origChinese.length < candChinese.length * 0.6) continue
+
+    // [FIX] 硬规则2：检查是否存在 OCR 噪声块
+    if (origChinese.length >= 6 && hasOCRNoiseBlock(origChinese, candChinese)) continue
+
+    let score = matchScore(candidateName, originalName)
+
+    // 份额后缀加权
+    const candSuffix = extractShareSuffix(candidateName)
+    if (origSuffix && candSuffix === origSuffix) {
+      score += 5
+    } else if (origSuffix && candSuffix && candSuffix !== origSuffix) {
+      score -= 10 // 明确份额不一致，强烈减分
+    }
+
     if (score > bestScore) { bestScore = score; best = c }
   }
-  return bestScore >= 30 ? best : null
+
+  // [FIX] 提高阈值：从 35 提升到 50
+  return bestScore >= 50 ? best : null
 }
 
 // [WHAT] 切换选中状态
@@ -713,38 +822,41 @@ function formatAmount(amount: number): string {
               />
             </div>
             <div class="item-content">
-              <div class="item-name">
+              <div class="item-name-block">
                 <span class="fund-name">{{ formatFundName(holding.name || holding.fundInfo?.name || '未知基金') }}</span>
-                <input 
-                  :value="holding.code"
-                  class="code-input"
-                  placeholder="输入代码"
-                  @click.stop
-                  @change="handleCodeChange(index, $event)"
-                />
-                <van-loading v-if="holding.loading" size="12" />
+                <div class="code-row">
+                  <input 
+                    :value="holding.code"
+                    class="code-input"
+                    placeholder="输入代码"
+                    @click.stop
+                    @change="handleCodeChange(index, $event)"
+                  />
+                  <van-loading v-if="holding.loading" size="12" />
+                </div>
               </div>
               <div class="item-info">
                 <span v-if="holdingStore.hasHolding(holding.code)" class="tag-exists">已持有</span>
+                <span v-else-if="holding.confidence && holding.confidence < 0.7" class="tag-warn">待确认</span>
               </div>
             </div>
             <div class="item-amounts">
               <div class="amount-row">
-                <span class="amount-label">市值</span>
                 <input 
                   type="number" 
                   :value="holding.amount"
                   class="amount-input"
+                  placeholder="市值"
                   @click.stop
                   @input="handleAmountInput(index, $event)"
                 />
               </div>
               <div class="amount-row">
-                <span class="amount-label">盈亏</span>
                 <input 
                   type="number" 
                   :value="holding.profit"
-                  class="amount-input"
+                  class="amount-input profit-input"
+                  placeholder="盈亏"
                   @click.stop
                   @input="handleProfitInput(index, $event)"
                 />
@@ -1007,7 +1119,15 @@ function formatAmount(amount: number): string {
   min-width: 0;
 }
 
-.item-name {
+/* 基金名称+代码纵向排列，确保名称显示完整 */
+.item-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.code-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1017,9 +1137,12 @@ function formatAmount(amount: number): string {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
+  /* 允许名称折行，不再省略号截断，优先保证可读性 */
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.3;
 }
 
 .fund-code {
@@ -1029,12 +1152,12 @@ function formatAmount(amount: number): string {
 }
 
 .code-input {
-  width: 70px;
+  width: 78px;
   font-size: 12px;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 2px 4px;
   background: var(--bg-primary);
   flex-shrink: 0;
   text-align: center;
@@ -1058,38 +1181,48 @@ function formatAmount(amount: number): string {
   border-radius: 4px;
 }
 
+.tag-warn {
+  font-size: 12px;
+  color: #f59e0b;
+  background: #fef3c7;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
 .item-amounts {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  width: 90px;
 }
 
 .amount-row {
   display: flex;
   align-items: center;
-  gap: 4px;
 }
 
 .amount-label {
   font-size: 11px;
   color: var(--text-secondary);
-  width: 28px;
+  width: 22px;
+  display: none; /* 已用placeholder代替标签，减少占位 */
 }
 
 .amount-input {
-  width: 140px;
-  padding: 2px 6px;
+  width: 100%;
+  padding: 3px 5px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   text-align: right;
   background: var(--bg-secondary);
   color: var(--text-primary);
+  min-width: 0;
 }
 
 .profit-input {
-  width: 140px;
+  width: 100%;
   color: var(--color-up);
 }
 

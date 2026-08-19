@@ -407,20 +407,17 @@ function parseTencentFormat(lines: string[], fundList: FundInfo[]): RecognizedHo
 }
 
 /**
- * 解析支付宝/京东截图格式
- * [WHY] 支付宝和京东截图每个字段在独立行：
- *   名称（可能拆成两行，中间夹着金额和盈亏）
- *   金额（独立行）
- *   持有收益（独立行）
- *   名称后半（可选，跨多行，如"一"+"年持有期混合A"）
- *   0.00（昨日收益）
- *   收益率%
- * [NOTE] 容忍OCR错误：22.000.00 → 22,000.00，+3.667.48 → +3,667.48
+ * 解析支付宝截图格式
+ * [WHY] 支付宝持仓截图是两行为一组：
+ *   第1行（主信息行）：名称前半部分 + 持仓金额 + 持有盈亏（带+/-，2位小数）
+ *   第2行（副信息行）：名称后半部分（如 C / 持有期混合A / ...） + 0.00（昨日收益） + 收益率（带+/-和%）
+ *   注意：基金名很长时，会被支付宝拆成两半分别放在这两行的第一列
+ * [NOTE] 也兼容旧格式（名称/金额/盈亏各占独立一行）以及手机 OCR 行错位的情况
  */
 function parseAlipayFormat(lines: string[], fundList: FundInfo[]): RecognizedHolding[] {
   const holdings: RecognizedHolding[] = []
   // UI 噪声行：表头、广告、页面元素等
-  const uiNoisePattern = /支付宝|基金|我的持有|市场|机会|自选|返回|更多|京东|自选榜|预计|更新|交易|笔|买入|合计|元|No\.|重磅|稳健|圈|芯片|半导体|近期|排序|全部|股票型|债券型|混合型|一周|体验金|金额排序|偏股|偏债|指数|黄金|全球|名称|金额|昨日|收益|率|持有收益|持仓|收益明细|交易记录|定投|清仓|体验金|^[0-9:]+\s*$|^ll令|^四$|^因$|^◆$|^\d+$|去看看|和平协议|反弹/i
+  const uiNoisePattern = /支付宝|基金|我的持有|市场|机会|自选|返回|更多|京东|自选榜|预计|更新|交易|笔|买入|合计|元|No\.|重磅|稳健|圈|芯片|半导体|近期|排序|全部|股票型|债券型|混合型|一周|体验金|金额排序|偏股|偏债|指数|黄金|全球|名称|金额|昨日|收益|率|持有收益|持仓|收益明细|交易记录|定投|清仓|体验金|^[0-9:]+\s*$|^ll令|^四$|^因$|^◆$|^\d+$|去看看|和平协议|反弹|自选/i
 
   // 归一化金额字符串：处理OCR把逗号识别成点的情况（22.000.00 → 22,000.00）
   const normalizeAmountStr = (str: string): string => {
@@ -434,73 +431,93 @@ function parseAlipayFormat(lines: string[], fundList: FundInfo[]): RecognizedHol
     return sign + num
   }
 
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i].trim()
+  // 从行内提取"中文/字母连续片段"作为名称部分
+  const extractNamePiece = (line: string): string => {
+    const pieces: string[] = line.match(/[\u4e00-\u9fa5A-Za-z·]+/g) || []
+    return pieces.filter(p => !uiNoisePattern.test(p) && p.length >= 1).join('')
+  }
 
-    // 找金额行：纯数字（可能带逗号和小数），容忍OCR错误
-    const amountMatch = line.match(/^([0-9,.]+\.\d{2})$/)
-    if (!amountMatch) {
-      i++
-      continue
+  // 从一行中提取所有金额（含符号或不含符号，2位小数，>=100的优先）
+  const extractAmounts = (line: string): { raw: string; value: number; signed: boolean }[] => {
+    const results: { raw: string; value: number; signed: boolean }[] = []
+    const matches = line.match(/([+-]?\s*[0-9][0-9,.]*\.\d{2})/g) || []
+    for (const m of matches) {
+      const signed = /^[+-]/.test(m.trim())
+      const v = parseAmount(normalizeSignedNumber(normalizeAmountStr(m)))
+      if (isFinite(v)) results.push({ raw: m, value: v, signed })
     }
+    return results
+  }
 
-    const amount = parseAmount(normalizeAmountStr(amountMatch[1]))
-    if (amount < 100) {
-      i++
-      continue
-    }
+  // 从行中提取收益率百分比（用于判断是否是"副信息行"，不做实际解析，仅用于停止名称后半的扫描）
+  const hasPercent = (line: string): boolean => /[-+]?\s*\d[\d.]*\s*%/.test(line)
 
-    // 名称前半在上一行
-    let namePart1 = ''
-    if (i > 0) {
-      const prevLine = lines[i - 1].trim()
-      if (/[\u4e00-\u9fa5]{2,}/.test(prevLine) && !uiNoisePattern.test(prevLine)) {
-        namePart1 = (prevLine.match(/[\u4e00-\u9fa5A-Za-z·]+/g) || []).join('')
-      }
-    }
+  // 已使用的行索引，避免重复配对
+  const usedIdx = new Set<number>()
 
-    // 持有收益在下一行（带符号或纯数字，2位小数，容忍OCR错误）
+  // ========= 策略1：主/副两行配对（新支付宝格式） =========
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (usedIdx.has(i)) continue
+    const line1 = lines[i].trim()
+    const line2 = lines[i + 1].trim()
+
+    // 提取 line1 的金额：必须至少有两个金额（金额 + 盈亏），或一个金额且 line2 有 0.00
+    const amounts1 = extractAmounts(line1)
+    // 金额要足够大才是持仓金额
+    const posIdx = amounts1.findIndex(a => a.value >= 100)
+    if (posIdx < 0) continue
+
+    // line1 的第一个大额就是持仓金额
+    const holdAmt = amounts1[posIdx].value
+
+    // 找盈亏：line1 中剩余的带符号且有 2 位小数的；如果 line1 没有，看 line2
     let profit = 0
-    let namePart2 = ''
-    let consumed = 1
-
-    if (i + 1 < lines.length) {
-      const profitLine = lines[i + 1].trim()
-      const profitMatch = profitLine.match(/^([-+]?[0-9,.]+\.\d{2})$/)
-      if (profitMatch) {
-        profit = parseAmount(normalizeSignedNumber(normalizeAmountStr(profitMatch[1])))
-        consumed = 2
-
-        // 名称后半：盈亏行之后的中文/字母行（可能跨多行，如"一"+"年持有期混合A"）
-        let checkIdx = i + 2
-        while (checkIdx < lines.length) {
-          const afterLine = lines[checkIdx].trim()
-          // 停止条件：0.00、百分比、纯数字、噪声行
-          if (/^0\.00$/.test(afterLine)) break
-          if (/[-+]\d+\.\d+%/.test(afterLine)) break
-          if (/^[0-9,.]+$/.test(afterLine)) break
-          if (uiNoisePattern.test(afterLine)) break
-          // 如果是中文或字母行（含字母如"C"、"A"），合并到名称
-          if (/[A-Za-z\u4e00-\u9fa5]/.test(afterLine)) {
-            namePart2 += (afterLine.match(/[A-Za-z\u4e00-\u9fa5·]+/g) || []).join('')
-            consumed++
-            checkIdx++
-          } else {
-            break
-          }
-        }
+    for (let k = posIdx + 1; k < amounts1.length; k++) {
+      if (amounts1[k].signed) { profit = amounts1[k].value; break }
+    }
+    if (profit === 0) {
+      const amounts2 = extractAmounts(line2)
+      for (const a of amounts2) {
+        if (a.signed && Math.abs(a.value) < holdAmt) { profit = a.value; break }
       }
     }
 
-    i += consumed
+    // 提取名称：line1 第一列（名称前半） + line2 第一列（名称后半）
+    let name1 = extractNamePiece(line1)
+    let name2 = extractNamePiece(line2)
 
-    // 合并名称
-    let fullName = (namePart1 + namePart2).trim()
+    // 过滤：名称后半如果匹配到 uiNoisePattern，就不要（如第二行第一列恰好是"昨日"之类残留噪声）
+    if (uiNoisePattern.test(name2) && name2.length < 4) name2 = ''
+    if (uiNoisePattern.test(name1) && name1.length < 4) name1 = ''
+
+    // 更严格过滤：如果 name1 看起来就是表头或噪声，跳过这一行
+    if (!name1 || name1.length < 3) continue
+
+    // line2 必须是副信息行：包含 0.00（昨日收益）或收益率百分比
+    // 或者：line2 至少有一个数字（金额/收益率），才算"两行为一组"
+    const line2LooksLikeSubRow = /0\.00/.test(line2) || hasPercent(line2) || extractAmounts(line2).length > 0
+
+    let namePiece1 = name1
+    let namePiece2 = ''
+
+    if (line2LooksLikeSubRow) {
+      namePiece2 = name2
+      usedIdx.add(i + 1) // 副行已使用
+    } else {
+      // 若 line2 不像副信息，则尝试把 line1 当作单行名称+金额
+      // （也就是名称不跨行，line2 是下一只的开始）
+      namePiece2 = ''
+    }
+
+    usedIdx.add(i)
+
+    let fullName = (namePiece1 + namePiece2).trim()
     if (!fullName || fullName.length < 3) continue
-
-    // 过滤 UI 噪声
     if (uiNoisePattern.test(fullName) && fullName.length < 8) continue
+
+    // 保底：如果 name1+name2 不合理（如重复），尝试回退只取 name1
+    //（有时手机 OCR 会把名称后半识别到别处）
+    if (fullName.length > 30) fullName = namePiece1
 
     // 在基金列表中匹配
     let code = ''
@@ -511,10 +528,49 @@ function parseAlipayFormat(lines: string[], fundList: FundInfo[]): RecognizedHol
     holdings.push({
       code,
       name: finalName,
-      amount,
+      amount: holdAmt,
       profit: profit || 0,
       confidence: code ? 0.9 : 0.6
     })
+  }
+
+  // ========= 策略2：兼容旧格式（金额独立行，名称在上一行） =========
+  // 如果策略1识别出的条目明显偏少（<3条），再扫一遍整行纯金额的旧格式
+  if (holdings.length < 3) {
+    for (let i = 0; i < lines.length; i++) {
+      if (usedIdx.has(i)) continue
+      const line = lines[i].trim()
+      const amountMatch = line.match(/^([0-9,.]+\.\d{2})$/)
+      if (!amountMatch) continue
+      const amount = parseAmount(normalizeAmountStr(amountMatch[1]))
+      if (amount < 100) continue
+
+      let namePart1 = ''
+      if (i > 0 && !usedIdx.has(i - 1)) {
+        const prevLine = lines[i - 1].trim()
+        if (/[\u4e00-\u9fa5]{2,}/.test(prevLine) && !uiNoisePattern.test(prevLine)) {
+          namePart1 = extractNamePiece(prevLine)
+        }
+      }
+      if (!namePart1 || namePart1.length < 3) continue
+
+      let profit = 0
+      if (i + 1 < lines.length) {
+        const profitLine = lines[i + 1].trim()
+        const profitMatch = profitLine.match(/^([-+]?[0-9,.]+\.\d{2})$/)
+        if (profitMatch) profit = parseAmount(normalizeSignedNumber(normalizeAmountStr(profitMatch[1])))
+      }
+
+      const f = searchFundByName(namePart1, fundList)
+      const code = f ? f.code : ''
+      holdings.push({
+        code,
+        name: f ? f.name : namePart1,
+        amount,
+        profit: profit || 0,
+        confidence: code ? 0.9 : 0.6
+      })
+    }
   }
 
   return holdings
@@ -1074,7 +1130,6 @@ interface FundInfo {
 function searchFundByName(ocrName: string, fundList: FundInfo[]): FundInfo | null {
   if (!ocrName || ocrName.length < 2) return null
 
-  // 提取纯中文字符用于匹配（过滤掉 OCR 噪声如 算选Y 按令 等）
   const ocrChinese = (ocrName.match(/[\u4e00-\u9fa5]/g) || []).join('')
   const cleanOcrName = ocrName.replace(/[()\s]/g, '').toLowerCase()
 
@@ -1085,31 +1140,69 @@ function searchFundByName(ocrName: string, fundList: FundInfo[]): FundInfo | nul
     const cleanFundName = fund.name.replace(/[()\s]/g, '').toLowerCase()
     const fundChinese = (fund.name.match(/[\u4e00-\u9fa5]/g) || []).join('')
 
-    // 1. 精确匹配（清理后完全一致）
+    // 1. 精确匹配
     if (cleanFundName === cleanOcrName) return fund
 
-    // 2. 中文子串匹配：OCR 中文名包含基金中文名（基金名是 OCR 名的子串）
-    // [FIX] 分数与基金中文名长度成正比，越长越精确，避免短名抢先匹配
+    // [FIX] 新增：计算中文字符重叠率，过滤掉重叠率太低的候选
+    const setOcr = new Set(ocrChinese)
+    let common = 0
+    for (const ch of fundChinese) { if (setOcr.has(ch)) common++ }
+    const maxLen = Math.max(ocrChinese.length, fundChinese.length)
+    const charRatio = maxLen > 0 ? common / maxLen : 0
+
+    // 2. 中文子串匹配
     if (fundChinese.length >= 3 && ocrChinese.includes(fundChinese)) {
+      // [FIX] 子串匹配时，额外检查：OCR 名中是否存在 >=3 个连续中文字符
+      // 在候选名中找不到（即 OCR 噪声块）
+      if (ocrChinese.length > fundChinese.length + 2) {
+        // OCR 名比候选名多出 3+ 个中文字符，需要检查多出的是不是噪声
+        // （比如 OCR "中信建投品质优选一年持有期混合A" vs 候选 "中信建投品质优选一年持有A"
+        // 多出的 "期混合" 就是噪声块）
+        let hasNoiseBlock = false
+        for (let len = 3; len <= Math.min(5, ocrChinese.length - fundChinese.length + 2); len++) {
+          for (let i = 0; i <= ocrChinese.length - len; i++) {
+            const seg = ocrChinese.substring(i, i + len)
+            if (!fundChinese.includes(seg)) {
+              // 只有当这段噪声在 OCR 名中是连续的、且长度 >=3、
+              // 并且整个候选名完全不含这段时，才判定为噪声块
+              // 但同时也要求 fundChinese 被 OCR 完全包含，这已经是我们的前提
+              hasNoiseBlock = true
+              break
+            }
+          }
+          if (hasNoiseBlock) break
+        }
+        if (hasNoiseBlock) {
+          // 仍然接受这个匹配，但降低置信度评分
+          const score = 0.5 + 0.2 * (fundChinese.length / Math.max(ocrChinese.length, 1))
+          if (score > bestScore) { bestScore = score; bestMatch = fund }
+          continue
+        }
+      }
+
+      // 正常接受
       const score = 0.7 + 0.3 * (fundChinese.length / Math.max(ocrChinese.length, 1))
       if (score > bestScore) { bestScore = score; bestMatch = fund }
       continue
     }
-    // OCR 中文名是基金中文名的子串（OCR 名较短，可能是缩写）
+
     if (ocrChinese.length >= 3 && fundChinese.includes(ocrChinese)) {
       const score = 0.7 + 0.3 * (ocrChinese.length / Math.max(fundChinese.length, 1))
       if (score > bestScore) { bestScore = score; bestMatch = fund }
       continue
     }
 
-    // 3. 最长公共子序列匹配（处理 OCR 缺字或有多余噪声的情况）
+    // 3. LCS 匹配
     if (fundChinese.length >= 3 && ocrChinese.length >= 3) {
       const lcsLen = longestCommonSubsequence(ocrChinese, fundChinese)
-      // 覆盖率：基金中文名被匹配到的比例
       const coverage = lcsLen / fundChinese.length
-      if (coverage >= 0.7 && coverage > bestScore) {
-        bestScore = coverage
-        bestMatch = fund
+      // [FIX] 提高阈值到 0.85，并要求至少有 5 个共同字符
+      if (coverage >= 0.85 && lcsLen >= 5 && coverage > bestScore) {
+        // 额外检查：字符重叠率不能太低
+        if (charRatio >= 0.6) {
+          bestScore = coverage
+          bestMatch = fund
+        }
       }
     }
   }
