@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { getTrades, removeTrade, getHoldings, updateTradesByCode, saveTrades } from '@/utils/storage'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
+import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import type { TradeRecord } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
 // @ts-ignore
@@ -355,6 +356,62 @@ function toggleAccountFilter(account: string) {
   accountFilter.value = accountFilter.value === account ? '' : account
 }
 
+// AI 分析结果 - 基于交易记录 + 实时行情
+const aiAnalysis = computed<TradeAnalysisResult>(() => {
+  const trades = getTrades()
+  return analyzeTrades(trades, fundDataMap.value)
+})
+
+// 展开/收起 AI 面板
+const aiPanelExpanded = ref(false)
+
+function getSignalIcon(signal: string) {
+  switch (signal) {
+    case 'take_profit': return '🎯'
+    case 'buy_back': return '🔄'
+    case 'cut_loss': return '🛑'
+    case 'add_on_dip': return '📉'
+    case 'observe': return '👀'
+    default: return '⚪'
+  }
+}
+
+function getSignalLabel(signal: string) {
+  switch (signal) {
+    case 'take_profit': return '止盈'
+    case 'buy_back': return '回补'
+    case 'cut_loss': return '止损'
+    case 'add_on_dip': return '补仓'
+    case 'observe': return '观察'
+    default: return '观望'
+  }
+}
+
+function getSignalClass(signal: string) {
+  switch (signal) {
+    case 'take_profit': return 'signal-take-profit'
+    case 'buy_back': return 'signal-buy-back'
+    case 'cut_loss': return 'signal-cut-loss'
+    case 'add_on_dip': return 'signal-add-on-dip'
+    default: return 'signal-observe'
+  }
+}
+
+function getScoreClass(score: number) {
+  if (score <= -30) return 'score-danger'
+  if (score <= -10) return 'score-warning'
+  if (score >= 30) return 'score-positive'
+  if (score >= 10) return 'score-mild-positive'
+  return 'score-neutral'
+}
+
+function getHealthColor(score: number) {
+  if (score >= 75) return '#22c55e'
+  if (score >= 50) return '#0ea5e9'
+  if (score >= 25) return '#f59e0b'
+  return '#ef4444'
+}
+
 onMounted(() => {
   loadTrades()
 })
@@ -404,6 +461,107 @@ onMounted(() => {
         >
           <span class="refresh-icon">↻</span>
         </button>
+      </div>
+    </div>
+
+    <!-- 可滚动内容区 -->
+    <div class="content-scroll">
+
+    <!-- AI 智能分析面板 -->
+    <div class="ai-panel">
+      <div class="ai-panel-header" @click="aiPanelExpanded = !aiPanelExpanded">
+        <div class="ai-panel-title">
+          <span class="ai-icon">🤖</span>
+          <span>AI 交易分析</span>
+          <span class="ai-summary">
+            <span class="ai-chip chip-tp" v-if="aiAnalysis.summary.takeProfitCount > 0">止盈 {{ aiAnalysis.summary.takeProfitCount }}</span>
+            <span class="ai-chip chip-bb" v-if="aiAnalysis.summary.buyBackCount > 0">回补 {{ aiAnalysis.summary.buyBackCount }}</span>
+            <span class="ai-chip chip-sl" v-if="aiAnalysis.summary.cutLossCount > 0">止损 {{ aiAnalysis.summary.cutLossCount }}</span>
+            <span class="ai-chip chip-dip" v-if="aiAnalysis.summary.addOnDipCount > 0">补仓 {{ aiAnalysis.summary.addOnDipCount }}</span>
+          </span>
+        </div>
+        <span class="ai-panel-toggle">{{ aiPanelExpanded ? '收起 ▲' : '展开 ▼' }}</span>
+      </div>
+
+      <div v-if="aiPanelExpanded" class="ai-panel-body">
+        <!-- 交易汇总 -->
+        <div class="ai-trade-summary">
+          <div class="summary-stat">
+            <div class="stat-value" :class="aiAnalysis.summary.totalPnL >= 0 ? 'up' : 'down'">
+              {{ aiAnalysis.summary.totalPnL >= 0 ? '+' : '' }}{{ aiAnalysis.summary.totalPnL.toFixed(0) }}
+            </div>
+            <div class="stat-label">累计盈亏(元)</div>
+          </div>
+          <div class="summary-stat">
+            <div class="stat-value">{{ aiAnalysis.summary.totalTrades }}</div>
+            <div class="stat-label">交易笔数</div>
+          </div>
+          <div class="summary-stat" v-if="aiAnalysis.summary.bestTrade">
+            <div class="stat-value up">{{ aiAnalysis.summary.bestTrade.return.toFixed(1) }}%</div>
+            <div class="stat-label">最佳: {{ aiAnalysis.summary.bestTrade.name.slice(0, 6) }}</div>
+          </div>
+          <div class="summary-stat" v-if="aiAnalysis.summary.worstTrade">
+            <div class="stat-value down">{{ aiAnalysis.summary.worstTrade.return.toFixed(1) }}%</div>
+            <div class="stat-label">最差: {{ aiAnalysis.summary.worstTrade.name.slice(0, 6) }}</div>
+          </div>
+        </div>
+
+        <!-- 交易建议列表 -->
+        <div v-if="aiAnalysis.signals.length > 0" class="ai-section">
+          <div class="ai-section-title">📋 交易提醒（{{ aiAnalysis.signals.length }}条）</div>
+          <div class="ai-signal-list">
+            <div v-for="signal in aiAnalysis.signals" :key="signal.id" class="ai-signal-card" :class="getSignalClass(signal.signal)">
+              <div class="signal-header">
+                <span class="signal-icon">{{ getSignalIcon(signal.signal) }}</span>
+                <span class="signal-title">{{ getSignalLabel(signal.signal) }}：{{ signal.fundName }}</span>
+                <span class="signal-score" :class="getScoreClass(signal.score)">
+                  {{ signal.returnRate >= 0 ? '+' : '' }}{{ signal.returnRate.toFixed(1) }}%
+                </span>
+              </div>
+              <div class="signal-detail">
+                <span class="signal-trade-date">{{ signal.tradeDate }}</span>
+                <span class="signal-trade-type" :class="signal.tradeType">{{ signal.tradeType === 'buy' ? '买入' : '卖出' }}</span>
+                <span class="signal-trade-amount">{{ signal.tradeAmount >= 10000 ? (signal.tradeAmount / 10000).toFixed(1) + '万' : signal.tradeAmount.toFixed(0) + '元' }}</span>
+                <span class="signal-separator">→</span>
+                <span class="signal-current">现价 {{ signal.currentValue.toFixed(4) }}</span>
+              </div>
+              <div class="signal-reasons">
+                <div class="signal-reason">💭 {{ signal.reason }}</div>
+              </div>
+              <div class="signal-suggestions">
+                <div class="signal-suggestion">💡 {{ signal.suggestion }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="ai-no-signal">
+          ✅ 暂无交易信号，所有交易记录表现正常
+        </div>
+
+        <!-- 基金汇总 -->
+        <div v-if="aiAnalysis.fundSummaries.length > 0" class="ai-section">
+          <div class="ai-section-title">📊 基金汇总</div>
+          <div class="ai-fund-table">
+            <div class="ai-fund-row ai-fund-header">
+              <span class="col-name">基金</span>
+              <span class="col-stat">买入</span>
+              <span class="col-stat">卖出</span>
+              <span class="col-stat">净流入</span>
+              <span class="col-stat">最佳</span>
+              <span class="col-stat">最差</span>
+            </div>
+            <div v-for="fs in aiAnalysis.fundSummaries" :key="fs.code" class="ai-fund-row">
+              <span class="col-name" :title="fs.name">{{ fs.name.length > 8 ? fs.name.slice(0, 8) + '..' : fs.name }}</span>
+              <span class="col-stat">{{ fs.totalBuyAmount >= 10000 ? (fs.totalBuyAmount / 10000).toFixed(1) + '万' : fs.totalBuyAmount.toFixed(0) }}</span>
+              <span class="col-stat">{{ fs.totalSellAmount >= 10000 ? (fs.totalSellAmount / 10000).toFixed(1) + '万' : fs.totalSellAmount.toFixed(0) }}</span>
+              <span class="col-stat" :class="fs.netFlow >= 0 ? 'up' : 'down'">{{ fs.netFlow >= 10000 ? (fs.netFlow / 10000).toFixed(1) + '万' : fs.netFlow.toFixed(0) }}</span>
+              <span class="col-stat up" v-if="fs.bestBuyReturn !== -Infinity">{{ fs.bestBuyReturn.toFixed(1) }}%</span>
+              <span class="col-stat" v-else>--</span>
+              <span class="col-stat down" v-if="fs.worstBuyReturn !== Infinity">{{ fs.worstBuyReturn.toFixed(1) }}%</span>
+              <span class="col-stat" v-else>--</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -491,6 +649,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </div><!-- /.content-scroll -->
   </div>
 </template>
 
@@ -501,6 +660,15 @@ onMounted(() => {
   flex-direction: column;
   background: var(--bg-primary);
   overflow: hidden;
+}
+
+/* 内容滚动区 */
+.content-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* 顶部标题 */
@@ -652,10 +820,6 @@ onMounted(() => {
 
 /* 基金列表 */
 .fund-list {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
   padding: 8px 12px;
   padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
 }
@@ -881,4 +1045,346 @@ onMounted(() => {
   background: rgba(255, 77, 79, 0.1);
   color: #ff4d4f;
 }
+
+/* ============ AI 分析面板 ============ */
+.ai-panel {
+  margin: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.ai-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.ai-panel-header:active {
+  background: var(--bg-tertiary);
+}
+
+.ai-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-icon {
+  font-size: 16px;
+}
+
+.ai-summary {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.ai-chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.chip-tp { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.chip-bb { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; }
+.chip-sl { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.chip-dip { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+
+.ai-panel-toggle {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ai-panel-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* 交易汇总 */
+.ai-trade-summary {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.summary-stat {
+  flex: 1;
+  text-align: center;
+}
+
+.summary-stat .stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-stat .stat-value.up { color: #22c55e; }
+.summary-stat .stat-value.down { color: #ef4444; }
+
+.summary-stat .stat-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 亮点/风险标签 */
+.ai-section {
+  margin-top: 10px;
+}
+
+.ai-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.ai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.tag-strength {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.tag-issue {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* 交易建议卡片 */
+.ai-signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-signal-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-primary);
+  border-left: 3px solid var(--border-color);
+}
+
+.ai-signal-card.signal-take-profit {
+  border-left-color: #22c55e;
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.ai-signal-card.signal-buy-back {
+  border-left-color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.ai-signal-card.signal-cut-loss {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.ai-signal-card.signal-add-on-dip {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.ai-signal-card.signal-observe {
+  border-left-color: #6b7280;
+  background: rgba(107, 114, 128, 0.06);
+}
+
+.signal-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.signal-icon {
+  font-size: 14px;
+}
+
+.signal-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.signal-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.signal-trade-date {
+  color: var(--text-secondary);
+}
+
+.signal-trade-type {
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.signal-trade-type.buy {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.signal-trade-type.sell {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.signal-trade-amount {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.signal-separator {
+  color: var(--text-tertiary);
+}
+
+.signal-current {
+  font-variant-numeric: tabular-nums;
+}
+
+.signal-score {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.score-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.score-positive {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.score-mild-positive {
+  background: rgba(14, 165, 233, 0.15);
+  color: #0ea5e9;
+}
+
+.score-neutral {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+}
+
+.signal-reasons {
+  margin-bottom: 4px;
+}
+
+.signal-reason {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.signal-suggestions {
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.signal-suggestion {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.ai-no-signal {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 基金汇总表格 */
+.ai-fund-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.ai-fund-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.ai-fund-row.ai-fund-header {
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.ai-fund-row:not(.ai-fund-header) {
+  background: var(--bg-primary);
+}
+
+.col-name {
+  flex: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.col-stat {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.col-stat.up { color: #22c55e; font-weight: 600; }
+.col-stat.down { color: #ef4444; font-weight: 600; }
 </style>

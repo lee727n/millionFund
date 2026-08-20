@@ -201,10 +201,11 @@ function getRatioStyle(ratio: number) {
       </div>
     </template>
 
-    <!-- Portfolio mode: compact layout, no icons, no arrows, rating after name -->
+    <!-- Portfolio mode: compact layout, QD icon for overseas, rating after name -->
     <template v-else>
       <div class="index-name web-only">
         <div class="fund-name-content">
+          <span v-if="fund.isQDII" class="qdii-tag">QD</span>
           <div 
             class="fund-name-right" 
             :class="getFundNameClass(fund, tradingSession)"
