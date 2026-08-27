@@ -3,11 +3,11 @@
 // [WHAT] 深色主题、实时K线图、成交量柱状图、时间周期选择
 // [HOW] Canvas绘制，requestAnimationFrame实现流畅实时动画
 
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, watch, computed, nextTick } from 'vue'
 import { fetchSimpleKLineData, calculatePeriodReturns, clearFundCache, fetchHS300History, type SimpleKLineData, type PeriodReturn } from '@/api/fundFast'
 import { useThemeStore } from '@/stores/theme'
 import { isTradingTime } from '@/api/tiantianApi'
-import type { TradeRecord } from '@/types/fund'
+import type { TradeRecord, TTradeRecord } from '@/types/fund'
 
 const props = defineProps<{
   fundCode: string
@@ -17,6 +17,11 @@ const props = defineProps<{
   trades?: TradeRecord[]
   // 持仓成本净值，用于绘制成本线
   costNavValue?: number
+  // T交易归档记录，K线上用虚线连线+盈亏标注
+  tTrades?: TTradeRecord[]
+  // 高亮交易节点（从AI分析跳转）
+  highlightDate?: string
+  highlightType?: string
 }>()
 
 const themeStore = useThemeStore()
@@ -428,6 +433,13 @@ function drawPerformanceChart(
     ...perfData.map(d => d.fundReturn),
     ...(showHS300.value ? perfData.map(d => d.hs300Return) : [])
   ]
+  // [FIX] 把成本线收益率也纳入范围计算，确保成本线永远可见（否则超出数据范围时消失）
+  if (props.costNavValue && props.costNavValue > 0) {
+    const fundFirstValue = filteredData.value[0]?.value || props.lastClose || 1
+    if (fundFirstValue > 0) {
+      allReturns.push(((props.costNavValue - fundFirstValue) / fundFirstValue) * 100)
+    }
+  }
   let minReturn = Math.min(...allReturns)
   let maxReturn = Math.max(...allReturns)
   
@@ -691,6 +703,8 @@ function drawChart() {
     drawPerformanceChart(ctx, width, height, mainHeight, padding, chartWidth, colors)
     // 绘制交易标记（业绩模式）
     drawTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'performance')
+    drawTTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'performance')
+    drawHighlightMarker(ctx, width, height, mainHeight, padding, chartWidth, 'performance')
     return
   }
   
@@ -699,6 +713,12 @@ function drawChart() {
   const values = data.map(d => d.value)
   let minValue = Math.min(...values)
   let maxValue = Math.max(...values)
+
+  // [FIX] 把成本线净值也纳入价格范围计算，确保成本线永远可见（否则超出数据范围时直接消失）
+  if (props.costNavValue && props.costNavValue > 0) {
+    minValue = Math.min(minValue, props.costNavValue)
+    maxValue = Math.max(maxValue, props.costNavValue)
+  }
   
   // [WHY] 价格范围增加边距，让曲线不贴边
   const margin = (maxValue - minValue) * 0.1 || 0.01
@@ -736,29 +756,27 @@ function drawChart() {
   }
   
   // ========== 绘制持仓成本线（蓝色虚线） ==========
+  // [FIX] 成本线已加入 min/max 计算，必然在可见范围内，无需范围判断
   if (props.costNavValue && props.costNavValue > 0) {
     const costValue = props.costNavValue
-    // 只有当成本线在可见范围内时才绘制
-    if (costValue >= minValue && costValue <= maxValue) {
-      const costY = padding.top + (mainHeight - padding.top) * (1 - (costValue - minValue) / valueRange)
-      
-      // 绘制成本线
-      ctx.beginPath()
-      ctx.moveTo(padding.left, costY)
-      ctx.lineTo(width - padding.right, costY)
-      ctx.strokeStyle = '#1677ff' // 蓝色
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([6, 4]) // 虚线样式
-      ctx.stroke()
-      ctx.setLineDash([]) // 恢复实线
-      
-      // 绘制成本线标签（右侧）
-      ctx.fillStyle = '#1677ff'
-      ctx.font = '10px Arial'
-      ctx.textAlign = 'left'
-      const costLabel = `成本 ${costValue.toFixed(4)}`
-      ctx.fillText(costLabel, padding.left + 5, costY - 4)
-    }
+    const costY = padding.top + (mainHeight - padding.top) * (1 - (costValue - minValue) / valueRange)
+
+    // 绘制成本线
+    ctx.beginPath()
+    ctx.moveTo(padding.left, costY)
+    ctx.lineTo(width - padding.right, costY)
+    ctx.strokeStyle = '#1677ff' // 蓝色
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([6, 4]) // 虚线样式
+    ctx.stroke()
+    ctx.setLineDash([]) // 恢复实线
+
+    // 绘制成本线标签（右侧）
+    ctx.fillStyle = '#1677ff'
+    ctx.font = '10px Arial'
+    ctx.textAlign = 'left'
+    const costLabel = `成本 ${costValue.toFixed(4)}`
+    ctx.fillText(costLabel, padding.left + 5, costY - 4)
   }
   
   // ========== 绘制价格线/K线 ==========
@@ -1085,6 +1103,8 @@ function drawChart() {
 
   // 绘制交易标记（净值模式）
   drawTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'normal')
+  drawTTradeMarkers(ctx, width, height, mainHeight, padding, chartWidth, colors, 'normal')
+  drawHighlightMarker(ctx, width, height, mainHeight, padding, chartWidth, 'normal')
 }
 
 function formatVolume(v: number): string {
@@ -1104,8 +1124,11 @@ function drawTradeMarkers(
   colors: ReturnType<typeof getThemeColors>,
   mode: 'performance' | 'normal'
 ) {
-  const trades = props.trades
-  if (!trades || trades.length === 0) return
+  const trades = props.trades || []
+  const tTrades = props.tTrades || []
+
+  // [FIX] trades 为空但 tTrades 不为空时仍需继续，否则 T 交易的 hover 检测和 tooltip 不执行
+  if (trades.length === 0 && tTrades.length === 0) return
 
   const data = mode === 'performance' ? performanceData.value : filteredData.value
   if (data.length === 0) return
@@ -1126,6 +1149,8 @@ function drawTradeMarkers(
   let toY: (value: number) => number
   let valueGetter: (d: any) => number
   let hoveredTrade: TradeRecord | null = null
+  let hoveredTTrade: TTradeRecord | null = null
+  let hoveredTTradeType: 'buy' | 'sell' = 'buy'
 
   if (mode === 'performance') {
     const allReturns = [
@@ -1157,6 +1182,31 @@ function drawTradeMarkers(
           break
         }
       }
+      // 检查T交易紫色点悬停
+      if (!hoveredTrade && tTrades.length > 0) {
+        for (const t of tTrades) {
+          const buyIdx = performanceData.value.findIndex((d: any) => d.time === t.buyDate)
+          if (buyIdx !== -1) {
+            const bx = toX(buyIdx)
+            const by = toY(valueGetter(performanceData.value[buyIdx]!))
+            if (Math.hypot(mousePos.value.x - bx, mousePos.value.y - by) <= 10) {
+              hoveredTTrade = t
+              hoveredTTradeType = 'buy'
+              break
+            }
+          }
+          const sellIdx = performanceData.value.findIndex((d: any) => d.time === t.sellDate)
+          if (sellIdx !== -1) {
+            const sx = toX(sellIdx)
+            const sy = toY(valueGetter(performanceData.value[sellIdx]!))
+            if (Math.hypot(mousePos.value.x - sx, mousePos.value.y - sy) <= 10) {
+              hoveredTTrade = t
+              hoveredTTradeType = 'sell'
+              break
+            }
+          }
+        }
+      }
     }
   } else {
     const values = filteredData.value.map(d => d.value)
@@ -1181,6 +1231,31 @@ function drawTradeMarkers(
         if (dist <= 12) {
           hoveredTrade = trade
           break
+        }
+      }
+      // 检查T交易紫色点悬停
+      if (!hoveredTrade && tTrades.length > 0) {
+        for (const t of tTrades) {
+          const buyIdx = filteredData.value.findIndex((d: any) => d.time === t.buyDate)
+          if (buyIdx !== -1) {
+            const bx = toX(buyIdx)
+            const by = toY(valueGetter(filteredData.value[buyIdx]!))
+            if (Math.hypot(mousePos.value.x - bx, mousePos.value.y - by) <= 10) {
+              hoveredTTrade = t
+              hoveredTTradeType = 'buy'
+              break
+            }
+          }
+          const sellIdx = filteredData.value.findIndex((d: any) => d.time === t.sellDate)
+          if (sellIdx !== -1) {
+            const sx = toX(sellIdx)
+            const sy = toY(valueGetter(filteredData.value[sellIdx]!))
+            if (Math.hypot(mousePos.value.x - sx, mousePos.value.y - sy) <= 10) {
+              hoveredTTrade = t
+              hoveredTTradeType = 'sell'
+              break
+            }
+          }
         }
       }
     }
@@ -1279,6 +1354,305 @@ function drawTradeMarkers(
       ctx.fillText(line, boxX + 8, boxY + 20 + i * lineHeight)
     })
   }
+
+  // [WHY] T交易紫色点悬停提示：显示买入/卖出详情和做T盈亏
+  if (hoveredTTrade && mousePos.value) {
+    const t = hoveredTTrade
+    const isBuy = hoveredTTradeType === 'buy'
+    const pointDate = isBuy ? t.buyDate : t.sellDate
+    const pointIndex = data.findIndex((d: any) => d.time === pointDate)
+    if (pointIndex === -1) return
+
+    const x = toX(pointIndex)
+    const y = toY(valueGetter(data[pointIndex]!))
+    const isProfit = t.profit >= 0
+
+    // 提示框内容
+    const lines = [
+      `${isBuy ? '🟣 做T买入' : '🟣 做T卖出'} ${pointDate}`,
+      `金额: ${(isBuy ? t.buyAmount : t.sellAmount).toFixed(2)} 元`,
+      `净值: ${(isBuy ? t.buyNetValue : t.sellNetValue).toFixed(4)}`,
+      `做T收益: ${isProfit ? '+' : ''}${t.profit.toFixed(2)} 元`,
+      `收益率: ${isProfit ? '+' : ''}${t.returnRate.toFixed(2)}%`,
+      `持有天数: ${t.holdingDays} 天`
+    ]
+
+    // 测量提示框尺寸
+    ctx.font = '12px Arial'
+    const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width))
+    const boxWidth = maxWidth + 16
+    const lineHeight = 18
+    const boxHeight = lines.length * lineHeight + 12
+
+    // 确定提示框位置（避免超出边界）
+    let boxX = x + 12
+    let boxY = y - boxHeight - 10
+    if (boxX + boxWidth > width) boxX = x - boxWidth - 12
+    if (boxY < padding.top) boxY = y + 12
+
+    // 绘制提示框背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+    ctx.beginPath()
+    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6)
+    ctx.fill()
+
+    // 绘制提示框边框（紫色）
+    ctx.strokeStyle = '#8b5cf6'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    // 绘制提示文字
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'left'
+    ctx.font = '12px Arial'
+    lines.forEach((line, i) => {
+      // 做T收益行根据盈亏着色
+      if (line.startsWith('做T收益') || line.startsWith('收益率')) {
+        ctx.fillStyle = isProfit ? '#22c55e' : '#ef4444'
+      } else {
+        ctx.fillStyle = '#ffffff'
+      }
+      ctx.fillText(line, boxX + 8, boxY + 20 + i * lineHeight)
+    })
+  }
+}
+
+// ========== T交易标记绘制 ==========
+// [WHY] T交易用虚线连接买卖点+盈亏标注，与普通交易标记区分
+function drawTTradeMarkers(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  mainHeight: number,
+  padding: { top: number; right: number; bottom: number; left: number },
+  chartWidth: number,
+  colors: ReturnType<typeof getThemeColors>,
+  mode: 'performance' | 'normal'
+) {
+  const tTrades = props.tTrades
+  if (!tTrades || tTrades.length === 0) return
+
+  const data = mode === 'performance' ? performanceData.value : filteredData.value
+  if (data.length === 0) return
+
+  const toX = (index: number) => padding.left + (chartWidth / Math.max(data.length - 1, 1)) * index
+
+  let toY: (value: number) => number
+  let valueGetter: (d: any) => number
+
+  if (mode === 'performance') {
+    const allReturns = [
+      ...performanceData.value.map(d => d.fundReturn),
+      ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
+    ]
+    let minReturn = Math.min(...allReturns)
+    let maxReturn = Math.max(...allReturns)
+    minReturn = Math.min(minReturn, 0)
+    maxReturn = Math.max(maxReturn, 0)
+    const returnMargin = (maxReturn - minReturn) * 0.1 || 2
+    minReturn -= returnMargin
+    maxReturn += returnMargin
+    const returnRange = maxReturn - minReturn || 1
+    toY = (ret: number) => padding.top + (mainHeight - padding.top) * (1 - (ret - minReturn) / returnRange)
+    valueGetter = (d: any) => d.fundReturn
+  } else {
+    const values = filteredData.value.map(d => d.value)
+    let minValue = Math.min(...values)
+    let maxValue = Math.max(...values)
+    const margin = (maxValue - minValue) * 0.1 || 0.01
+    minValue -= margin
+    maxValue += margin
+    const valueRange = maxValue - minValue || 1
+    toY = (val: number) => padding.top + (mainHeight - padding.top) * (1 - (val - minValue) / valueRange)
+    valueGetter = (d: any) => d.value
+  }
+
+  for (const t of tTrades) {
+    const buyIndex = data.findIndex((d: any) => d.time === t.buyDate)
+    const sellIndex = data.findIndex((d: any) => d.time === t.sellDate)
+    if (buyIndex === -1 || sellIndex === -1) continue
+
+    const x1 = toX(buyIndex)
+    const y1 = toY(valueGetter(data[buyIndex]!))
+    const x2 = toX(sellIndex)
+    const y2 = toY(valueGetter(data[sellIndex]!))
+
+    const isProfit = t.profit >= 0
+    const lineColor = isProfit ? '#22c55e' : '#ef4444'
+
+    // 绘制虚线连接
+    ctx.beginPath()
+    ctx.setLineDash([4, 3])
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+    ctx.strokeStyle = lineColor
+    ctx.lineWidth = 1.5
+    ctx.globalAlpha = 0.6
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+
+    // 买入点：紫色圆点
+    ctx.beginPath()
+    ctx.arc(x1, y1, 5, 0, Math.PI * 2)
+    ctx.fillStyle = '#8b5cf6'
+    ctx.globalAlpha = 0.9
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    // 卖出点：紫色圆点
+    ctx.beginPath()
+    ctx.arc(x2, y2, 5, 0, Math.PI * 2)
+    ctx.fillStyle = '#8b5cf6'
+    ctx.globalAlpha = 0.9
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+}
+
+// ========== 高亮交易标记 ==========
+// [WHY] 从AI分析跳转过来，用脉冲圆+价格箭头+水平线突出显示对应交易节点
+function drawHighlightMarker(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  mainHeight: number,
+  padding: { top: number; right: number; bottom: number; left: number },
+  chartWidth: number,
+  mode: 'performance' | 'normal'
+) {
+  if (!props.highlightDate) return
+
+  const data = mode === 'performance' ? performanceData.value : filteredData.value
+  if (data.length === 0) return
+
+  const hlIndex = data.findIndex((d: any) => d.time === props.highlightDate)
+  if (hlIndex === -1) return
+
+  const toX = (index: number) => padding.left + (chartWidth / Math.max(data.length - 1, 1)) * index
+
+  let toY: (value: number) => number
+  let valueGetter: (d: any) => number
+
+  if (mode === 'performance') {
+    const allReturns = [
+      ...performanceData.value.map(d => d.fundReturn),
+      ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
+    ]
+    let minReturn = Math.min(...allReturns)
+    let maxReturn = Math.max(...allReturns)
+    minReturn = Math.min(minReturn, 0)
+    maxReturn = Math.max(maxReturn, 0)
+    const returnMargin = (maxReturn - minReturn) * 0.1 || 2
+    minReturn -= returnMargin
+    maxReturn += returnMargin
+    const returnRange = maxReturn - minReturn || 1
+    toY = (ret: number) => padding.top + (mainHeight - padding.top) * (1 - (ret - minReturn) / returnRange)
+    valueGetter = (d: any) => d.fundReturn
+  } else {
+    const values = filteredData.value.map(d => d.value)
+    let minValue = Math.min(...values)
+    let maxValue = Math.max(...values)
+    const margin = (maxValue - minValue) * 0.1 || 0.01
+    minValue -= margin
+    maxValue += margin
+    const valueRange = maxValue - minValue || 1
+    toY = (val: number) => padding.top + (mainHeight - padding.top) * (1 - (val - minValue) / valueRange)
+    valueGetter = (d: any) => d.value
+  }
+
+  const x = toX(hlIndex)
+  const y = toY(valueGetter(data[hlIndex]!))
+  const isBuy = props.highlightType === 'buy'
+  const color = isBuy ? '#ef4444' : '#22c55e'
+
+  // 1. 水平虚线（交易价格线）
+  ctx.beginPath()
+  ctx.setLineDash([6, 4])
+  ctx.moveTo(padding.left, y)
+  ctx.lineTo(width - padding.right, y)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1
+  ctx.globalAlpha = 0.4
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.globalAlpha = 1
+
+  // 2. 脉冲外环
+  ctx.beginPath()
+  ctx.arc(x, y, 12, 0, Math.PI * 2)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2
+  ctx.globalAlpha = 0.4
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(x, y, 8, 0, Math.PI * 2)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.globalAlpha = 0.7
+  ctx.stroke()
+  ctx.globalAlpha = 1
+
+  // 3. 实心圆点
+  ctx.beginPath()
+  ctx.arc(x, y, 5, 0, Math.PI * 2)
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  // 4. 价格标签（右侧）
+  // [FIX] 业绩模式下不显示 fundReturn（那是图表起点开始的收益率，会误导）
+  // 改为显示交易净值，让用户看到买卖点的实际价格
+  const hlTrade = props.trades?.find(t => t.date === props.highlightDate && t.type === props.highlightType)
+  const hlPoint = data[hlIndex]!
+  const tradeNav = hlTrade?.netValue || (
+    mode === 'performance' && hlPoint && 'fundReturn' in hlPoint
+      ? hlPoint.fundReturn
+      : hlPoint && 'value' in hlPoint
+        ? hlPoint.value
+        : 0
+  )
+  const labelText = isBuy ? `买入 ${props.highlightDate}` : `卖出 ${props.highlightDate}`
+  const priceText = `净值 ${tradeNav.toFixed(4)}`
+
+  ctx.font = 'bold 12px Arial'
+  const labelW = ctx.measureText(labelText).width
+  const priceW = ctx.measureText(priceText).width
+  const boxW = Math.max(labelW, priceW) + 16
+  const boxH = 32
+  const boxX = Math.min(x + 10, width - padding.right - boxW)
+  const boxY = Math.max(y - boxH / 2, padding.top)
+
+  // 标签背景
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.roundRect(boxX, boxY, boxW, boxH, 6)
+  ctx.fill()
+
+  // 标签文字
+  ctx.fillStyle = '#fff'
+  ctx.textAlign = 'left'
+  ctx.font = '10px Arial'
+  ctx.fillText(labelText, boxX + 8, boxY + 13)
+  ctx.font = 'bold 13px Arial'
+  ctx.fillText(priceText, boxX + 8, boxY + 26)
+
+  // 5. 箭头从标签指向圆点
+  ctx.beginPath()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.moveTo(boxX, boxY + boxH / 2)
+  ctx.lineTo(x + 6, y)
+  ctx.stroke()
 }
 
 // ========== 画布鼠标事件 ==========
@@ -1384,6 +1758,11 @@ watch(showHS300, () => {
   nextTick(drawChart)
 })
 
+// [WHY] 监控高亮交易节点，重绘
+watch(() => [props.highlightDate, props.highlightType], () => {
+  nextTick(drawChart)
+})
+
 // [WHY] 监控图表模式切换，重绘图表
 watch(chartMode, () => {
   nextTick(drawChart)
@@ -1391,6 +1770,11 @@ watch(chartMode, () => {
 
 // [WHY] 监控交易记录变化，重绘标记
 watch(() => props.trades, () => {
+  nextTick(drawChart)
+}, { deep: true })
+
+// [WHY] 监控T交易归档变化，重绘T交易标记
+watch(() => props.tTrades, () => {
   nextTick(drawChart)
 }, { deep: true })
 
@@ -1422,9 +1806,21 @@ onMounted(() => {
   setTimeout(startAnimation, 500)
 })
 
+// [FIX] Detail 页用了 keep-alive，从其他页 router.back() 返回时 onMounted 不会再跑，
+// startAnimation/resizeObserver 可能处于停止或 detached 状态，导致成本线/图表不更新
+onActivated(() => {
+  if (canvasRef.value && !resizeObserver) {
+    resizeObserver = new ResizeObserver(() => drawChart())
+    resizeObserver.observe(canvasRef.value.parentElement!)
+  }
+  drawChart()
+  startAnimation()
+})
+
 onUnmounted(() => {
   stopAnimation()
   resizeObserver?.disconnect()
+  resizeObserver = null
 })
 </script>
 
@@ -1539,9 +1935,16 @@ onUnmounted(() => {
 }
 
 /* [WHAT] 图表头部（模式切换 + 时间周期） */
+/* [FIX] 移动端用紧凑型 padding（符合用户 profile 偏好），避免月度切换 tabbar 上方留白过大 */
 .chart-header {
-  padding-top: 12px;
+  padding-top: 6px;
   border-bottom: 1px solid var(--border-color);
+}
+
+@media (min-width: 768px) {
+  .chart-header {
+    padding-top: 12px;
+  }
 }
 
 /* [WHAT] 模式切换标签 */
@@ -1627,16 +2030,23 @@ onUnmounted(() => {
 .legend-value.down { color: var(--color-down); }
 
 /* 时间周期选择器 */
+/* [FIX] 移动端紧凑型 padding，网页端保持原宽松布局（用户 profile 偏好） */
 .period-selector {
   display: flex;
   align-items: center;
-  padding: 8px 8px;
+  padding: 4px 8px 6px;
   gap: 4px;
   border-bottom: 1px solid var(--border-color);
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  .period-selector {
+    padding: 8px 8px;
+  }
 }
 
 .period-selector::-webkit-scrollbar {

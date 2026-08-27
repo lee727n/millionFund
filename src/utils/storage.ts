@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   FUND_NET_VALUES: 'fund_net_values',
   SOURCE_FILTER: 'source_filter',
   TRADES: 'fund_trades',
+  T_TRADES: 'fund_t_trades',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -223,7 +224,7 @@ export function getFundNetValue(code: string): number | undefined {
 
 // ========== 交易记录 ==========
 
-import type { TradeRecord } from '@/types/fund'
+import type { TradeRecord, TTradeRecord } from '@/types/fund'
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 8)
@@ -333,4 +334,146 @@ export function updateTradesByCode(code: string, netValue: number, navDate?: str
     saveTrades(trades)
     console.log('[updateTradesByCode] 保存成功')
   }
+}
+
+// ========== T交易归档 ==========
+
+/**
+ * 获取所有T交易归档记录
+ */
+export function getTTrades(): TTradeRecord[] {
+  return getItem<TTradeRecord[]>(STORAGE_KEYS.T_TRADES, [])
+}
+
+/**
+ * 保存T交易归档记录列表
+ */
+export function saveTTrades(tTrades: TTradeRecord[]): void {
+  setItem(STORAGE_KEYS.T_TRADES, tTrades)
+}
+
+/**
+ * 按基金代码获取T交易归档
+ */
+export function getTTradesByCode(code: string): TTradeRecord[] {
+  return getTTrades().filter(t => t.fundCode === code)
+}
+
+/**
+ * 归档T交易
+ * [WHY] 将配对的买入+卖出记录从交易列表移除，移入T交易归档
+ */
+export function archiveTTrade(buyTrade: TradeRecord, sellTrade: TradeRecord): TTradeRecord {
+  const buyShares = buyTrade.amount / buyTrade.netValue
+  const sellShares = sellTrade.amount / sellTrade.netValue
+  // [WHAT] 用较小份额计算实际做T的配对份额
+  const tShares = Math.min(buyShares, sellShares)
+  const profit = (sellTrade.netValue - buyTrade.netValue) * tShares - (buyTrade.fee + sellTrade.fee)
+  const returnRate = ((sellTrade.netValue - buyTrade.netValue) / buyTrade.netValue) * 100
+
+  const buyDate = new Date(buyTrade.date)
+  const sellDate = new Date(sellTrade.date)
+  const holdingDays = Math.floor((sellDate.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24))
+
+  // [WHAT] 配对金额 = 较小份额 × 对应净值
+  const pairedBuyAmount = tShares * buyTrade.netValue
+  const pairedSellAmount = tShares * sellTrade.netValue
+
+  const tTrade: TTradeRecord = {
+    id: generateId(),
+    fundCode: buyTrade.code,
+    fundName: buyTrade.name,
+    buyTrade: { ...buyTrade },
+    sellTrade: { ...sellTrade },
+    buyDate: buyTrade.date,
+    sellDate: sellTrade.date,
+    buyAmount: pairedBuyAmount,
+    sellAmount: pairedSellAmount,
+    buyNetValue: buyTrade.netValue,
+    sellNetValue: sellTrade.netValue,
+    profit,
+    returnRate,
+    holdingDays,
+    archivedAt: Date.now()
+  }
+
+  const trades = getTrades()
+
+  if (tShares >= buyShares - 0.001) {
+    // [WHAT] 买入全部配对，移除买入记录
+    const buyIdx = trades.findIndex(t => t.id === buyTrade.id)
+    if (buyIdx !== -1) trades.splice(buyIdx, 1)
+  } else {
+    // [WHAT] 买入部分配对，保留剩余
+    const buyIdx = trades.findIndex(t => t.id === buyTrade.id)
+    if (buyIdx !== -1) {
+      const remainingShares = buyShares - tShares
+      trades[buyIdx] = {
+        ...trades[buyIdx],
+        shares: remainingShares,
+        amount: remainingShares * buyTrade.netValue
+      }
+    }
+  }
+
+  if (tShares >= sellShares - 0.001) {
+    // [WHAT] 卖出全部配对，移除卖出记录
+    const sellIdx = trades.findIndex(t => t.id === sellTrade.id)
+    if (sellIdx !== -1) trades.splice(sellIdx, 1)
+  } else {
+    // [WHAT] 卖出部分配对，保留剩余（如卖出7万只配对2万，保留5万）
+    const sellIdx = trades.findIndex(t => t.id === sellTrade.id)
+    if (sellIdx !== -1) {
+      const remainingShares = sellShares - tShares
+      trades[sellIdx] = {
+        ...trades[sellIdx],
+        shares: remainingShares,
+        amount: remainingShares * sellTrade.netValue
+      }
+    }
+  }
+
+  saveTrades(trades)
+
+  // 添加到T交易归档
+  const tTrades = getTTrades()
+  tTrades.push(tTrade)
+  saveTTrades(tTrades)
+
+  return tTrade
+}
+
+/**
+ * 删除T交易归档记录（恢复交易记录）
+ * [WHY] 恢复时只将配对部分的买卖记录放回交易列表
+ * 如果原记录还有剩余部分（部分配对），不会重复恢复
+ */
+export function removeTTrade(tTradeId: string): void {
+  const tTrades = getTTrades()
+  const tTrade = tTrades.find(t => t.id === tTradeId)
+  if (!tTrade) return
+
+  // [WHAT] 恢复配对部分的交易记录（使用归档时保存的配对金额）
+  const buyShares = tTrade.buyAmount / tTrade.buyNetValue
+  const sellShares = tTrade.sellAmount / tTrade.sellNetValue
+
+  const trades = getTrades()
+  trades.push(
+    {
+      ...tTrade.buyTrade,
+      id: generateId(),
+      shares: buyShares,
+      amount: tTrade.buyAmount
+    },
+    {
+      ...tTrade.sellTrade,
+      id: generateId(),
+      shares: sellShares,
+      amount: tTrade.sellAmount
+    }
+  )
+  saveTrades(trades)
+
+  // 从T交易归档中移除
+  saveTTrades(tTrades.filter(t => t.id !== tTradeId))
 }

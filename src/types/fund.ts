@@ -190,6 +190,43 @@ export const TRADE_TYPE_CONFIG = {
   auto_invest: { label: '定投', color: '#1989fa' }
 } as const
 
+/**
+ * T交易归档记录
+ * [WHY] 将配对的买入+卖出记录归档为T交易，从交易列表移除但K线保留标记
+ */
+export interface TTradeRecord {
+  /** 归档ID */
+  id: string
+  /** 基金代码 */
+  fundCode: string
+  /** 基金名称 */
+  fundName: string
+  /** 买入交易记录（原始） */
+  buyTrade: TradeRecord
+  /** 卖出交易记录（原始） */
+  sellTrade: TradeRecord
+  /** 买入日期 */
+  buyDate: string
+  /** 卖出日期 */
+  sellDate: string
+  /** 买入金额 */
+  buyAmount: number
+  /** 卖出金额 */
+  sellAmount: number
+  /** 买入净值 */
+  buyNetValue: number
+  /** 卖出净值 */
+  sellNetValue: number
+  /** 做T盈亏金额 */
+  profit: number
+  /** 做T收益率(%) */
+  returnRate: number
+  /** 持有天数 */
+  holdingDays: number
+  /** 归档时间戳 */
+  archivedAt: number
+}
+
 // ========== 大盘指数相关类型 ==========
 
 /**

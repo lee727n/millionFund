@@ -21,9 +21,9 @@ import {
   predictTrend, calculateReturnAnalysis, calculateFundScore,
   type TrendPrediction, type ReturnAnalysis, type FundScore
 } from '@/utils/statistics'
-import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade, getTrades, saveTrades } from '@/utils/storage'
+import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade, getTrades, saveTrades, getTTradesByCode, archiveTTrade, removeTTrade } from '@/utils/storage'
 import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
-import type { TradeRecord, TradeType } from '@/types/fund'
+import type { TradeRecord, TradeType, TTradeRecord } from '@/types/fund'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,8 +33,13 @@ const holdingStore = useHoldingStore()
 // [WHAT] 基金代码
 const fundCode = computed(() => route.params.code as string)
 
+// [WHAT] 高亮交易节点（从AI分析跳转过来）
+const highlightTradeDate = computed(() => (route.query.hlDate as string) || '')
+const highlightTradeType = computed(() => (route.query.hlType as string) || '')
+
 // [WHAT] 交易记录
 const trades = ref<TradeRecord[]>([])
+const tTrades = ref<TTradeRecord[]>([])
 
 // [WHAT] 带涨跌幅的交易记录（按日期排序）
 // [FIX] 简单逻辑：
@@ -74,6 +79,7 @@ async function loadTrades() {
   
   // 第一步：立即显示本地存储的交易记录
   trades.value = getTradesByCode(fundCode.value)
+  tTrades.value = getTTradesByCode(fundCode.value)
   
   const today = new Date().toLocaleDateString('en-CA')
   const allTrades = trades.value
@@ -181,7 +187,76 @@ function handleDeleteTrade(tradeId: string) {
     .catch(() => {})
 }
 
-// [WHAT] 交易弹窗
+// ========== T交易标记功能（在详情页看着K线操作） ==========
+
+// T交易配对弹窗
+const showTTradePair = ref(false)
+const tTradeBuyTrade = ref<TradeRecord | null>(null)
+const pairableSells = ref<TradeRecord[]>([])
+
+// 打开T交易配对
+function openTTradePair(trade: TradeRecord) {
+  if (trade.type !== 'buy') {
+    showToast('请从加仓记录开始标记T交易')
+    return
+  }
+  tTradeBuyTrade.value = trade
+  pairableSells.value = trades.value.filter(
+    t => t.type === 'sell' && t.id !== trade.id
+  )
+  if (pairableSells.value.length === 0) {
+    showToast('暂无可配对的减仓记录')
+    return
+  }
+  showTTradePair.value = true
+}
+
+// 确认归档T交易
+function confirmArchiveTTrade(sellTrade: TradeRecord) {
+  if (!tTradeBuyTrade.value) return
+  const buy = tTradeBuyTrade.value
+  const buyShares = buy.amount / buy.netValue
+  const sellShares = sellTrade.amount / sellTrade.netValue
+  const tShares = Math.min(buyShares, sellShares)
+  const pairedBuyAmount = tShares * buy.netValue
+  const pairedSellAmount = tShares * sellTrade.netValue
+  const profit = (sellTrade.netValue - buy.netValue) * tShares - (buy.fee + sellTrade.fee)
+  const returnRate = ((sellTrade.netValue - buy.netValue) / buy.netValue) * 100
+
+  // [WHAT] 计算剩余金额提示
+  const remainingBuy = buyShares - tShares > 0.001 ? (buyShares - tShares) * buy.netValue : 0
+  const remainingSell = sellShares - tShares > 0.001 ? (sellShares - tShares) * sellTrade.netValue : 0
+
+  let msg = `买入 ${buy.date} ${buy.amount.toFixed(0)}元 @${buy.netValue.toFixed(4)}\n卖出 ${sellTrade.date} ${sellTrade.amount.toFixed(0)}元 @${sellTrade.netValue.toFixed(4)}\n`
+  msg += `配对金额: 买${pairedBuyAmount.toFixed(0)}元 / 卖${pairedSellAmount.toFixed(0)}元\n`
+  msg += `做T收益: ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}元 (${returnRate >= 0 ? '+' : ''}${returnRate.toFixed(2)}%)\n`
+  if (remainingBuy > 0) msg += `\n买入剩余 ${remainingBuy.toFixed(0)}元 保留在交易列表`
+  if (remainingSell > 0) msg += `\n卖出剩余 ${remainingSell.toFixed(0)}元 保留在交易列表`
+  if (remainingBuy === 0 && remainingSell === 0) msg += `\n归档后从交易列表移除，K线保留标记`
+
+  showConfirmDialog({
+    title: '确认归档T交易',
+    message: msg,
+  }).then(() => {
+    archiveTTrade(buy, sellTrade)
+    showTTradePair.value = false
+    tTradeBuyTrade.value = null
+    loadTrades()
+    showToast('T交易已归档')
+  }).catch(() => {})
+}
+
+// 恢复T交易
+function restoreTTrade(tTrade: TTradeRecord) {
+  showConfirmDialog({
+    title: '恢复交易记录',
+    message: `将T交易恢复为普通交易记录？`,
+  }).then(() => {
+    removeTTrade(tTrade.id)
+    loadTrades()
+    showToast('已恢复为交易记录')
+  }).catch(() => {})
+}
 const showTradeDialog = ref(false)
 const tradeFormData = ref({
   type: 'buy' as TradeType,
@@ -1117,7 +1192,10 @@ function formatPercent(num: number): string {
         :realtime-change="priceChangePercent"
         :last-close="fundInfo?.dwjz ? parseFloat(fundInfo.dwjz) : 0"
         :trades="trades"
+        :t-trades="tTrades"
         :cost-nav-value="holdingInfo?.buyNetValue || 0"
+        :highlight-date="highlightTradeDate"
+        :highlight-type="highlightTradeType"
       />
     </div>
 
@@ -1148,10 +1226,64 @@ function formatPercent(num: number): string {
               {{ trade.postReturn >= 0 ? '+' : '' }}{{ trade.postReturn.toFixed(2) }}%
             </span>
           </div>
-          <button class="trade-delete-btn" @click.stop="handleDeleteTrade(trade.id)">×</button>
+          <div class="trade-actions">
+            <button v-if="trade.type === 'buy'" class="t-trade-btn" @click.stop="openTTradePair(trade)">标记T</button>
+            <button class="trade-delete-btn" @click.stop="handleDeleteTrade(trade.id)">×</button>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- T交易历史 -->
+    <div v-if="tTrades.length > 0" class="trade-records-section">
+      <div class="trade-records-header">
+        <span class="trade-records-title">T交易记录</span>
+        <span class="trade-records-count">{{ tTrades.length }}次</span>
+      </div>
+      <div class="trade-records-scroll">
+        <div
+          v-for="t in tTrades"
+          :key="t.id"
+          class="trade-record-item t-trade"
+          :class="t.profit >= 0 ? 'profit' : 'loss'"
+        >
+          <div class="trade-record-main">
+            <span class="trade-type-badge t-badge">T</span>
+            <span class="trade-date trade-date-mobile">{{ t.holdingDays }}天</span>
+            <span class="trade-date trade-date-web">{{ t.buyDate }}→{{ t.sellDate }}</span>
+            <span class="trade-amount">{{ t.buyAmount >= 10000 ? (t.buyAmount/10000).toFixed(1)+'万' : t.buyAmount.toFixed(0)+'元' }}</span>
+            <span class="trade-nav">@{{ t.buyNetValue.toFixed(4) }}→{{ t.sellNetValue.toFixed(4) }}</span>
+            <span class="trade-return" :class="t.profit >= 0 ? 'up' : 'down'">
+              {{ t.profit >= 0 ? '+' : '' }}{{ t.profit.toFixed(0) }}元 ({{ t.returnRate >= 0 ? '+' : '' }}{{ t.returnRate.toFixed(1) }}%)
+            </span>
+          </div>
+          <button class="trade-delete-btn" @click.stop="restoreTTrade(t)" title="恢复为交易记录">↩</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- T交易配对弹窗 -->
+    <van-popup v-model:show="showTTradePair" position="bottom" round :style="{ maxHeight: '60%' }">
+      <div class="pair-popup">
+        <div class="pair-popup-title">选择配对的减仓记录</div>
+        <div v-if="tTradeBuyTrade" class="pair-buy-info">
+          <span class="pair-label">加仓:</span>
+          <span>{{ tTradeBuyTrade.date }}</span>
+          <span>{{ tTradeBuyTrade.amount.toFixed(0) }}元</span>
+          <span>@{{ tTradeBuyTrade.netValue.toFixed(4) }}</span>
+        </div>
+        <div class="pair-sell-list">
+          <div v-for="sell in pairableSells" :key="sell.id" class="pair-sell-item" @click="confirmArchiveTTrade(sell)">
+            <span class="pair-sell-date">{{ sell.date }}</span>
+            <span class="pair-sell-amount">{{ sell.amount.toFixed(0) }}元</span>
+            <span class="pair-sell-nav">@{{ sell.netValue.toFixed(4) }}</span>
+            <span class="pair-sell-profit" :class="(sell.netValue - (tTradeBuyTrade?.netValue || 0)) >= 0 ? 'up' : 'down'">
+              {{ ((sell.netValue - (tTradeBuyTrade?.netValue || 0)) / (tTradeBuyTrade?.netValue || 1) * 100) >= 0 ? '+' : '' }}{{ ((sell.netValue - (tTradeBuyTrade?.netValue || 0)) / (tTradeBuyTrade?.netValue || 1) * 100).toFixed(2) }}%
+            </span>
+          </div>
+        </div>
+      </div>
+    </van-popup>
 
     <!-- 业绩走势（Tab2） -->
     <!-- <div class="performance-section" v-show="activeTab === 'performance'">
@@ -1873,27 +2005,21 @@ function formatPercent(num: number): string {
   touch-action: pan-y;
   /* [WHY] 底部留白给操作栏 */
   padding-bottom: 70px;
-  /* [WHY] 顶部留白给固定导航栏和安全区（导航栏高度 55px + 安全区 + 额外 16px 间距） */
-  padding-top: calc(55px + env(safe-area-inset-top, 0px) + 16px);
 }
 
 /* ========== 顶部区域 ========== */
+/* [FIX] 用 sticky 替代 fixed：导航栏占据文档流，高度变化时内容区自动跟随，
+   彻底消除留白和遮挡（holding-info-row 渲染导致高度变化） */
 .top-header {
   background: var(--bg-primary);
   padding-top: calc(env(safe-area-inset-top, 0px) + 4px);
   border-bottom: 1px solid var(--border-color);
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 999;
 }
 
 .nav-bar {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 4px);
-  left: 0;
-  right: 0;
   display: flex;
   align-items: center;
   padding: 12px 16px;
@@ -2157,18 +2283,17 @@ function formatPercent(num: number): string {
 }
 
 /* ========== 图表区域 ========== */
+/* [FIX] 收敛间距来源，去掉chart-section自身的padding-top，改由子组件内部控制 */
 .chart-section {
   background: var(--bg-secondary);
   margin: 0 4px 8px;
   border-radius: 12px;
   overflow: visible;
-  padding-top: 8px;
 }
 
 @media (min-width: 768px) {
   .chart-section {
     margin: 0 12px 12px;
-    padding-top: 20px;
   }
 }
 
@@ -2248,9 +2373,42 @@ function formatPercent(num: number): string {
   color: #0ecb81;
 }
 
+.trade-type-badge.t-badge {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+  font-weight: 700;
+}
+
+.trade-record-item.t-trade.profit {
+  border-left: 2px solid #22c55e;
+}
+
+.trade-record-item.t-trade.loss {
+  border-left: 2px solid #ef4444;
+}
+
 .trade-date {
   color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+/* [WHY] 手机宽度受限，T交易记录日期区间占位过宽，改显示持有天数 */
+.trade-date-mobile {
+  display: inline;
+}
+
+.trade-date-web {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .trade-date-mobile {
+    display: none;
+  }
+
+  .trade-date-web {
+    display: inline;
+  }
 }
 
 .trade-amount {
@@ -2321,6 +2479,95 @@ function formatPercent(num: number): string {
   background: rgba(246, 70, 93, 0.15);
   color: #f6465d;
 }
+
+/* T交易标记按钮 */
+.trade-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.t-trade-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* T交易配对弹窗 */
+.pair-popup {
+  padding: 16px;
+}
+
+.pair-popup-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.pair-buy-info {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.06);
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.pair-buy-info .pair-label {
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.pair-sell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.pair-sell-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+}
+
+.pair-sell-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pair-sell-amount {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pair-sell-nav {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.pair-sell-profit {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pair-sell-profit.up { color: #22c55e; }
+.pair-sell-profit.down { color: #ef4444; }
 
 .chart-header {
   display: flex;

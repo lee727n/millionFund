@@ -2,10 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
-import { getTrades, removeTrade, getHoldings, updateTradesByCode, saveTrades } from '@/utils/storage'
+import { getTrades, removeTrade, getHoldings, updateTradesByCode, saveTrades, getTTrades, removeTTrade } from '@/utils/storage'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
-import type { TradeRecord } from '@/types/fund'
+import type { TradeRecord, TTradeRecord } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
 // @ts-ignore
 import aliIcon from '@/assets/ali.jpg'
@@ -356,6 +356,46 @@ function toggleAccountFilter(account: string) {
   accountFilter.value = accountFilter.value === account ? '' : account
 }
 
+// ========== T交易归档展示 ==========
+
+// 已归档的T交易
+const allTTrades = ref<TTradeRecord[]>([])
+
+// 恢复T交易（放回交易列表）
+function restoreTTrade(tTrade: TTradeRecord) {
+  showConfirmDialog({
+    title: '恢复交易记录',
+    message: `将T交易恢复为普通交易记录？\n${tTrade.fundName}\n买${tTrade.buyDate} 卖${tTrade.sellDate}`,
+  }).then(() => {
+    removeTTrade(tTrade.id)
+    loadTrades()
+    loadTTrades()
+    showToast('已恢复为交易记录')
+  }).catch(() => {})
+}
+
+// 加载T交易归档
+function loadTTrades() {
+  allTTrades.value = getTTrades()
+}
+
+// 格式化金额
+function formatTAmount(amount: number): string {
+  if (amount >= 10000) return (amount / 10000).toFixed(1) + '万'
+  return amount.toFixed(0) + '元'
+}
+
+// 点击信号卡片跳转到K线图，并高亮对应交易节点
+function goToSignalChart(signal: any) {
+  router.push({
+    path: `/detail/${signal.fundCode}`,
+    query: {
+      hlDate: signal.tradeDate,
+      hlType: signal.tradeType
+    }
+  })
+}
+
 // AI 分析结果 - 基于交易记录 + 实时行情
 const aiAnalysis = computed<TradeAnalysisResult>(() => {
   const trades = getTrades()
@@ -414,6 +454,7 @@ function getHealthColor(score: number) {
 
 onMounted(() => {
   loadTrades()
+  loadTTrades()
 })
 </script>
 
@@ -510,7 +551,7 @@ onMounted(() => {
         <div v-if="aiAnalysis.signals.length > 0" class="ai-section">
           <div class="ai-section-title">📋 交易提醒（{{ aiAnalysis.signals.length }}条）</div>
           <div class="ai-signal-list">
-            <div v-for="signal in aiAnalysis.signals" :key="signal.id" class="ai-signal-card" :class="getSignalClass(signal.signal)">
+            <div v-for="signal in aiAnalysis.signals" :key="signal.id" class="ai-signal-card" :class="getSignalClass(signal.signal)" @click="goToSignalChart(signal)">
               <div class="signal-header">
                 <span class="signal-icon">{{ getSignalIcon(signal.signal) }}</span>
                 <span class="signal-title">{{ getSignalLabel(signal.signal) }}：{{ signal.fundName }}</span>
@@ -531,6 +572,7 @@ onMounted(() => {
               <div class="signal-suggestions">
                 <div class="signal-suggestion">💡 {{ signal.suggestion }}</div>
               </div>
+              <div class="signal-jump-hint">点击查看K线图 →</div>
             </div>
           </div>
         </div>
@@ -644,12 +686,47 @@ onMounted(() => {
                 </template>
               </span>
             </div>
-            <button class="trade-delete-btn" @click.stop="deleteTrade(trade)">×</button>
+            <div class="trade-actions">
+              <button class="trade-delete-btn" @click.stop="deleteTrade(trade)">×</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- T交易归档区 -->
+    <div v-if="allTTrades.length > 0" class="t-trade-section">
+      <div class="t-trade-header">
+        <span class="t-trade-title">📋 T交易记录 ({{ allTTrades.length }})</span>
+        <span class="t-trade-summary">
+          累计盈亏:
+          <span :class="allTTrades.reduce((s, t) => s + t.profit, 0) >= 0 ? 'up' : 'down'">
+            {{ allTTrades.reduce((s, t) => s + t.profit, 0) >= 0 ? '+' : '' }}{{ allTTrades.reduce((s, t) => s + t.profit, 0).toFixed(2) }}元
+          </span>
+        </span>
+      </div>
+      <div v-for="t in allTTrades" :key="t.id" class="t-trade-card" :class="t.profit >= 0 ? 'profit' : 'loss'">
+        <div class="t-trade-info">
+          <span class="t-trade-name" @click="goToDetail(t.fundCode)">{{ t.fundName }}</span>
+          <span class="t-trade-dates">{{ t.buyDate }} → {{ t.sellDate }} ({{ t.holdingDays }}天)</span>
+        </div>
+        <div class="t-trade-detail">
+          <span class="t-trade-buy">买 {{ formatTAmount(t.buyAmount) }} @{{ t.buyNetValue.toFixed(4) }}</span>
+          <span class="t-trade-sell">卖 {{ formatTAmount(t.sellAmount) }} @{{ t.sellNetValue.toFixed(4) }}</span>
+        </div>
+        <div class="t-trade-result">
+          <span class="t-trade-profit" :class="t.profit >= 0 ? 'up' : 'down'">
+            {{ t.profit >= 0 ? '+' : '' }}{{ t.profit.toFixed(2) }}元
+          </span>
+          <span class="t-trade-rate" :class="t.returnRate >= 0 ? 'up' : 'down'">
+            ({{ t.returnRate >= 0 ? '+' : '' }}{{ t.returnRate.toFixed(2) }}%)
+          </span>
+        </div>
+        <button class="t-trade-restore" @click="restoreTTrade(t)">恢复</button>
+      </div>
+    </div>
     </div><!-- /.content-scroll -->
+
   </div>
 </template>
 
@@ -1188,6 +1265,12 @@ onMounted(() => {
   border-radius: 10px;
   background: var(--bg-primary);
   border-left: 3px solid var(--border-color);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.ai-signal-card:active {
+  transform: scale(0.98);
 }
 
 .ai-signal-card.signal-take-profit {
@@ -1334,6 +1417,14 @@ onMounted(() => {
   line-height: 1.5;
 }
 
+.signal-jump-hint {
+  margin-top: 6px;
+  text-align: right;
+  font-size: 10px;
+  color: #8b5cf6;
+  opacity: 0.7;
+}
+
 .ai-no-signal {
   padding: 12px;
   text-align: center;
@@ -1387,4 +1478,130 @@ onMounted(() => {
 
 .col-stat.up { color: #22c55e; font-weight: 600; }
 .col-stat.down { color: #ef4444; font-weight: 600; }
+
+/* ========== T交易标记按钮 ========== */
+.trade-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ========== T交易归档区 ========== */
+.t-trade-section {
+  margin: 8px 12px 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.t-trade-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.t-trade-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.t-trade-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.t-trade-summary .up { color: #22c55e; font-weight: 700; }
+.t-trade-summary .down { color: #ef4444; font-weight: 700; }
+
+.t-trade-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto;
+  gap: 2px 8px;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  position: relative;
+  border-left: 3px solid var(--border-color);
+}
+
+.t-trade-card.profit {
+  border-left-color: #22c55e;
+  background: rgba(34, 197, 94, 0.04);
+}
+
+.t-trade-card.loss {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.t-trade-info {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.t-trade-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.t-trade-dates {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.t-trade-detail {
+  grid-column: 1;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.t-trade-buy { color: #ef4444; }
+.t-trade-sell { color: #22c55e; }
+
+.t-trade-result {
+  grid-column: 1;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.t-trade-profit {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.t-trade-rate {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.t-trade-profit.up, .t-trade-rate.up { color: #22c55e; }
+.t-trade-profit.down, .t-trade-rate.down { color: #ef4444; }
+
+.t-trade-restore {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  align-self: center;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  white-space: nowrap;
+}
 </style>

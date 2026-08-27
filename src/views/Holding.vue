@@ -14,7 +14,7 @@ import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
-import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getFundNetValues, saveFundNetValues } from '@/utils/storage'
+import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getFundNetValues, saveFundNetValues, getTTrades, saveTTrades } from '@/utils/storage'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
@@ -452,13 +452,14 @@ async function backupHoldings() {
   }))
   
   const backupData = {
-    version: '1.0',
+    version: '1.1',
     exportDate: new Date().toISOString(),
     holdings: holdingsForBackup,
     summary: holdingStore.summary,
     aiTracking: aiTrackingForBackup,
     baiduOcrConfig: getBaiduOcrConfig(),
-    trades: getTrades()
+    trades: getTrades(),
+    tTrades: getTTrades()
   }
   
   // 转换为 JSON 字符串
@@ -558,6 +559,11 @@ function restoreHoldings() {
           // 恢复交易记录
           if (jsonData.trades && Array.isArray(jsonData.trades)) {
             saveTrades(jsonData.trades)
+          }
+          
+          // 恢复T交易归档
+          if (jsonData.tTrades && Array.isArray(jsonData.tTrades)) {
+            saveTTrades(jsonData.tTrades)
           }
           
           // 恢复百度 OCR 配置
@@ -676,13 +682,14 @@ async function cloudBackupHoldings() {
     }))
     
     const backupData = {
-      version: '1.0',
+      version: '1.1',
       exportDate: new Date().toISOString(),
       holdings: holdingsForBackup,
       summary: holdingStore.summary,
       aiTracking: aiTrackingForBackup,
       baiduOcrConfig: getBaiduOcrConfig(),
       trades: getTrades(),
+      tTrades: getTTrades(),
       // [FIX] 保存净值映射，用于跨设备恢复时保持数据一致
       fundNetValues: getFundNetValues()
     }
@@ -786,6 +793,11 @@ async function cloudRestoreHoldings() {
       // 恢复交易记录
       if (jsonData.trades && Array.isArray(jsonData.trades)) {
         saveTrades(jsonData.trades)
+      }
+      
+      // 恢复T交易归档
+      if (jsonData.tTrades && Array.isArray(jsonData.tTrades)) {
+        saveTTrades(jsonData.tTrades)
       }
       
       // [FIX] 恢复净值映射
