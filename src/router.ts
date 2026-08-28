@@ -49,6 +49,12 @@ const router = createRouter({
       meta: { title: '持仓总览', keepAlive: true }
     },
     {
+      path: '/panorama',
+      name: 'panorama',
+      component: () => import('@/views/PanoramaDashboard.vue'),
+      meta: { title: '全景大屏' }
+    },
+    {
       path: '/trade-center',
       name: 'trade-center',
       component: () => import('@/views/TradeCenter.vue'),

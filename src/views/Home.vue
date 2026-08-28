@@ -1179,9 +1179,9 @@ function resetSort() {
   sortDirection.value = 'none'
 }
 
-// [WHAT] 打开持仓总览新标签页
+// [WHAT] 打开全景大屏（新标签页）
 function openPortfolio() {
-  const url = router.resolve({ name: 'portfolio' }).href
+  const url = router.resolve({ name: 'panorama' }).href
   window.open(url, '_blank')
 }
 
