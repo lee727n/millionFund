@@ -2,7 +2,7 @@
 // [WHAT] 全景大屏 - 网页端专用，一个页面整合所有核心模块
 // [WHY] 利用大屏空间，Portfolio持仓 + 量化观察 + AI追踪 + 交易记录 + AI分析 同屏展示
 
-import { computed, ref, onMounted, onUnmounted, reactive } from 'vue'
+import { computed, ref, onMounted, onUnmounted, reactive, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
@@ -21,6 +21,16 @@ const themeStore = useThemeStore()
 const indices = ref<MarketIndexSimple[]>([])
 const refreshing = ref(false)
 let refreshTimer: number | undefined
+
+// 刷新闪动标记：每次刷新后递增，触发 fm-today 动画
+const flashTick = ref(0)
+const flashActive = ref(false)
+watch(flashTick, async () => {
+  flashActive.value = false
+  await nextTick()
+  flashActive.value = true
+  setTimeout(() => { flashActive.value = false }, 800)
+})
 
 // ============ 交易状态 ============
 const isWeekend = computed(() => {
@@ -47,7 +57,7 @@ const updateProgress = computed(() => {
   const total = all.length
   const updated = all.filter(f => f.isUpdated).length
   const inTrading = tradingSession.value === 'morning' || tradingSession.value === 'afternoon'
-  if (inTrading) return { updated, total, text: `交易中 ${updated}/${total}`, class: 'updating', percent: (updated / total) * 100 }
+  if (inTrading) return { updated, total, text: '交易中', class: 'updating', percent: (updated / total) * 100 }
   if (updated === 0) return { updated, total, text: '未更新', class: 'not-updated', percent: 0 }
   if (updated < total) return { updated, total, text: `更新中 ${updated}/${total}`, class: 'updating', percent: (updated / total) * 100 }
   return { updated, total, text: `已更新 ${total}/${total}`, class: 'updated', percent: 100 }
@@ -237,11 +247,23 @@ function computeTrackChange(code: string, nav: number): number {
 }
 
 const aiTrackRecords = computed(() => {
-  return aiTrackingStore.records.map(r => ({
-    ...r,
-    sellChange: computeTrackChange(r.sellCode, r.sellNav),
-    buyChange: computeTrackChange(r.buyCode, r.buyNav)
-  }))
+  return aiTrackingStore.records
+    .map(r => {
+      const sellLive = liveFundData.value.get(r.sellCode)
+      const buyLive = liveFundData.value.get(r.buyCode)
+      return {
+        ...r,
+        sellChange: computeTrackChange(r.sellCode, r.sellNav),
+        buyChange: computeTrackChange(r.buyCode, r.buyNav),
+        sellToday: sellLive?.dayChange ?? 0,
+        buyToday: buyLive?.dayChange ?? 0
+      }
+    })
+    .sort((a, b) => {
+      const diffA = (a.buyChange || 0) - (a.sellChange || 0)
+      const diffB = (b.buyChange || 0) - (b.sellChange || 0)
+      return diffB - diffA
+    })
 })
 
 const aiTrackStats = computed(() => {
@@ -306,6 +328,9 @@ async function refreshAll() {
 
     // 5. 刷新指数
     await loadIndices()
+
+    // 6. 触发闪动效果
+    flashTick.value++
   } catch (e) {
     console.error('[Panorama] 刷新失败:', e)
   } finally {
@@ -374,9 +399,15 @@ function getSignalLabel(signal: string) {
   const map: Record<string, string> = { take_profit: '止盈', buy_back: '回补', cut_loss: '止损', add_on_dip: '补仓', observe: '观察' }
   return map[signal] || '观望'
 }
+// 根据基金 code 查找 AI 交易信号
+function getFundSignal(fundCode: string) {
+  return aiAnalysis.value.signals?.find((s: any) => s.fundCode === fundCode)
+}
 
-// 和 Home/Holding 页面保持一致：用 holding.isUpdated 判断
+// 交易中：统一灰白色；非交易中：已更新=黄，未更新=绿
 function getFundNameClass(fund: any): Record<string, boolean> {
+  const inTrading = tradingSession.value === 'morning' || tradingSession.value === 'afternoon'
+  if (inTrading) return { 'fm-in-trading': true }
   return {
     'fm-updated': !!fund.isUpdated,
     'fm-pending': !fund.isUpdated
@@ -453,12 +484,20 @@ function getFundNameClass(fund: any): Record<string, boolean> {
           <span class="panel-title">💼 Portfolio 持仓</span>
           <span class="panel-sub">共 {{ totalStats.count }} 只 · 市值 {{ fmtMoney(totalStats.marketValue) }}</span>
           <span class="panel-link" @click="goPortfolio()">详情 →</span>
-          <!-- 更新进度条 -->
-          <div class="update-progress" :class="updateProgress.class">
-            <div class="update-progress-bar">
-              <div class="update-progress-fill" :style="{ width: updateProgress.percent + '%' }"></div>
-            </div>
-            <span class="update-progress-text">{{ updateProgress.text }}</span>
+          <!-- 更新进度 -->
+          <div class="update-progress" :class="[updateProgress.class, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
+            <!-- 交易中：绿点呼吸 + 文字 -->
+            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
+              <span class="up-live-dot"></span>
+              <span class="update-progress-text">{{ updateProgress.text }}</span>
+            </template>
+            <!-- 非交易中：进度条 + 文字 -->
+            <template v-else>
+              <div class="update-progress-bar">
+                <div class="update-progress-fill" :style="{ width: updateProgress.percent + '%' }"></div>
+              </div>
+              <span class="update-progress-text">{{ updateProgress.text }}</span>
+            </template>
           </div>
         </div>
 
@@ -485,33 +524,42 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="fund-mini-card"
               @click="goDetail(fund.code)"
             >
-              <!-- 第一行：名称 + QD + 评级 -->
+              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
+              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
+                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
+                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
+              </span>
+              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 10) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-              </div>
-              <!-- 第二行：code + 估/净 + 估值 + 今日涨跌 -->
-              <div class="fm-row fm-row-mid">
-                <span class="fm-code">{{ fund.code }}</span>
-                <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                  {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
-                </span>
-                <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                <span class="fm-today" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
-                  {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-                </span>
-              </div>
-              <!-- 第三行：市值 + 累计涨跌 -->
-              <div class="fm-row fm-row-bottom">
-                <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
                 <span 
-                  class="fm-added" 
-                  v-if="fund.addedGain !== undefined" 
-                  :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                >
-                  累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                </span>
+                  v-if="getFundSignal(fund.code)" 
+                  class="fm-ai-signal" 
+                  :class="'signal-' + getFundSignal(fund.code).signal"
+                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+              </div>
+              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+              <div class="fm-row fm-row-bottom">
+                <div class="fm-row-bottom-left">
+                  <span class="fm-code">{{ fund.code }}</span>
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  </span>
+                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                </div>
+                <div class="fm-row-bottom-right">
+                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
+                  <span 
+                    class="fm-added" 
+                    v-if="fund.addedGain !== undefined" 
+                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
+                  >
+                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="aliHoldings.length > 8" class="fund-mini-more">+{{ aliHoldings.length - 8 }}</div>
@@ -540,33 +588,42 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="fund-mini-card"
               @click="goDetail(fund.code)"
             >
-              <!-- 第一行：名称 + QD + 评级 -->
+              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
+              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
+                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
+                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
+              </span>
+              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 10) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-              </div>
-              <!-- 第二行：code + 估/净 + 估值 + 今日涨跌 -->
-              <div class="fm-row fm-row-mid">
-                <span class="fm-code">{{ fund.code }}</span>
-                <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                  {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
-                </span>
-                <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                <span class="fm-today" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
-                  {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-                </span>
-              </div>
-              <!-- 第三行：市值 + 累计涨跌 -->
-              <div class="fm-row fm-row-bottom">
-                <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
                 <span 
-                  class="fm-added" 
-                  v-if="fund.addedGain !== undefined" 
-                  :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                >
-                  累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                </span>
+                  v-if="getFundSignal(fund.code)" 
+                  class="fm-ai-signal" 
+                  :class="'signal-' + getFundSignal(fund.code).signal"
+                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+              </div>
+              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+              <div class="fm-row fm-row-bottom">
+                <div class="fm-row-bottom-left">
+                  <span class="fm-code">{{ fund.code }}</span>
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  </span>
+                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                </div>
+                <div class="fm-row-bottom-right">
+                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
+                  <span 
+                    class="fm-added" 
+                    v-if="fund.addedGain !== undefined" 
+                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
+                  >
+                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="txHoldings.length > 8" class="fund-mini-more">+{{ txHoldings.length - 8 }}</div>
@@ -595,33 +652,42 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="fund-mini-card"
               @click="goDetail(fund.code)"
             >
-              <!-- 第一行：名称 + QD + 评级 -->
+              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
+              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
+                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
+                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
+              </span>
+              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 10) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-              </div>
-              <!-- 第二行：code + 估/净 + 估值 + 今日涨跌 -->
-              <div class="fm-row fm-row-mid">
-                <span class="fm-code">{{ fund.code }}</span>
-                <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                  {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
-                </span>
-                <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                <span class="fm-today" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
-                  {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-                </span>
-              </div>
-              <!-- 第三行：市值 + 累计涨跌 -->
-              <div class="fm-row fm-row-bottom">
-                <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
                 <span 
-                  class="fm-added" 
-                  v-if="fund.addedGain !== undefined" 
-                  :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                >
-                  累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                </span>
+                  v-if="getFundSignal(fund.code)" 
+                  class="fm-ai-signal" 
+                  :class="'signal-' + getFundSignal(fund.code).signal"
+                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+              </div>
+              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+              <div class="fm-row fm-row-bottom">
+                <div class="fm-row-bottom-left">
+                  <span class="fm-code">{{ fund.code }}</span>
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  </span>
+                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                </div>
+                <div class="fm-row-bottom-right">
+                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
+                  <span 
+                    class="fm-added" 
+                    v-if="fund.addedGain !== undefined" 
+                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
+                  >
+                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="jdHoldings.length > 8" class="fund-mini-more">+{{ jdHoldings.length - 8 }}</div>
@@ -650,33 +716,42 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="fund-mini-card"
               @click="goDetail(fund.code)"
             >
-              <!-- 第一行：名称 + QD + 评级 -->
+              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
+              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
+                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
+                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
+              </span>
+              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 10) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-              </div>
-              <!-- 第二行：code + 估/净 + 估值 + 今日涨跌 -->
-              <div class="fm-row fm-row-mid">
-                <span class="fm-code">{{ fund.code }}</span>
-                <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                  {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
-                </span>
-                <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                <span class="fm-today" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
-                  {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-                </span>
-              </div>
-              <!-- 第三行：市值 + 累计涨跌 -->
-              <div class="fm-row fm-row-bottom">
-                <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
                 <span 
-                  class="fm-added" 
-                  v-if="fund.addedGain !== undefined" 
-                  :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                >
-                  累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                </span>
+                  v-if="getFundSignal(fund.code)" 
+                  class="fm-ai-signal" 
+                  :class="'signal-' + getFundSignal(fund.code).signal"
+                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+              </div>
+              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+              <div class="fm-row fm-row-bottom">
+                <div class="fm-row-bottom-left">
+                  <span class="fm-code">{{ fund.code }}</span>
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  </span>
+                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                </div>
+                <div class="fm-row-bottom-right">
+                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
+                  <span 
+                    class="fm-added" 
+                    v-if="fund.addedGain !== undefined" 
+                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
+                  >
+                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="otherHoldings.length > 8" class="fund-mini-more">+{{ otherHoldings.length - 8 }}</div>
@@ -737,7 +812,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
           </div>
           <div class="track-list" v-if="aiTrackRecords.length > 0">
             <div 
-              v-for="record in aiTrackRecords.slice(0, 8)" 
+              v-for="record in aiTrackRecords" 
               :key="record.id"
               class="track-row"
               :class="getTrackSuccess(record) ? 'success' : 'fail'"
@@ -749,10 +824,10 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               </div>
               <div class="track-changes">
                 <span class="track-change-item" :class="(record.sellChange || 0) >= 0 ? 'up' : 'down'">
-                  卖 {{ fmtPct(record.sellChange || 0) }}
+                  卖 <span class="track-today-tag" :class="record.sellToday >= 0 ? 'up' : 'down'">估{{ fmtPct(record.sellToday) }}</span>累{{ fmtPct(record.sellChange || 0) }}
                 </span>
                 <span class="track-change-item" :class="(record.buyChange || 0) >= 0 ? 'up' : 'down'">
-                  买 {{ fmtPct(record.buyChange || 0) }}
+                  买 <span class="track-today-tag" :class="record.buyToday >= 0 ? 'up' : 'down'">估{{ fmtPct(record.buyToday) }}</span>累{{ fmtPct(record.buyChange || 0) }}
                 </span>
                 <span class="track-diff" :class="getTrackSuccess(record) ? 'up' : 'down'">
                   {{ getTrackDiff(record) >= 0 ? '+' : '' }}{{ getTrackDiff(record).toFixed(2) }}%
@@ -969,7 +1044,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .ai-stat-value.down,
 .signal-score.down,
 .trade-return.down,
-.fm-added.down {
+.fm-added.down,
+.fm-today.down {
   color: var(--color-down) !important;
 }
 
@@ -1173,6 +1249,26 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .update-progress.updating { color: #4caf50; background: rgba(76,175,80,0.1); }
 .update-progress.updating .update-progress-fill { background: #4caf50; }
 
+/* 交易中：简化容器，呼吸绿点 */
+.update-progress.in-trading {
+  padding: 3px 10px;
+  background: rgba(76,175,80,0.12);
+  color: #4caf50;
+  border-radius: 12px;
+}
+.up-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4caf50;
+  box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+  animation: breath-dot 1.8s ease-in-out infinite;
+}
+@keyframes breath-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.6); opacity: 1; }
+  50% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); opacity: 0.7; }
+}
+
 /* updated: 橙色（全部更新完） */
 .update-progress.updated { color: #ff9800; background: rgba(255,152,0,0.1); }
 .update-progress.updated .update-progress-fill { background: #ff9800; }
@@ -1295,7 +1391,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 .fund-mini-card {
-  padding: 7px 8px;
+  padding: 8px 8px 6px;
   background: var(--bg-primary);
   border-radius: 6px;
   cursor: pointer;
@@ -1303,7 +1399,9 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   border: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
 }
 
 .fund-mini-card:hover {
@@ -1321,14 +1419,28 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 
 .fm-row-top {
   min-height: 14px;
-}
-
-.fm-row-mid {
-  gap: 3px;
+  padding-right: 62px;
 }
 
 .fm-row-bottom {
   justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.fm-row-bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fm-row-bottom-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .fm-qd-tag {
@@ -1348,14 +1460,14 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
+  max-width: 78px;
   transition: color 0.3s;
 }
 
 /* 交易时间内：已更新=橙色，未更新=绿色 */
 .fm-name.fm-updated { color: #ff9800; }
 .fm-name.fm-pending { color: #4caf50; }
+.fm-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
 
 .fm-score {
   font-size: 9px;
@@ -1371,8 +1483,18 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .fm-score.level-C { background: rgba(66,165,245,0.2); color: #42a5f5; }
 .fm-score.level-D { background: rgba(120,144,156,0.2); color: #78909c; }
 
+/* AI 交易信号图标 */
+.fm-ai-signal {
+  font-size: 10px;
+  line-height: 1;
+  margin-left: 1px;
+  flex-shrink: 0;
+  cursor: help;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.4));
+}
+
 .fm-code {
-  font-size: 9px;
+  font-size: 8px;
   font-family: 'SF Mono', Consolas, monospace;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -1389,39 +1511,72 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .fm-val-label.is-est { background: rgba(245,158,11,0.2); color: #f59e0b; }
 
 .fm-value {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 500;
   font-family: 'SF Mono', Consolas, monospace;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
+/* 今日涨幅 - 绝对定位右上角徽章 */
 .fm-today {
-  font-size: 11px;
-  font-weight: 700;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 15px;
+  font-weight: 800;
   font-family: 'SF Mono', Consolas, monospace;
-  margin-left: auto;
-  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+  z-index: 1;
 }
-.fm-today.up { color: var(--color-up); }
-.fm-today.down { color: var(--color-down); }
+.fm-today-arrow {
+  font-size: 10px;
+  opacity: 0.85;
+}
+.fm-today.up {
+  background: rgba(255,107,107,0.15);
+}
+.fm-today.down {
+  background: rgba(81,207,102,0.15);
+}
+.fm-today.no-data {
+  color: var(--text-muted);
+  background: rgba(158, 158, 158, 0.15);
+}
+
+/* 刷新时闪动 */
+.fm-today.flash {
+  animation: fm-flash 0.8s ease-out;
+}
+@keyframes fm-flash {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.15); filter: brightness(1.5); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
 
 .fm-market {
-  font-size: 10px;
+  font-size: 8px;
   color: var(--text-secondary);
   font-family: 'SF Mono', Consolas, monospace;
 }
 
 .fm-added {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: 'SF Mono', Consolas, monospace;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   flex-shrink: 0;
+  letter-spacing: 0.3px;
 }
-.fm-added.up { background: rgba(255,107,107,0.12); color: var(--color-up); }
-.fm-added.down { background: rgba(81,207,102,0.12); color: var(--color-down); }
+.fm-added.up { background: rgba(255,107,107,0.15); color: var(--color-up); }
+.fm-added.down { background: rgba(81,207,102,0.15); color: var(--color-down); }
 
 .fund-mini-more {
   display: flex;
@@ -1554,6 +1709,18 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 .track-arrow { color: var(--text-muted); font-size: 11px; }
+
+.track-today-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 3px;
+  border-radius: 2px;
+  margin: 0 2px;
+  line-height: 1.2;
+}
+.track-today-tag.up { background: rgba(245, 34, 45, 0.2); color: #ff7875; }
+.track-today-tag.down { background: rgba(82, 196, 26, 0.2); color: #73d13d; }
 
 .track-changes {
   display: flex;

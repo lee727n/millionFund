@@ -1521,37 +1521,26 @@ export async function fetchLatestNetValue(code: string): Promise<{
   date: string
   changeRate: number
 } | null> {
-  const cacheKey = `latest_nav_${code}`
-  // const cached = cache.get<{ netValue: number; date: string; changeRate: number }>(cacheKey)
-  // if (cached) return cached
-
+  // 主源：fundgz 估值接口（有实时估值 + 最新公布净值）
   initJsonpCallback()
-
-  return new Promise((resolve) => {
+  const result = await new Promise<{ netValue: number; date: string; changeRate: number } | null>((resolve) => {
     const scriptId = `nav_${code}_${Date.now()}`
     const timeout = setTimeout(() => {
       cleanup()
-      // [EDGE] 从队列中移除超时的请求
       const index = pendingNetValueRequests.findIndex(req => req.code === code)
-      if (index !== -1) {
-        pendingNetValueRequests.splice(index, 1)
-      }
+      if (index !== -1) pendingNetValueRequests.splice(index, 1)
       resolve(null)
-    }, 10000)
+    }, 8000)
 
-    // [WHAT] 添加到待处理队列
     pendingNetValueRequests.push({ code, resolve, reject: () => { }, timeout })
 
     function cleanup() {
       const script = document.getElementById(scriptId)
-      if (script) {
-        document.body.removeChild(script)
-      }
+      if (script) document.body.removeChild(script)
     }
 
     const script = document.createElement('script')
     script.id = scriptId
-    // [DEPS] 基金估值接口，返回实时估值数据，使用固定的 jsonpgz 回调函数名
     script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
     script.onerror = () => {
       cleanup()
@@ -1563,13 +1552,28 @@ export async function fetchLatestNetValue(code: string): Promise<{
       resolve(null)
     }
     script.onload = () => {
-      // [FIX] 不要立即清理脚本，让回调有时间执行
-      setTimeout(() => {
-        cleanup()
-      }, 500)
+      setTimeout(cleanup, 500)
     }
     document.body.appendChild(script)
   })
+
+  if (result && result.netValue > 0) return result
+
+  // Fallback：pingzhongdata 的 Data_netWorthTrend 取最新净值
+  try {
+    const history = await fetchNetValueHistoryFast(code, 2, true)
+    const latest = history.records[0]
+    if (latest && latest.netValue > 0) {
+      const prev = history.records[1]
+      const changeRate = prev ? ((latest.netValue - prev.netValue) / prev.netValue) * 100 : 0
+      console.log(`[fetchLatestNetValue] fundgz失败，pingzhongdata fallback成功: nav=${latest.netValue}, date=${latest.date}`)
+      return { netValue: latest.netValue, date: latest.date, changeRate }
+    }
+  } catch (e) {
+    console.warn('[fetchLatestNetValue] pingzhongdata fallback也失败', e)
+  }
+
+  return null
 }
 
 // ========== 综合数据获取（多源验证） ==========
@@ -2142,26 +2146,26 @@ export async function fetchFundRankingFast(
       resolve([])
     }, 15000)
 
-    ;(window as any)[callbackName] = (data: any) => {
-      cleanup()
-      if (!data || !data.Data) {
-        resolve([])
-        return
-      }
-
-      const items: FundRankItemSimple[] = data.Data.map((item: string) => {
-        const parts = item.split(',')
-        return {
-          code: parts[0] || '',
-          name: parts[1] || '',
-          netValue: parseFloat(parts[4] ?? '0') || 0,
-          dayChange: parseFloat(parts[6] ?? '0') || 0
+      ; (window as any)[callbackName] = (data: any) => {
+        cleanup()
+        if (!data || !data.Data) {
+          resolve([])
+          return
         }
-      })
 
-      cache.set(cacheKey, items, 30000)
-      resolve(items)
-    }
+        const items: FundRankItemSimple[] = data.Data.map((item: string) => {
+          const parts = item.split(',')
+          return {
+            code: parts[0] || '',
+            name: parts[1] || '',
+            netValue: parseFloat(parts[4] ?? '0') || 0,
+            dayChange: parseFloat(parts[6] ?? '0') || 0
+          }
+        })
+
+        cache.set(cacheKey, items, 30000)
+        resolve(items)
+      }
 
     function cleanup() {
       clearTimeout(timeout)
