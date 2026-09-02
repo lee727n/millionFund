@@ -120,11 +120,29 @@ export const useHoldingStore = defineStore('holding', () => {
         ? rest.industrySectors.join(', ')
         : rest.industrySectors
 
+      // 迁移中文 source → 英文 key（PanoramaDashboard 来源弹窗曾用中文值）
+      const sourceMap: Record<string, string> = {
+        '支付宝': 'ali',
+        '腾讯': 'TX',
+        '京东': 'JD',
+        '观察': 'observe'
+      }
+      const source = (sourceMap[rest.source] ?? rest.source) || undefined
+
       return {
         ...rest,
-        industrySectors
+        industrySectors,
+        source
       }
     })
+
+    const sourceMap: Record<string, string> = {
+      '支付宝': 'ali',
+      '腾讯': 'TX',
+      '京东': 'JD',
+      '观察': 'observe'
+    }
+    const recordsNeedSourceMigration = records.some((r: any) => sourceMap[r.source])
 
     const needsCleanup = records.some((r: any) =>
       r.shareClass !== undefined ||
@@ -135,7 +153,7 @@ export const useHoldingStore = defineStore('holding', () => {
       r.originProfit !== undefined ||
       r.lastTodayProfit !== undefined ||
       Array.isArray(r.industrySectors)
-    )
+    ) || recordsNeedSourceMigration
 
     holdings.value = cleanedRecords.map((r) => ({
       ...r,

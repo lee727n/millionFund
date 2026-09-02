@@ -269,16 +269,19 @@ async function submitCostAdjust() {
     console.log('[调整成本] 未找到持仓记录')
     return
   }
+  // 从 store 拿最新状态，避免快照陈旧（用户先改来源再调成本会覆盖回旧 source）
+  const cur = holdingStore.holdings.find((h) => h.code === holding.code)
+  const base = cur || holding as any
 
-  console.log('[调整成本] 当前持仓', holding)
+  console.log('[调整成本] 当前持仓', base)
   showLoadingToast('正在获取最新净值...')
 
   try {
     // 从网络获取最新净值（直接使用fetchFundAccurateData，JSONP接口已废弃）
-    console.log('[调整成本] 开始获取最新净值，基金代码:', holding.code)
+    console.log('[调整成本] 开始获取最新净值，基金代码:', base.code)
     let latestNetValue: { netValue: number; date: string; changeRate: number } | null = null
     try {
-      const accurateData = await fetchFundAccurateData(holding.code, holding.isQDII, true)
+      const accurateData = await fetchFundAccurateData(base.code, base.isQDII, true)
       if (accurateData && accurateData.nav > 0) {
         latestNetValue = {
           netValue: accurateData.nav,
@@ -322,16 +325,16 @@ async function submitCostAdjust() {
     })
 
     const record = {
-      code: holding.code,
-      name: holding.name,
+      code: base.code,
+      name: base.name,
       buyNetValue: costNetValue,
       shares: newShares,
-      buyDate: holding.buyDate,
-      holdingDays: holding.holdingDays,
-      industrySectors: holding.industrySectors,
-      source: holding.source,
-      isQDII: holding.isQDII,
-      createdAt: holding.createdAt,
+      buyDate: base.buyDate,
+      holdingDays: base.holdingDays,
+      industrySectors: base.industrySectors,
+      source: base.source,
+      isQDII: base.isQDII,
+      createdAt: base.createdAt,
       currentValue: currentNetValue,
       addedGain: addedGain,
       marketValue: marketValue,

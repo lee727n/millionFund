@@ -1113,6 +1113,53 @@ function formatVolume(v: number): string {
   return v.toFixed(0)
 }
 
+// ========== 容错日期匹配 ==========
+// [WHY] 修复日期格式/时区/精度不一致导致交易标记无法匹配的问题
+// [WHAT] 优先严格匹配，失败后用宽松匹配（只比 YYYY-MM-DD 部分），最后用最近日期兜底
+function findDateIndex(data: { time: string }[], targetDate: string): number {
+  if (!targetDate || data.length === 0) return -1
+  
+  // 1. 严格字符串匹配
+  const strictIdx = data.findIndex(d => d.time === targetDate)
+  if (strictIdx !== -1) return strictIdx
+  
+  // 2. 宽松匹配：只比较 YYYY-MM-DD 部分（忽略可能的时间/时区后缀）
+  const targetClean = (targetDate.split(' ')[0] || targetDate).slice(0, 10)
+  const cleanIdx = data.findIndex(d => {
+    const dataClean = (d.time.split(' ')[0] || d.time).slice(0, 10)
+    return dataClean === targetClean
+  })
+  if (cleanIdx !== -1) {
+    console.log('[findDateIndex] 宽松匹配:', targetDate, '→', data[cleanIdx]?.time)
+    return cleanIdx
+  }
+  
+  // 3. 最近日期兜底（允许最大 7 天误差）
+  let bestIdx = -1
+  let minDiffDays = Infinity
+  const targetTime = new Date(targetClean).getTime()
+  if (isNaN(targetTime)) return -1
+  
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i]!
+    const dataClean = (d.time.split(' ')[0] || d.time).slice(0, 10)
+    const dataTime = new Date(dataClean).getTime()
+    if (isNaN(dataTime)) continue
+    const diffDays = Math.abs(dataTime - targetTime) / (1000 * 60 * 60 * 24)
+    if (diffDays < minDiffDays) {
+      minDiffDays = diffDays
+      bestIdx = i
+    }
+  }
+  
+  if (bestIdx !== -1 && minDiffDays <= 7) {
+    console.log('[findDateIndex] 最近匹配:', targetDate, '→', data[bestIdx]?.time, `(差${minDiffDays.toFixed(1)}天)`)
+    return bestIdx
+  }
+  
+  return -1
+}
+
 // ========== 交易标记绘制 ==========
 function drawTradeMarkers(
   ctx: CanvasRenderingContext2D,
@@ -1172,7 +1219,7 @@ function drawTradeMarkers(
     // 检查悬停
     if (mousePos.value) {
       for (const trade of trades) {
-        const pointIndex = performanceData.value.findIndex((d: any) => d.time === trade.date)
+        const pointIndex = findDateIndex(performanceData.value, trade.date)
         if (pointIndex === -1) continue
         const x = toX(pointIndex)
         const y = toY(valueGetter(performanceData.value[pointIndex]!))
@@ -1185,7 +1232,7 @@ function drawTradeMarkers(
       // 检查T交易紫色点悬停
       if (!hoveredTrade && tTrades.length > 0) {
         for (const t of tTrades) {
-          const buyIdx = performanceData.value.findIndex((d: any) => d.time === t.buyDate)
+          const buyIdx = findDateIndex(performanceData.value, t.buyDate)
           if (buyIdx !== -1) {
             const bx = toX(buyIdx)
             const by = toY(valueGetter(performanceData.value[buyIdx]!))
@@ -1195,7 +1242,7 @@ function drawTradeMarkers(
               break
             }
           }
-          const sellIdx = performanceData.value.findIndex((d: any) => d.time === t.sellDate)
+          const sellIdx = findDateIndex(performanceData.value, t.sellDate)
           if (sellIdx !== -1) {
             const sx = toX(sellIdx)
             const sy = toY(valueGetter(performanceData.value[sellIdx]!))
@@ -1223,7 +1270,7 @@ function drawTradeMarkers(
     // 检查悬停
     if (mousePos.value) {
       for (const trade of trades) {
-        const pointIndex = filteredData.value.findIndex((d: any) => d.time === trade.date)
+        const pointIndex = findDateIndex(filteredData.value, trade.date)
         if (pointIndex === -1) continue
         const x = toX(pointIndex)
         const y = toY(valueGetter(filteredData.value[pointIndex]!))
@@ -1236,7 +1283,7 @@ function drawTradeMarkers(
       // 检查T交易紫色点悬停
       if (!hoveredTrade && tTrades.length > 0) {
         for (const t of tTrades) {
-          const buyIdx = filteredData.value.findIndex((d: any) => d.time === t.buyDate)
+          const buyIdx = findDateIndex(filteredData.value, t.buyDate)
           if (buyIdx !== -1) {
             const bx = toX(buyIdx)
             const by = toY(valueGetter(filteredData.value[buyIdx]!))
@@ -1246,7 +1293,7 @@ function drawTradeMarkers(
               break
             }
           }
-          const sellIdx = filteredData.value.findIndex((d: any) => d.time === t.sellDate)
+          const sellIdx = findDateIndex(filteredData.value, t.sellDate)
           if (sellIdx !== -1) {
             const sx = toX(sellIdx)
             const sy = toY(valueGetter(filteredData.value[sellIdx]!))
@@ -1263,7 +1310,7 @@ function drawTradeMarkers(
 
   // 绘制交易标记
   for (const trade of trades) {
-    const pointIndex = data.findIndex((d: any) => d.time === trade.date)
+    const pointIndex = findDateIndex(data, trade.date)
     if (pointIndex === -1) continue
 
     const x = toX(pointIndex)
@@ -1307,7 +1354,7 @@ function drawTradeMarkers(
   // 绘制悬停提示
   if (hoveredTrade && mousePos.value) {
     const trade = hoveredTrade
-    const pointIndex = data.findIndex((d: any) => d.time === trade.date)
+    const pointIndex = findDateIndex(data, trade.date)
     if (pointIndex === -1) return
 
     const x = toX(pointIndex)
@@ -1360,7 +1407,7 @@ function drawTradeMarkers(
     const t = hoveredTTrade
     const isBuy = hoveredTTradeType === 'buy'
     const pointDate = isBuy ? t.buyDate : t.sellDate
-    const pointIndex = data.findIndex((d: any) => d.time === pointDate)
+    const pointIndex = findDateIndex(data, pointDate)
     if (pointIndex === -1) return
 
     const x = toX(pointIndex)
@@ -1468,8 +1515,8 @@ function drawTTradeMarkers(
   }
 
   for (const t of tTrades) {
-    const buyIndex = data.findIndex((d: any) => d.time === t.buyDate)
-    const sellIndex = data.findIndex((d: any) => d.time === t.sellDate)
+    const buyIndex = findDateIndex(data, t.buyDate)
+    const sellIndex = findDateIndex(data, t.sellDate)
     if (buyIndex === -1 || sellIndex === -1) continue
 
     const x1 = toX(buyIndex)
@@ -1532,7 +1579,7 @@ function drawHighlightMarker(
   const data = mode === 'performance' ? performanceData.value : filteredData.value
   if (data.length === 0) return
 
-  const hlIndex = data.findIndex((d: any) => d.time === props.highlightDate)
+  const hlIndex = findDateIndex(data, props.highlightDate)
   if (hlIndex === -1) return
 
   const toX = (index: number) => padding.left + (chartWidth / Math.max(data.length - 1, 1)) * index
@@ -1612,7 +1659,13 @@ function drawHighlightMarker(
   // 4. 价格标签（右侧）
   // [FIX] 业绩模式下不显示 fundReturn（那是图表起点开始的收益率，会误导）
   // 改为显示交易净值，让用户看到买卖点的实际价格
-  const hlTrade = props.trades?.find(t => t.date === props.highlightDate && t.type === props.highlightType)
+  const hlTrade = props.trades?.find(t => {
+    if (t.type !== props.highlightType) return false
+    // 日期宽松匹配：只比较 YYYY-MM-DD 部分
+    const tradeClean = (t.date.split(' ')[0] || t.date).slice(0, 10)
+    const hlClean = (props.highlightDate.split(' ')[0] || props.highlightDate).slice(0, 10)
+    return tradeClean === hlClean || Math.abs(new Date(tradeClean).getTime() - new Date(hlClean).getTime()) <= 7 * 24 * 60 * 60 * 1000
+  })
   const hlPoint = data[hlIndex]!
   const tradeNav = hlTrade?.netValue || (
     mode === 'performance' && hlPoint && 'fundReturn' in hlPoint

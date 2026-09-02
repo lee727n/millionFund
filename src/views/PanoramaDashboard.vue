@@ -7,10 +7,11 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades } from '@/utils/storage'
+import { getTrades, addTrade } from '@/utils/storage'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
-import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
+import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 
 const router = useRouter()
 const holdingStore = useHoldingStore()
@@ -73,6 +74,23 @@ function updateTime() {
 // ============ 基金实时数据缓存（供交易记录 + AI追踪 共用） ============
 // 格式: Map<code, { estimate, nav, currentValue, dataSource }>
 const liveFundData = ref<Map<string, any>>(new Map())
+
+// ============ 前10大重仓股弹窗 ============
+const topHoldingsModal = ref<{ open: boolean; fund: any; stocks: HoldingStock[]; loading: boolean }>({
+  open: false, fund: null, stocks: [], loading: false
+})
+async function openTopHoldings(fund: any, event: Event) {
+  event.stopPropagation()
+  topHoldingsModal.value = { open: true, fund, stocks: [], loading: true }
+  try {
+    const stocks = await fetchTopHoldings(fund.code)
+    topHoldingsModal.value.stocks = stocks
+  } catch (err) {
+    console.error('获取重仓股失败:', err)
+  } finally {
+    topHoldingsModal.value.loading = false
+  }
+}
 
 async function preloadAllFundPrices(fundCodes: string[]) {
   const uniqueCodes = [...new Set(fundCodes)]
@@ -372,6 +390,318 @@ function goPortfolio() { router.push('/portfolio') }
 function goTradeCenter() { router.push('/trade-center') }
 function goAITracking() { router.push('/ai-tracking') }
 
+// ============ 长按快捷操作 ============
+const selectedFundForAction = ref<any>(null)
+const showFundActionBar = ref(false)
+const actionBarPosition = reactive({ top: 0, left: 0, width: 350 })
+const longpressTimer = ref<number | null>(null)
+const isLongpressTriggered = ref(false)
+
+function startLongpressTimer(event: TouchEvent | MouseEvent, fund: any) {
+  isLongpressTriggered.value = false
+  longpressTimer.value = window.setTimeout(() => {
+    isLongpressTriggered.value = true
+    if (navigator.vibrate) navigator.vibrate(10)
+    selectedFundForAction.value = fund
+    const target = (event.target as HTMLElement).closest('.fund-mini-card') as HTMLElement
+    if (!target) return
+    const rect = target.getBoundingClientRect()
+    const gap = 8
+    let left = rect.left
+    let top = rect.bottom + gap
+    const abW = 320
+    const abH = 36
+    if (left + abW > window.innerWidth) left = window.innerWidth - abW - 16
+    if (left < 16) left = 16
+    if (top + abH > window.innerHeight) top = rect.top - abH - gap
+    actionBarPosition.top = top
+    actionBarPosition.left = left
+    actionBarPosition.width = abW
+    showFundActionBar.value = true
+  }, 500)
+}
+
+function endLongpressTimer() {
+  if (longpressTimer.value) {
+    clearTimeout(longpressTimer.value)
+    longpressTimer.value = null
+  }
+}
+
+function closeActionBar() {
+  showFundActionBar.value = false
+}
+
+function handleCardTouchStart(e: TouchEvent, fund: any) { startLongpressTimer(e, fund) }
+function handleCardTouchEnd(e: TouchEvent) {
+  endLongpressTimer()
+  if (isLongpressTriggered.value) e.preventDefault()
+}
+function handleCardTouchMove() { endLongpressTimer() }
+function handleCardMouseDown(e: MouseEvent, fund: any) { startLongpressTimer(e, fund) }
+function handleCardMouseUp() { endLongpressTimer() }
+function handleCardMouseMove() { endLongpressTimer() }
+
+// 操作按钮
+function handleActionTrade() { openTradeDialog() }
+function handleActionConvert() { openAddAITrackingDialog() }
+function handleActionAdjust() { openCostDialog() }
+function handleActionSource() { openSourceDialog() }
+function handleActionDelete() {
+  closeActionBar()
+  if (selectedFundForAction.value) {
+    showConfirmDialog({
+      title: '确认删除',
+      message: `确认删除 ${selectedFundForAction.value.name} (${selectedFundForAction.value.code})？`,
+    })
+      .then(() => {
+        holdingStore.removeHolding(selectedFundForAction.value.code)
+        showToast('已删除')
+      })
+      .catch(() => {})
+  }
+}
+
+// ============ 交易弹窗（加仓/减仓）============
+const showTradeDialog = ref(false)
+const tradeFormData = ref({
+  type: 'buy' as 'buy' | 'sell',
+  amount: '',
+  netValue: '',
+  date: '',
+  isEstimate: true
+})
+async function openTradeDialog() {
+  closeActionBar()
+  const holding = selectedFundForAction.value
+  if (!holding) return
+  tradeFormData.value = {
+    type: 'buy',
+    amount: '',
+    netValue: holding.currentValue ? holding.currentValue.toFixed(4) : '',
+    date: new Date().toLocaleDateString('en-CA'),
+    isEstimate: true
+  }
+  showTradeDialog.value = true
+  await nextTick()
+  try {
+    const data = await fetchFundAccurateData(holding.code, holding.isQDII, true)
+    const shouldUseNav = data.dataSource === 'nav' && data.nav > 0
+    if (shouldUseNav) {
+      tradeFormData.value.netValue = data.nav.toFixed(4)
+      tradeFormData.value.isEstimate = false
+    } else {
+      const v = (data.estimate || data.currentValue || 0)
+      if (v > 0) {
+        tradeFormData.value.netValue = v.toFixed(4)
+        tradeFormData.value.isEstimate = true
+      }
+    }
+  } catch {}
+}
+async function submitTrade() {
+  const holding = selectedFundForAction.value
+  if (!holding) return
+  const amount = parseFloat(tradeFormData.value.amount)
+  const netValue = parseFloat(tradeFormData.value.netValue)
+  const type = tradeFormData.value.type
+  const date = tradeFormData.value.date || new Date().toLocaleDateString('en-CA')
+  if (!amount || amount <= 0) return showToast('请输入有效的交易金额')
+  if (!netValue || netValue <= 0) return showToast('请输入有效的净值')
+  const shares = amount / netValue
+  showLoadingToast({ message: '提交中...', forbidClick: true })
+  try {
+    addTrade({
+      id: '', code: holding.code, name: holding.name, type, date, amount,
+      netValue, shares, fee: 0, estimated: tradeFormData.value.isEstimate,
+      estimateAtTrade: tradeFormData.value.isEstimate ? netValue : undefined,
+      source: holding.source, createdAt: Date.now()
+    })
+    const cur = holdingStore.holdings.find(h => h.code === holding.code)
+    if (cur) {
+      if (type === 'buy') cur.shares = (cur.shares || 0) + shares
+      else {
+        if (shares > (cur.shares || 0)) {
+          closeToast(); showToast(`减仓份额超过当前持仓(${cur.shares?.toFixed(2)}份)`)
+          return
+        }
+        cur.shares = cur.shares - shares
+      }
+      cur.currentValue = netValue
+      holdingStore.addOrUpdateHolding(cur)
+    }
+    closeToast()
+    showToast({ message: `${type === 'buy' ? '加仓' : '减仓'}成功`, duration: 2000 })
+    showTradeDialog.value = false
+    selectedFundForAction.value = null
+  } catch (e) {
+    closeToast(); showToast('交易提交失败')
+  }
+}
+
+// ============ 调成本弹窗 ============
+const showCostDialog = ref(false)
+const costFormData = ref({ amount: '', profit: '' })
+function openCostDialog() {
+  closeActionBar()
+  const holding = selectedFundForAction.value
+  if (!holding) return showToast('暂未持有该基金')
+  costFormData.value = {
+    amount: (holding.marketValue || holding.shares * holding.currentValue || 0).toString(),
+    profit: (holding.profit !== undefined ? holding.profit : (holding.currentValue && holding.buyNetValue ? (holding.currentValue - holding.buyNetValue) * holding.shares : 0)).toString()
+  }
+  showCostDialog.value = true
+}
+async function submitCostAdjust() {
+  const holding = selectedFundForAction.value
+  if (!holding) return
+  // 从 store 拿最新状态，避免 selectedFundForAction 是陈旧快照
+  const cur = holdingStore.holdings.find((h) => h.code === holding.code)
+  const base = cur || holding as any
+  const marketValue = parseFloat(costFormData.value.amount)
+  const profit = parseFloat(costFormData.value.profit)
+  if (!marketValue || marketValue <= 0) return showToast('请输入有效的持仓市值')
+  if (isNaN(profit)) return showToast('请输入有效的持仓收益')
+  showLoadingToast({ message: '获取最新净值...', forbidClick: true })
+  try {
+    let latestNetValue: number | null = null
+    let latestDate = ''
+    const accurate = await fetchFundAccurateData(base.code, base.isQDII, true)
+    if (accurate && accurate.nav > 0) {
+      latestNetValue = accurate.nav
+      latestDate = accurate.navDate
+    }
+    if (!latestNetValue) {
+      const r = await fetchLatestNetValue(base.code)
+      if (r && r.netValue > 0) { latestNetValue = r.netValue; latestDate = r.date }
+    }
+    if (!latestNetValue) { closeToast(); return showToast('获取最新净值失败') }
+    const newShares = marketValue / latestNetValue
+    const costNetValue = newShares > 0 ? (marketValue - profit) / newShares : latestNetValue
+    const addedGain = ((latestNetValue - costNetValue) / costNetValue) * 100
+    holdingStore.addOrUpdateHolding({
+      code: base.code, name: base.name, buyNetValue: costNetValue, shares: newShares,
+      buyDate: base.buyDate, holdingDays: base.holdingDays,
+      industrySectors: base.industrySectors, source: base.source,
+      isQDII: base.isQDII, createdAt: base.createdAt,
+      currentValue: latestNetValue, addedGain, marketValue, profit
+    })
+    closeToast()
+    showToast({ message: `成本已更新，份额 ${newShares.toFixed(2)}，成本净值 ${costNetValue.toFixed(4)}`, duration: 2500 })
+    showCostDialog.value = false
+    selectedFundForAction.value = null
+  } catch (e) {
+    closeToast(); showToast('调整失败')
+  }
+}
+
+// ============ 来源弹窗 ============
+const showSourceDialog = ref(false)
+const sourceFormData = ref({ source: '' as string, isQDII: false })
+function openSourceDialog() {
+  closeActionBar()
+  const holding = selectedFundForAction.value
+  if (!holding) return
+  sourceFormData.value = { source: holding.source || '', isQDII: holding.isQDII || false }
+  showSourceDialog.value = true
+}
+function submitSourceChange() {
+  const holding = selectedFundForAction.value
+  if (!holding) return
+  const cur = holdingStore.holdings.find(h => h.code === holding.code)
+  if (cur) {
+    cur.source = sourceFormData.value.source.trim() || undefined
+    cur.isQDII = sourceFormData.value.isQDII
+    holdingStore.addOrUpdateHolding(cur)
+    showToast('已更新')
+  }
+  showSourceDialog.value = false
+  selectedFundForAction.value = null
+}
+
+// ============ AI追踪添加弹窗 ============
+type NewRecord = { date: string; sellCode: string; sellName: string; buyCode: string; buyName: string }
+const showAddModal = ref(false)
+const newRecord = ref<NewRecord>({ date: '', sellCode: '', sellName: '', buyCode: '', buyName: '' })
+function resetNewRecord() {
+  newRecord.value = { date: '', sellCode: '', sellName: '', buyCode: '', buyName: '' }
+}
+function openAddAITrackingDialog() {
+  closeActionBar()
+  resetNewRecord()
+  const h = selectedFundForAction.value
+  if (h) {
+    newRecord.value.sellCode = h.code
+    newRecord.value.sellName = h.name
+    newRecord.value.date = new Date().toLocaleDateString('en-CA')
+  }
+  showAddModal.value = true
+}
+async function fetchFundInfoForAIT(type: 'sell' | 'buy') {
+  const code = type === 'sell' ? newRecord.value.sellCode : newRecord.value.buyCode
+  if (!code) return
+  try {
+    const info = await fetchFundAccurateData(code)
+    if (info) {
+      if (type === 'sell') newRecord.value.sellName = info.name
+      else newRecord.value.buyName = info.name
+    }
+  } catch {}
+}
+async function confirmAddRecord() {
+  if (!newRecord.value.sellCode || !newRecord.value.buyCode) {
+    showToast({ message: '请填写基金代码', duration: 2000 }); return
+  }
+  showLoadingToast('添加中...')
+  try {
+    let sellName = newRecord.value.sellName, buyName = newRecord.value.buyName
+    let sellNav = 0, buyNav = 0, sellNavEstimated = false, buyNavEstimated = false
+    const targetDate = newRecord.value.date || new Date().toLocaleDateString('en-CA')
+    if (newRecord.value.date) {
+      const days = Math.ceil((Date.now() - new Date(newRecord.value.date).getTime()) / 86400000) + 10
+      const [sellH, buyH] = await Promise.all([
+        fetchNetValueHistoryFast(newRecord.value.sellCode, days),
+        fetchNetValueHistoryFast(newRecord.value.buyCode, days)
+      ])
+      const sr = sellH.records?.find((r: any) => r.date === newRecord.value.date)
+      const br = buyH.records?.find((r: any) => r.date === newRecord.value.date)
+      if (sr && br) {
+        sellName = sellName || newRecord.value.sellCode
+        buyName = buyName || newRecord.value.buyCode
+        sellNav = sr.netValue; buyNav = br.netValue
+      } else {
+        sellNavEstimated = buyNavEstimated = true
+        const [si, bi] = await Promise.all([
+          fetchFundAccurateData(newRecord.value.sellCode, false, true),
+          fetchFundAccurateData(newRecord.value.buyCode, false, true)
+        ])
+        if (si && si.currentValue > 0) { sellName = si.name; sellNav = si.currentValue }
+        else { closeToast(); showToast('获取卖出基金信息失败'); return }
+        if (bi && bi.currentValue > 0) { buyName = bi.name; buyNav = bi.currentValue }
+        else { closeToast(); showToast('获取买入基金信息失败'); return }
+      }
+    } else {
+      sellNavEstimated = buyNavEstimated = true
+      const [si, bi] = await Promise.all([
+        fetchFundAccurateData(newRecord.value.sellCode),
+        fetchFundAccurateData(newRecord.value.buyCode)
+      ])
+      if (si && si.currentValue > 0) { sellName = si.name; sellNav = si.currentValue }
+      else { closeToast(); showToast('获取卖出基金信息失败'); return }
+      if (bi && bi.currentValue > 0) { buyName = bi.name; buyNav = bi.currentValue }
+      else { closeToast(); showToast('获取买入基金信息失败'); return }
+    }
+    aiTrackingStore.addRecord({
+      sellCode: newRecord.value.sellCode, sellName, sellNav, sellNavEstimated,
+      buyCode: newRecord.value.buyCode, buyName, buyNav, buyNavEstimated, date: targetDate
+    })
+    closeToast()
+    showToast({ message: '已添加到 AI 追踪', duration: 2000 })
+    showAddModal.value = false
+    resetNewRecord()
+  } catch (e) { closeToast(); showToast('添加失败') }
+}
+
 // ============ 工具函数 ============
 function fmtMoney(v: number) {
   if (Math.abs(v) >= 10000) return (v / 10000).toFixed(2) + '万'
@@ -503,13 +833,17 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 
         <div class="col-scroll">
           <!-- 支付宝 -->
-        <div class="account-block" v-if="aliHoldings.length > 0">
+        <div class="account-block block-ali" v-if="aliHoldings.length > 0">
           <div class="account-header">
             <img src="@/assets/ali.jpg" class="account-icon" />
             <span class="account-name">支付宝</span>
             <span class="account-count">{{ aliStats.count }} 只</span>
             <div class="account-spacer"></div>
             <span class="account-stat">{{ fmtMoney(aliStats.marketValue) }}</span>
+            <span
+              class="account-profit"
+              :class="isWeekend ? 'closed' : (aliStats.todayProfit >= 0 ? 'up' : 'down')"
+            >{{ isWeekend ? '' : (aliStats.todayProfit >= 0 ? '+' : '') + fmtMoney(aliStats.todayProfit) }}</span>
             <span 
               class="account-pct" 
               :class="isWeekend ? 'closed' : (aliStats.profitPercent >= 0 ? 'up' : 'down')"
@@ -518,12 +852,19 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             </span>
           </div>
           <div class="fund-mini-grid">
-            <div 
-              v-for="fund in aliHoldings.slice(0, 8)" 
-              :key="fund.code"
-              class="fund-mini-card"
-              @click="goDetail(fund.code)"
-            >
+            <div class="fund-grid-scroll">
+              <div 
+                v-for="fund in aliHoldings" 
+                :key="fund.code"
+                class="fund-mini-card"
+                @click="goDetail(fund.code)"
+                @touchstart="handleCardTouchStart($event, fund)"
+                @touchend="handleCardTouchEnd"
+                @touchmove="handleCardTouchMove"
+                @mousedown="handleCardMouseDown($event, fund)"
+                @mouseup="handleCardMouseUp"
+                @mousemove="handleCardMouseMove"
+              >
               <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
               <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
                 <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
@@ -532,7 +873,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
                 <span 
                   v-if="getFundSignal(fund.code)" 
@@ -562,18 +903,22 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </div>
               </div>
             </div>
-            <div v-if="aliHoldings.length > 8" class="fund-mini-more">+{{ aliHoldings.length - 8 }}</div>
+            </div>
           </div>
         </div>
 
         <!-- 腾讯 -->
-        <div class="account-block" v-if="txHoldings.length > 0">
+        <div class="account-block block-tx" v-if="txHoldings.length > 0">
           <div class="account-header">
             <img src="@/assets/TX.jpg" class="account-icon" />
             <span class="account-name">腾讯</span>
             <span class="account-count">{{ txStats.count }} 只</span>
             <div class="account-spacer"></div>
             <span class="account-stat">{{ fmtMoney(txStats.marketValue) }}</span>
+            <span
+              class="account-profit"
+              :class="isWeekend ? 'closed' : (txStats.todayProfit >= 0 ? 'up' : 'down')"
+            >{{ isWeekend ? '' : (txStats.todayProfit >= 0 ? '+' : '') + fmtMoney(txStats.todayProfit) }}</span>
             <span 
               class="account-pct" 
               :class="isWeekend ? 'closed' : (txStats.profitPercent >= 0 ? 'up' : 'down')"
@@ -582,12 +927,19 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             </span>
           </div>
           <div class="fund-mini-grid">
-            <div 
-              v-for="fund in txHoldings.slice(0, 8)" 
-              :key="fund.code"
-              class="fund-mini-card"
-              @click="goDetail(fund.code)"
-            >
+            <div class="fund-grid-scroll">
+              <div 
+                v-for="fund in txHoldings" 
+                :key="fund.code"
+                class="fund-mini-card"
+                @click="goDetail(fund.code)"
+                @touchstart="handleCardTouchStart($event, fund)"
+                @touchend="handleCardTouchEnd"
+                @touchmove="handleCardTouchMove"
+                @mousedown="handleCardMouseDown($event, fund)"
+                @mouseup="handleCardMouseUp"
+                @mousemove="handleCardMouseMove"
+              >
               <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
               <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
                 <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
@@ -596,7 +948,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
                 <span 
                   v-if="getFundSignal(fund.code)" 
@@ -626,18 +978,22 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </div>
               </div>
             </div>
-            <div v-if="txHoldings.length > 8" class="fund-mini-more">+{{ txHoldings.length - 8 }}</div>
+            </div>
           </div>
         </div>
 
         <!-- 京东 -->
-        <div class="account-block" v-if="jdHoldings.length > 0">
+        <div class="account-block block-jd" v-if="jdHoldings.length > 0">
           <div class="account-header">
             <img src="@/assets/JD.jpg" class="account-icon" />
             <span class="account-name">京东</span>
             <span class="account-count">{{ jdStats.count }} 只</span>
             <div class="account-spacer"></div>
             <span class="account-stat">{{ fmtMoney(jdStats.marketValue) }}</span>
+            <span
+              class="account-profit"
+              :class="isWeekend ? 'closed' : (jdStats.todayProfit >= 0 ? 'up' : 'down')"
+            >{{ isWeekend ? '' : (jdStats.todayProfit >= 0 ? '+' : '') + fmtMoney(jdStats.todayProfit) }}</span>
             <span 
               class="account-pct" 
               :class="isWeekend ? 'closed' : (jdStats.profitPercent >= 0 ? 'up' : 'down')"
@@ -646,12 +1002,19 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             </span>
           </div>
           <div class="fund-mini-grid">
-            <div 
-              v-for="fund in jdHoldings.slice(0, 8)" 
-              :key="fund.code"
-              class="fund-mini-card"
-              @click="goDetail(fund.code)"
-            >
+            <div class="fund-grid-scroll">
+              <div 
+                v-for="fund in jdHoldings" 
+                :key="fund.code"
+                class="fund-mini-card"
+                @click="goDetail(fund.code)"
+                @touchstart="handleCardTouchStart($event, fund)"
+                @touchend="handleCardTouchEnd"
+                @touchmove="handleCardTouchMove"
+                @mousedown="handleCardMouseDown($event, fund)"
+                @mouseup="handleCardMouseUp"
+                @mousemove="handleCardMouseMove"
+              >
               <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
               <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
                 <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
@@ -660,7 +1023,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
                 <span 
                   v-if="getFundSignal(fund.code)" 
@@ -690,7 +1053,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </div>
               </div>
             </div>
-            <div v-if="jdHoldings.length > 8" class="fund-mini-more">+{{ jdHoldings.length - 8 }}</div>
+            </div>
           </div>
         </div>
 
@@ -710,12 +1073,19 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             </span>
           </div>
           <div class="fund-mini-grid">
-            <div 
-              v-for="fund in otherHoldings.slice(0, 8)" 
-              :key="fund.code"
-              class="fund-mini-card"
-              @click="goDetail(fund.code)"
-            >
+            <div class="fund-grid-scroll">
+              <div 
+                v-for="fund in otherHoldings" 
+                :key="fund.code"
+                class="fund-mini-card"
+                @click="goDetail(fund.code)"
+                @touchstart="handleCardTouchStart($event, fund)"
+                @touchend="handleCardTouchEnd"
+                @touchmove="handleCardTouchMove"
+                @mousedown="handleCardMouseDown($event, fund)"
+                @mouseup="handleCardMouseUp"
+                @mousemove="handleCardMouseMove"
+              >
               <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
               <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
                 <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
@@ -724,7 +1094,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
               <div class="fm-row fm-row-top">
                 <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name">{{ fund.name?.slice(0, 8) }}</span>
+                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
                 <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
                 <span 
                   v-if="getFundSignal(fund.code)" 
@@ -754,7 +1124,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </div>
               </div>
             </div>
-            <div v-if="otherHoldings.length > 8" class="fund-mini-more">+{{ otherHoldings.length - 8 }}</div>
+            </div>
           </div>
         </div>
 
@@ -777,7 +1147,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="observe-row"
               @click="goDetail(fund.code)"
             >
-              <span class="observe-name" :title="fund.name">{{ fund.name?.slice(0, 10) }}</span>
+              <span class="observe-name" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
               <span 
                 class="observe-today"
                 :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'"
@@ -821,6 +1191,9 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 <span class="track-fund-name">{{ (record.sellName || record.sellCode)?.slice(0, 6) }}</span>
                 <span class="track-arrow">→</span>
                 <span class="track-fund-name">{{ (record.buyName || record.buyCode)?.slice(0, 6) }}</span>
+                <span class="track-diff" :class="getTrackSuccess(record) ? 'up' : 'down'">
+                  {{ getTrackDiff(record) >= 0 ? '+' : '' }}{{ getTrackDiff(record).toFixed(2) }}%
+                </span>
               </div>
               <div class="track-changes">
                 <span class="track-change-item" :class="(record.sellChange || 0) >= 0 ? 'up' : 'down'">
@@ -828,9 +1201,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </span>
                 <span class="track-change-item" :class="(record.buyChange || 0) >= 0 ? 'up' : 'down'">
                   买 <span class="track-today-tag" :class="record.buyToday >= 0 ? 'up' : 'down'">估{{ fmtPct(record.buyToday) }}</span>累{{ fmtPct(record.buyChange || 0) }}
-                </span>
-                <span class="track-diff" :class="getTrackSuccess(record) ? 'up' : 'down'">
-                  {{ getTrackDiff(record) >= 0 ? '+' : '' }}{{ getTrackDiff(record).toFixed(2) }}%
                 </span>
               </div>
             </div>
@@ -942,6 +1312,238 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
       </section>
     </main>
+
+    <!-- 长按快捷操作条 -->
+    <div
+      v-if="showFundActionBar"
+      class="fund-action-bar"
+      :style="{
+        top: actionBarPosition.top + 'px',
+        left: actionBarPosition.left + 'px',
+        width: actionBarPosition.width + 'px'
+      }"
+      @click.stop
+    >
+      <button class="action-bar-btn" @click="handleActionTrade">交易</button>
+      <button class="action-bar-btn" @click="handleActionConvert">转换</button>
+      <button class="action-bar-btn" @click="handleActionAdjust">调成本</button>
+      <button class="action-bar-btn" @click="handleActionSource">来源</button>
+      <button class="action-bar-btn delete" @click="handleActionDelete">删除</button>
+    </div>
+
+    <!-- 点击其他区域关闭 -->
+    <div
+      v-if="showFundActionBar"
+      class="action-bar-overlay"
+      @click="closeActionBar"
+    ></div>
+
+    <!-- 交易弹窗 -->
+    <van-dialog
+      v-model:show="showTradeDialog"
+      :close-on-click-overlay="false"
+      show-cancel-button
+      class="pa-dialog"
+    >
+      <template #header>
+        <div class="pa-dialog-header">
+          <span>{{ selectedFundForAction?.name }} ({{ selectedFundForAction?.code }})</span>
+          <span class="pa-dialog-close" @click="showTradeDialog = false">✕</span>
+        </div>
+      </template>
+      <div class="pa-dialog-body">
+        <div class="pa-type-switch">
+          <div
+            :class="['pa-type-btn', 'buy', { active: tradeFormData.type === 'buy' }]"
+            @click="tradeFormData.type = 'buy'"
+          >加仓</div>
+          <div
+            :class="['pa-type-btn', 'sell', { active: tradeFormData.type === 'sell' }]"
+            @click="tradeFormData.type = 'sell'"
+          >减仓</div>
+        </div>
+        <div class="pa-field">
+          <label>交易金额 (元)</label>
+          <input v-model="tradeFormData.amount" type="number" placeholder="请输入金额" />
+        </div>
+        <div class="pa-field">
+          <label>
+            净值
+            <span v-if="tradeFormData.isEstimate" class="pa-tag estimate">估值</span>
+            <span v-else class="pa-tag nav">净值</span>
+          </label>
+          <input v-model="tradeFormData.netValue" type="number" step="0.0001" />
+        </div>
+        <div class="pa-field">
+          <label>日期</label>
+          <input v-model="tradeFormData.date" type="date" />
+        </div>
+        <div class="pa-info" v-if="tradeFormData.amount && tradeFormData.netValue">
+          预计份额：{{ (parseFloat(tradeFormData.amount) / parseFloat(tradeFormData.netValue)).toFixed(2) }} 份
+        </div>
+      </div>
+      <div class="pa-dialog-footer">
+        <button class="pa-btn cancel" @click="showTradeDialog = false">取消</button>
+        <button class="pa-btn confirm" @click="submitTrade">确认{{ tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</button>
+      </div>
+    </van-dialog>
+
+    <!-- 调成本弹窗 -->
+    <van-dialog
+      v-model:show="showCostDialog"
+      :close-on-click-overlay="false"
+      show-cancel-button
+      class="pa-dialog"
+    >
+      <template #header>
+        <div class="pa-dialog-header">
+          <span>调整成本</span>
+          <span class="pa-dialog-close" @click="showCostDialog = false">✕</span>
+        </div>
+      </template>
+      <div class="pa-dialog-body">
+        <div class="pa-fund-info">{{ selectedFundForAction?.name }} ({{ selectedFundForAction?.code }})</div>
+        <div class="pa-field">
+          <label>当前持仓市值 (元)</label>
+          <input v-model="costFormData.amount" type="number" step="0.01" />
+        </div>
+        <div class="pa-field">
+          <label>累计收益 (元)</label>
+          <input v-model="costFormData.profit" type="number" step="0.01" />
+        </div>
+        <div class="pa-hint">
+          系统将自动获取最新净值，重新计算份额和成本净值。
+        </div>
+      </div>
+      <div class="pa-dialog-footer">
+        <button class="pa-btn cancel" @click="showCostDialog = false">取消</button>
+        <button class="pa-btn confirm" @click="submitCostAdjust">确认调整</button>
+      </div>
+    </van-dialog>
+
+    <!-- 来源弹窗 -->
+    <van-dialog
+      v-model:show="showSourceDialog"
+      :close-on-click-overlay="false"
+      show-cancel-button
+      class="pa-dialog"
+    >
+      <template #header>
+        <div class="pa-dialog-header">
+          <span>修改来源</span>
+          <span class="pa-dialog-close" @click="showSourceDialog = false">✕</span>
+        </div>
+      </template>
+      <div class="pa-dialog-body">
+        <div class="pa-fund-info">{{ selectedFundForAction?.name }} ({{ selectedFundForAction?.code }})</div>
+        <div class="pa-field">
+          <label>账户来源</label>
+          <div class="pa-radio-group">
+            <label class="pa-radio">
+              <input type="radio" v-model="sourceFormData.source" value="ali" /> 支付宝
+            </label>
+            <label class="pa-radio">
+              <input type="radio" v-model="sourceFormData.source" value="TX" /> 腾讯
+            </label>
+            <label class="pa-radio">
+              <input type="radio" v-model="sourceFormData.source" value="JD" /> 京东
+            </label>
+            <label class="pa-radio">
+              <input type="radio" v-model="sourceFormData.source" value="observe" /> 量化观察
+            </label>
+            <label class="pa-radio">
+              <input type="radio" v-model="sourceFormData.source" value="" /> 其他
+            </label>
+          </div>
+        </div>
+        <div class="pa-field pa-switch-field">
+          <label>QDII 海外基金</label>
+          <input type="checkbox" v-model="sourceFormData.isQDII" class="pa-switch" />
+        </div>
+      </div>
+      <div class="pa-dialog-footer">
+        <button class="pa-btn cancel" @click="showSourceDialog = false">取消</button>
+        <button class="pa-btn confirm" @click="submitSourceChange">保存</button>
+      </div>
+    </van-dialog>
+
+    <!-- AI追踪转换弹窗 -->
+    <van-dialog
+      v-model:show="showAddModal"
+      :close-on-click-overlay="false"
+      show-cancel-button
+      class="pa-dialog"
+    >
+      <template #header>
+        <div class="pa-dialog-header">
+          <span>添加调仓记录</span>
+          <span class="pa-dialog-close" @click="showAddModal = false">✕</span>
+        </div>
+      </template>
+      <div class="pa-dialog-body">
+        <div class="pa-field">
+          <label>调仓日期（可选）</label>
+          <input v-model="newRecord.date" type="date" />
+        </div>
+        <div class="pa-field">
+          <label>卖出基金代码</label>
+          <input v-model="newRecord.sellCode" placeholder="请输入基金代码" @blur="fetchFundInfoForAIT('sell')" />
+          <div class="pa-fund-name-preview" v-if="newRecord.sellName">{{ newRecord.sellName }}</div>
+        </div>
+        <div class="pa-field">
+          <label>买入基金代码</label>
+          <input v-model="newRecord.buyCode" placeholder="请输入基金代码" @blur="fetchFundInfoForAIT('buy')" />
+          <div class="pa-fund-name-preview" v-if="newRecord.buyName">{{ newRecord.buyName }}</div>
+        </div>
+      </div>
+      <div class="pa-dialog-footer">
+        <button class="pa-btn cancel" @click="showAddModal = false">取消</button>
+        <button class="pa-btn confirm" @click="confirmAddRecord">添加</button>
+      </div>
+    </van-dialog>
+
+    <!-- 前10大重仓股弹窗 -->
+    <van-popup
+      v-model:show="topHoldingsModal.open"
+      position="center"
+      round
+      :style="{ width: '88%', maxWidth: '420px', background: 'var(--bg-secondary)' }"
+    >
+      <div class="pa-top-holdings">
+        <div class="pa-th-header">
+          <span>📈 前10重仓股票</span>
+        </div>
+        <div class="pa-th-fund-info">
+          <span class="pa-th-fund-name">{{ topHoldingsModal.fund?.name }}</span>
+          <span class="pa-th-fund-code">#{{ topHoldingsModal.fund?.code }}</span>
+        </div>
+        <div class="pa-th-grid" v-if="!topHoldingsModal.loading">
+          <div
+            v-for="(stock, idx) in topHoldingsModal.stocks"
+            :key="stock.code || idx"
+            class="pa-th-card"
+          >
+            <span class="pa-thc-name">{{ stock.name }}</span>
+            <div class="pa-thc-bottom">
+              <span
+                v-if="stock.change !== null"
+                class="pa-thc-change"
+                :class="stock.change > 0 ? 'up' : stock.change < 0 ? 'down' : ''"
+              >{{ stock.change > 0 ? '+' : '' }}{{ stock.change.toFixed(2) }}%</span>
+              <span v-else class="pa-thc-change">--</span>
+              <span class="pa-thc-weight">{{ stock.weight }}</span>
+            </div>
+          </div>
+          <div v-if="topHoldingsModal.stocks.length === 0" class="pa-th-empty">
+            暂无重仓股数据
+          </div>
+        </div>
+        <div class="pa-th-loading" v-else>
+          <van-loading size="24px">加载中...</van-loading>
+        </div>
+        <button class="pa-th-close" @click="topHoldingsModal.open = false">关闭</button>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -1024,6 +1626,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 
 .stat-block.up .stat-value,
 .account-pct.up,
+.account-profit.up,
 .observe-today.up,
 .observe-added.up,
 .track-change-item.up,
@@ -1037,6 +1640,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 
 .stat-block.down .stat-value,
 .account-pct.down,
+.account-profit.down,
 .observe-today.down,
 .observe-added.down,
 .track-change-item.down,
@@ -1050,7 +1654,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 .stat-block.closed .stat-value,
-.account-pct.closed {
+.account-pct.closed,
+.account-profit.closed {
   color: var(--text-secondary) !important;
 }
 
@@ -1376,6 +1981,13 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   font-family: 'SF Mono', Consolas, monospace;
 }
 
+.account-profit {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'SF Mono', Consolas, monospace;
+  margin-left: 6px;
+}
+
 .account-pct {
   font-size: 13px;
   font-weight: 700;
@@ -1385,10 +1997,28 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 .fund-mini-grid {
+  padding: 0;
+}
+
+.fund-grid-scroll {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 3px;
 }
+.fund-grid-scroll::-webkit-scrollbar { width: 4px; }
+.fund-grid-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+.fund-grid-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* 各账户区块分配不同空间 */
+.block-ali .fund-grid-scroll { max-height: 220px; }
+.block-tx .fund-grid-scroll  { max-height: 300px; }
+.block-jd .fund-grid-scroll  { max-height: 130px; }
 
 .fund-mini-card {
   padding: 8px 8px 6px;
@@ -1408,6 +2038,12 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   border-color: var(--color-primary, #3b82f6);
   transform: translateY(-1px);
   background: var(--bg-secondary);
+}
+
+.fund-mini-card:active {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: var(--color-primary, #3b82f6);
+  transform: scale(0.97);
 }
 
 .fm-row {
@@ -1454,13 +2090,13 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 .fm-name {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 78px;
+  max-width: 90px;
   transition: color 0.3s;
 }
 
@@ -1470,7 +2106,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .fm-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
 
 .fm-score {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   padding: 0 4px;
   border-radius: 3px;
@@ -1707,16 +2343,21 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.track-funds .track-fund-name:last-of-type { flex: 1; }
+
+.track-funds .track-diff {
+  flex-shrink: 0;
+}
 
 .track-arrow { color: var(--text-muted); font-size: 11px; }
 
 .track-today-tag {
   display: inline-block;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 0 3px;
-  border-radius: 2px;
-  margin: 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin: 0 3px;
   line-height: 1.2;
 }
 .track-today-tag.up { background: rgba(245, 34, 45, 0.2); color: #ff7875; }
@@ -2007,4 +2648,330 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   background: var(--border-light);
   border-radius: 3px;
 }
+
+/* ============ 长按快捷操作条 ============ */
+.fund-action-bar {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #1e2a3a;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  animation: ab-slide-up 0.15s ease-out;
+}
+
+@keyframes ab-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.action-bar-btn {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+.action-bar-btn:hover { background: rgba(255,255,255,0.18); }
+.action-bar-btn:active { transform: scale(0.95); }
+.action-bar-btn.delete { background: rgba(239,68,68,0.25); color: #fca5a5; }
+.action-bar-btn.delete:hover { background: rgba(239,68,68,0.4); }
+
+.action-bar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+}
+
+/* ============ 弹窗深色主题 ============ */
+:deep(.van-dialog) {
+  background: #1e2a3a !important;
+  color: #e2e8f0;
+  border-radius: 12px !important;
+  max-width: 420px;
+}
+:deep(.van-dialog__header) { display: none; }
+:deep(.van-dialog__content) { background: #1e2a3a !important; }
+:deep(.van-dialog__message) { color: #cbd5e1 !important; }
+:deep(.van-dialog__footer) { display: none; }
+
+/* 基金名称可点击 */
+.fm-name { cursor: pointer; }
+.fm-name:hover { opacity: 0.8; }
+.observe-name { cursor: pointer; }
+.observe-name:hover { opacity: 0.8; }
+
+/* ========== 前10大重仓股弹窗（深色主题） ========== */
+.pa-top-holdings { padding: 20px; }
+
+.pa-th-header {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.pa-th-fund-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.pa-th-fund-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.pa-th-fund-code {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.pa-th-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.pa-th-card {
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.pa-thc-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e2e8f0;
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pa-thc-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pa-thc-change {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #94a3b8;
+}
+
+.pa-thc-change.up {
+  color: #ef4444;
+  background: rgba(239,68,68,0.12);
+}
+
+.pa-thc-change.down {
+  color: #22c55e;
+  background: rgba(34,197,94,0.12);
+}
+
+.pa-thc-weight {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.pa-th-empty {
+  text-align: center;
+  padding: 30px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.pa-th-loading {
+  display: flex;
+  justify-content: center;
+  padding: 30px 0;
+}
+
+.pa-th-close {
+  width: 100%;
+  height: 40px;
+  margin-top: 16px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0ea5e9, #22d3ee);
+  color: #05263b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pa-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: #f1f5f9;
+}
+.pa-dialog-close { cursor: pointer; font-size: 16px; color: #94a3b8; }
+.pa-dialog-close:hover { color: #e2e8f0; }
+
+.pa-dialog-body { padding: 16px; }
+.pa-fund-info {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 12px;
+}
+
+.pa-type-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.pa-type-btn {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.05);
+  color: #94a3b8;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.pa-type-btn.active.buy {
+  background: rgba(81,207,102,0.15);
+  color: #51cf66;
+  border-color: rgba(81,207,102,0.3);
+}
+.pa-type-btn.active.sell {
+  background: rgba(255,107,107,0.15);
+  color: #ff6b6b;
+  border-color: rgba(255,107,107,0.3);
+}
+
+.pa-field {
+  margin-bottom: 12px;
+}
+.pa-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.pa-field input[type="number"],
+.pa-field input[type="date"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.pa-field input:focus { border-color: #3b82f6; }
+
+.pa-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.pa-tag.estimate { background: rgba(81,207,102,0.2); color: #73d13d; }
+.pa-tag.nav { background: rgba(137,180,250,0.2); color: #89b4fa; }
+
+.pa-info {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 8px 10px;
+  background: rgba(59,130,246,0.1);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.pa-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.pa-fund-name-preview {
+  font-size: 12px;
+  color: #51cf66;
+  margin-top: 4px;
+  padding-left: 2px;
+}
+
+.pa-radio-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.pa-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 5px;
+}
+.pa-radio input[type="radio"] { accent-color: #3b82f6; }
+
+.pa-switch-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pa-switch { accent-color: #3b82f6; width: 18px; height: 18px; }
+
+.pa-dialog-footer {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+.pa-btn {
+  flex: 1;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pa-btn.cancel {
+  background: rgba(255,255,255,0.08);
+  color: #cbd5e1;
+}
+.pa-btn.cancel:hover { background: rgba(255,255,255,0.15); }
+.pa-btn.confirm {
+  background: #3b82f6;
+  color: #fff;
+}
+.pa-btn.confirm:hover { background: #2563eb; }
 </style>
