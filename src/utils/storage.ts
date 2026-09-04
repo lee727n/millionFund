@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   SOURCE_FILTER: 'source_filter',
   TRADES: 'fund_trades',
   T_TRADES: 'fund_t_trades',
+  STARRED_FUNDS: 'fund_starred_funds',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -39,7 +40,8 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.TRADES,
       STORAGE_KEYS.FUND_NET_VALUES,
       STORAGE_KEYS.SOURCE_FILTER,
-      STORAGE_KEYS.APP_VERSION
+      STORAGE_KEYS.APP_VERSION,
+      STORAGE_KEYS.STARRED_FUNDS
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
@@ -476,4 +478,50 @@ export function removeTTrade(tTradeId: string): void {
 
   // 从T交易归档中移除
   saveTTrades(tTrades.filter(t => t.id !== tTradeId))
+}
+
+// ========== 星标K线列表 ==========
+
+/**
+ * 获取星标K线的基金代码列表
+ */
+export function getStarredFunds(): string[] {
+  return getItem<string[]>(STORAGE_KEYS.STARRED_FUNDS, [])
+}
+
+/**
+ * 保存星标K线列表
+ */
+export function saveStarredFunds(codes: string[]): void {
+  setItem(STORAGE_KEYS.STARRED_FUNDS, codes)
+}
+
+/**
+ * 添加基金到星标K线列表
+ */
+export function addStarredFund(code: string): void {
+  const list = getStarredFunds()
+  if (!list.includes(code)) {
+    list.unshift(code)
+    saveStarredFunds(list)
+  }
+}
+
+/**
+ * 从星标K线列表移除基金
+ */
+export function removeStarredFund(code: string): void {
+  const list = getStarredFunds()
+  const index = list.indexOf(code)
+  if (index > -1) {
+    list.splice(index, 1)
+    saveStarredFunds(list)
+  }
+}
+
+/**
+ * 检查基金是否在星标K线列表中
+ */
+export function isStarredFund(code: string): boolean {
+  return getStarredFunds().includes(code)
 }

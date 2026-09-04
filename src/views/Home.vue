@@ -16,7 +16,7 @@ import { useAITrackingStore } from '@/stores/aiTracking'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
-import { addTrade } from '@/utils/storage'
+import { addTrade, addStarredFund, removeStarredFund, isStarredFund, getStarredFunds } from '@/utils/storage'
 import type { TradeType } from '@/types/fund'
 import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
@@ -446,6 +446,21 @@ function handleActionDelete() {
       .catch(() => {
         // 取消删除
       })
+  }
+}
+
+function handleActionStar() {
+  // 星标：切换基金的星标状态
+  closeActionBar()
+  if (selectedFundForAction.value) {
+    const code = selectedFundForAction.value.code
+    if (isStarredFund(code)) {
+      removeStarredFund(code)
+      showToast('已取消星标')
+    } else {
+      addStarredFund(code)
+      showToast('已加入星标K线')
+    }
   }
 }
 
@@ -1188,6 +1203,11 @@ function openPortfolio() {
   window.open(url, '_blank')
 }
 
+// [WHAT] 打开星标K线页面
+function openStarKline() {
+  router.push('/star-kline')
+}
+
 // [WHAT] 公告列表（默认 + 远程）
 const defaultNotices = [
   '基金投资有风险，入市需谨慎',
@@ -1536,6 +1556,13 @@ function handleNameClick(code: string, name: string) {
                 @click="openPortfolio"
               >
                 <span class="panorama-text">全景面板</span>
+              </van-button>
+              <van-button 
+                size="small" 
+                class="source-button portfolio-btn"
+                @click="openStarKline"
+              >
+                <span class="panorama-text">★星标K线</span>
               </van-button>
             </div>
           </div>
@@ -1984,6 +2011,7 @@ function handleNameClick(code: string, name: string) {
       <button class="action-bar-btn" @click="handleActionConvert">转换</button>
       <button class="action-bar-btn" @click="handleActionAdjust">调仓</button>
       <button class="action-bar-btn" @click="handleActionSource">来源</button>
+      <button class="action-bar-btn" @click="handleActionStar">{{ selectedFundForAction && isStarredFund(selectedFundForAction.code) ? '取消星标' : '星标' }}</button>
       <button class="action-bar-btn delete" @click="handleActionDelete">删除</button>
     </div>
 

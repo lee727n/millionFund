@@ -55,6 +55,12 @@ const router = createRouter({
       meta: { title: '全景大屏' }
     },
     {
+      path: '/star-kline',
+      name: 'star-kline',
+      component: () => import('@/views/StarKLine.vue'),
+      meta: { title: '星标K线', keepAlive: true }
+    },
+    {
       path: '/trade-center',
       name: 'trade-center',
       component: () => import('@/views/TradeCenter.vue'),

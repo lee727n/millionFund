@@ -105,30 +105,15 @@ function withConcurrencyControl<T>(fn: () => Promise<T>): Promise<T> {
   })
 }
 
-// ========== pingzhongdata请求节流 ==========
-const PINGZHONG_RATE_LIMIT = 2000
-let lastPingzhongTime = 0
-let pingzhongQueue: (() => void)[] = []
+// ========== pingzhongdata请求：真正串行队列 ==========
+// [FIX] 旧版只做了速率限制但 fn 内部是异步 Promise，多个 script 会并发覆盖全局变量
+// 新版：前一个 Promise resolve 后才调下一个，彻底隔离全局变量
+let pingzhongChain: Promise<any> = Promise.resolve()
 
-function schedulePingzhongRequest(fn: () => void) {
-  const now = Date.now()
-  const elapsed = now - lastPingzhongTime
-
-  if (elapsed >= PINGZHONG_RATE_LIMIT) {
-    lastPingzhongTime = now
-    fn()
-  } else {
-    pingzhongQueue.push(fn)
-    setTimeout(() => {
-      if (pingzhongQueue.length > 0) {
-        const next = pingzhongQueue.shift()
-        if (next) {
-          lastPingzhongTime = Date.now()
-          next()
-        }
-      }
-    }, PINGZHONG_RATE_LIMIT - elapsed)
-  }
+function runPingzhongSerialized<T>(fn: () => Promise<T>): Promise<T> {
+  const next = pingzhongChain.then(() => fn())
+  pingzhongChain = next.catch(() => { }) // 吞掉错误不阻塞队列
+  return next
 }
 
 // ========== JSONP请求队列 ==========
@@ -417,52 +402,50 @@ async function checkIsQDII(code: string): Promise<boolean> {
     return persistCached
   }
 
-  return new Promise((resolve) => {
-    schedulePingzhongRequest(() => {
-      const scriptId = `qdii_check_${code}_${Date.now()}`
-      const timeout = setTimeout(() => {
-        cleanup()
-        cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
-        persistCache.set(cacheKey, false)
-        resolve(false)
-      }, 8000)
+  return runPingzhongSerialized(() => new Promise((resolve) => {
+    const scriptId = `qdii_check_${code}_${Date.now()}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+      persistCache.set(cacheKey, false)
+      resolve(false)
+    }, 8000)
 
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
-      script.onload = () => {
-        cleanup()
-        try {
-          const fundType = (window as any).Data_fundType || ''
-          const isQDII = fundType.includes('QDII') ||
-            fundType.includes('qdii') ||
-            fundType.includes('海外') ||
-            fundType.includes('全球')
-          cache.set(cacheKey, isQDII, CACHE_TTL.FUND_INFO)
-          persistCache.set(cacheKey, isQDII)
-          resolve(isQDII)
-        } catch {
-          cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
-          persistCache.set(cacheKey, false)
-          resolve(false)
-        }
-      }
-      script.onerror = () => {
-        cleanup()
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+    script.onload = () => {
+      cleanup()
+      try {
+        const fundType = (window as any).Data_fundType || ''
+        const isQDII = fundType.includes('QDII') ||
+          fundType.includes('qdii') ||
+          fundType.includes('海外') ||
+          fundType.includes('全球')
+        cache.set(cacheKey, isQDII, CACHE_TTL.FUND_INFO)
+        persistCache.set(cacheKey, isQDII)
+        resolve(isQDII)
+      } catch {
         cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
         persistCache.set(cacheKey, false)
         resolve(false)
       }
+    }
+    script.onerror = () => {
+      cleanup()
+      cache.set(cacheKey, false, CACHE_TTL.FUND_INFO)
+      persistCache.set(cacheKey, false)
+      resolve(false)
+    }
 
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(scriptId)
-        if (s) document.body.removeChild(s)
-      }
+    function cleanup() {
+      clearTimeout(timeout)
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
+    }
 
-      document.body.appendChild(script)
-    })
-  })
+    document.body.appendChild(script)
+  }))
 }
 
 async function getFXAdjustment(): Promise<number> {
@@ -621,80 +604,78 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
     }
   }
 
-  return new Promise((resolve) => {
-    schedulePingzhongRequest(() => {
-      ; (window as any).Data_netWorthTrend = []
+  return runPingzhongSerialized(() => new Promise((resolve) => {
+    ; (window as any).Data_netWorthTrend = []
 
-      const scriptId = `netvalue_${code}_${Date.now()}`
-      const timeout = setTimeout(() => {
-        cleanup()
-        resolve({ records: [], fundName: '' })
-      }, 15000)
+    const scriptId = `netvalue_${code}_${Date.now()}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve({ records: [], fundName: '' })
+    }, 15000)
 
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
 
-      script.onload = () => {
-        cleanup()
-        try {
-          const trend = (window as any).Data_netWorthTrend || []
-          const fundName = (window as any).fS_name || ''
+    script.onload = () => {
+      cleanup()
+      try {
+        const trend = (window as any).Data_netWorthTrend || []
+        const fundName = (window as any).fS_name || ''
 
-          if (trend.length === 0) {
-            // [FIX] 如果API返回空数据，但有缓存数据，返回缓存
-            const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
-            if (cached && cached.records.length > 0) {
-              resolve(cached)
-              return
-            }
-            const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
-            if (persistCached && persistCached.records.length > 0) {
-              cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
-              resolve(persistCached)
-              return
-            }
-            resolve({ records: [], fundName })
+        if (trend.length === 0) {
+          // [FIX] 如果API返回空数据，但有缓存数据，返回缓存
+          const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+          if (cached && cached.records.length > 0) {
+            resolve(cached)
             return
           }
-
-          const recentData = trend.slice(-days)
-
-          const records: NetValueRecord[] = recentData.map((item: any) => {
-            const date = new Date(item.x)
-            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-            return {
-              date: dateStr,
-              netValue: item.y || 0,
-              totalValue: item.y || 0,
-              changeRate: item.equityReturn || 0
-            }
-          })
-
-          records.reverse()
-
-          cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
-          persistCache.set(cacheKey, { records, fundName })
-          resolve({ records, fundName })
-        } catch (err) {
-          resolve({ records: [], fundName: '' })
+          const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
+          if (persistCached && persistCached.records.length > 0) {
+            cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
+            resolve(persistCached)
+            return
+          }
+          resolve({ records: [], fundName })
+          return
         }
-      }
 
-      script.onerror = () => {
-        cleanup()
+        const recentData = trend.slice(-days)
+
+        const records: NetValueRecord[] = recentData.map((item: any) => {
+          const date = new Date(item.x)
+          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+          return {
+            date: dateStr,
+            netValue: item.y || 0,
+            totalValue: item.y || 0,
+            changeRate: item.equityReturn || 0
+          }
+        })
+
+        records.reverse()
+
+        cache.set(cacheKey, { records, fundName }, CACHE_TTL.NET_VALUE)
+        persistCache.set(cacheKey, { records, fundName })
+        resolve({ records, fundName })
+      } catch (err) {
         resolve({ records: [], fundName: '' })
       }
+    }
 
-      function cleanup() {
-        clearTimeout(timeout)
-        const s = document.getElementById(scriptId)
-        if (s) document.body.removeChild(s)
-      }
+    script.onerror = () => {
+      cleanup()
+      resolve({ records: [], fundName: '' })
+    }
 
-      document.body.appendChild(script)
-    })
-  })
+    function cleanup() {
+      clearTimeout(timeout)
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
+    }
+
+    document.body.appendChild(script)
+  }))
 }
 
 /**
@@ -816,51 +797,49 @@ export async function fetchTopHoldings(code: string, forceRefresh: boolean = fal
 
   console.log(`[fetchTopHoldings] ${code} - 网页解析失败，fallback到pingzhongdata...`)
 
-  const pingzhongData = await new Promise<{
+  const pingzhongData = await runPingzhongSerialized(() => new Promise<{
     stockCodesNew: string[],
     stockCodes: string[],
     fundName: string,
     positions: { code: string; name: string; weight: number }[]
   }>((resolve) => {
-    schedulePingzhongRequest(() => {
-      const scriptId = `topholdings_${code}_${Date.now()}`
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
-      script.onload = () => {
-        const s = document.getElementById(scriptId)
-        if (s) document.body.removeChild(s)
+    const scriptId = `topholdings_${code}_${Date.now()}`
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
+    script.onload = () => {
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
 
-        const positions: { code: string; name: string; weight: number }[] = []
-        const positionData = (window as any).Data_StockPosition
+      const positions: { code: string; name: string; weight: number }[] = []
+      const positionData = (window as any).Data_StockPosition
 
-        if (positionData?.series?.[0]?.data) {
-          positionData.series[0].data.forEach((item: any) => {
-            const posCode = item.code || ''
-            const posWeight = parseFloat(item.y || 0) || 0
-            positions.push({
-              code: posCode,
-              name: item.name || '',
-              weight: posWeight
-            })
+      if (positionData?.series?.[0]?.data) {
+        positionData.series[0].data.forEach((item: any) => {
+          const posCode = item.code || ''
+          const posWeight = parseFloat(item.y || 0) || 0
+          positions.push({
+            code: posCode,
+            name: item.name || '',
+            weight: posWeight
           })
-        }
-
-        resolve({
-          stockCodesNew: (window as any).stockCodesNew || [],
-          stockCodes: (window as any).stockCodes || [],
-          fundName: (window as any).fS_name || '',
-          positions
         })
       }
-      script.onerror = () => {
-        const s = document.getElementById(scriptId)
-        if (s) document.body.removeChild(s)
-        resolve({ stockCodesNew: [], stockCodes: [], fundName: '', positions: [] })
-      }
-      document.body.appendChild(script)
-    })
-  })
+
+      resolve({
+        stockCodesNew: (window as any).stockCodesNew || [],
+        stockCodes: (window as any).stockCodes || [],
+        fundName: (window as any).fS_name || '',
+        positions
+      })
+    }
+    script.onerror = () => {
+      const s = document.getElementById(scriptId)
+      if (s) document.body.removeChild(s)
+      resolve({ stockCodesNew: [], stockCodes: [], fundName: '', positions: [] })
+    }
+    document.body.appendChild(script)
+  }))
 
   const { stockCodesNew, stockCodes, fundName, positions } = pingzhongData
 
@@ -1386,7 +1365,7 @@ export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
   // 指数代码 000300 在 pingzhongdata API 上不支持，会读到上一个基金的全局变量
   const hs300Code = '510300'
 
-  return new Promise((resolve) => {
+  return runPingzhongSerialized(() => new Promise((resolve) => {
     // [WHY] 加载前清空全局变量，防止读到上一个基金的数据
     ; (window as any).Data_netWorthTrend = []
 
@@ -1446,7 +1425,7 @@ export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
     }
 
     document.body.appendChild(script)
-  })
+  }))
 }
 
 /**

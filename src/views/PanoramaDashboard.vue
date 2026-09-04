@@ -7,7 +7,7 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades, addTrade } from '@/utils/storage'
+import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund } from '@/utils/storage'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
@@ -68,7 +68,12 @@ const updateProgress = computed(() => {
 const currentTime = ref('')
 function updateTime() {
   const d = new Date()
-  currentTime.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  currentTime.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+}
+
+// ============ 打开新窗口 ============
+function openStarKLine() {
+  window.open('/star-kline', '_blank')
 }
 
 // ============ 基金实时数据缓存（供交易记录 + AI追踪 共用） ============
@@ -462,6 +467,20 @@ function handleActionDelete() {
   }
 }
 
+function handleActionStar() {
+  closeActionBar()
+  if (selectedFundForAction.value) {
+    const code = selectedFundForAction.value.code
+    if (isStarredFund(code)) {
+      removeStarredFund(code)
+      showToast('已取消星标')
+    } else {
+      addStarredFund(code)
+      showToast('已加入星标K线')
+    }
+  }
+}
+
 // ============ 交易弹窗（加仓/减仓）============
 const showTradeDialog = ref(false)
 const tradeFormData = ref({
@@ -802,6 +821,11 @@ function getFundNameClass(fund: any): Record<string, boolean> {
           >深</span>
         </div>
         <span class="clock">{{ currentTime }}</span>
+        <button class="top-icon-btn" @click="openStarKLine" title="星标K线">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </button>
         <button class="refresh-btn" :class="{ spinning: refreshing }" @click="refreshAll" :disabled="refreshing">↻</button>
       </div>
     </header>
@@ -1328,6 +1352,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
       <button class="action-bar-btn" @click="handleActionConvert">转换</button>
       <button class="action-bar-btn" @click="handleActionAdjust">调成本</button>
       <button class="action-bar-btn" @click="handleActionSource">来源</button>
+      <button class="action-bar-btn" @click="handleActionStar">{{ selectedFundForAction && isStarredFund(selectedFundForAction.code) ? '取消星标' : '星标' }}</button>
       <button class="action-bar-btn delete" @click="handleActionDelete">删除</button>
     </div>
 
@@ -1778,6 +1803,25 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .refresh-btn:hover { background: var(--bg-tertiary); }
 .refresh-btn.spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.top-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.top-icon-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+}
 
 /* ============ 主区域 ============ */
 .main-grid {
