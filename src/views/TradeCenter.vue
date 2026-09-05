@@ -109,40 +109,22 @@ async function loadTradeCalculations(trades: TradeRecord[]) {
   }
   
   // 并发处理所有需要更新的基金
+  const holdingsList = getHoldings()
   const updateRequests = Array.from(codesToUpdate).map(async (code) => {
     try {
-      const data = await fetchFundAccurateData(code, false, true)
+      const isQDII = holdingsList.some((h: any) => h.code === code && h.isQDII)
+      const data = await fetchFundAccurateData(code, isQDII, true)
       console.log('[TradeCenter.loadCalculations] 基金', code, 'nav:', data.nav, 'navDate:', data.navDate, 'dataSource:', data.dataSource)
       
-      // [FIX] 关键逻辑：
-      // 1. data.nav 是最新的净值（可能是昨天或更早的）
-      // 2. data.navDate 是这个净值的日期
-      // 3. 如果有交易的日期 <= data.navDate，说明这些交易应该用净值而不是估值
+      // [FIX] 关键逻辑：有正式净值就直接更新该基金所有 estimated 交易记录
       if (data.nav > 0 && data.navDate) {
-        const allTrades = getTrades()
-        let needUpdate = false
-        
-        allTrades.forEach(t => {
-          if (t.code === code && t.estimated && t.date <= data.navDate) {
-            console.log('[TradeCenter.loadCalculations] 发现需要更新的交易:', {
-              id: t.id,
-              tradeDate: t.date,
-              navDate: data.navDate,
-              oldNetValue: t.netValue,
-              newNetValue: data.nav
-            })
-            needUpdate = true
-          }
-        })
-        
-        if (needUpdate) {
-          // 用最新的净值更新所有日期 <= navDate 的估值交易
-          updateTradesByCode(code, data.nav, data.navDate)
-        }
+        updateTradesByCode(code, data.nav, data.navDate)
       }
       
       // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
-      if (data.dataSource !== 'nav') {
+      // [FIX] 增加 holding.isUpdated 前置判断：如果 holding 已确认净值更新，不恢复 estimated
+      const holdingConfirmedUpdated = holdingsList.some((h: any) => h.code === code && h.isUpdated)
+      if (data.dataSource !== 'nav' && !holdingConfirmedUpdated) {
         const allTrades = getTrades()
         let needSave = false
         allTrades.forEach(t => {
@@ -165,7 +147,8 @@ async function loadTradeCalculations(trades: TradeRecord[]) {
   const fundCodes = [...new Set(trades.map(t => t.code))] as string[]
   const navRequests = fundCodes.map(async (code) => {
     try {
-      const data = await fetchFundAccurateData(code, false, true)
+      const isQDII = holdingsList.some((h: any) => h.code === code && h.isQDII)
+      const data = await fetchFundAccurateData(code, isQDII, true)
       fundDataMap.value.set(code, {
         estimate: data.estimate || 0,
         nav: data.nav || 0,

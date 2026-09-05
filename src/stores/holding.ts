@@ -16,11 +16,7 @@ function getTradingDateStr(date: Date = new Date()): string {
   }
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
-import {
-  upsertHolding,
-  removeHolding as removeFromStorage,
-  updateFundNetValue
-} from '@/utils/storage'
+import { updateFundNetValue } from '@/utils/storage'
 import { fetchFundAccurateData, type FundAccurateData, clearHoldingsCache as clearFundHoldingsCache } from '@/api/fundFast'
 import { fetchNetValueHistoryFast } from '@/api/fundFast'
 import { predictTrend, calculateReturnAnalysis, calculateFundScore, type TrendPrediction, type FundScore } from '@/utils/statistics'
@@ -100,8 +96,9 @@ export const useHoldingStore = defineStore('holding', () => {
   /**
    * 初始化持仓列表
    * [WHY] APP 启动时从本地存储恢复数据
+   * [FIX] 改为 async，等待 refreshEstimates() 完成，确保 isUpdated 字段被正确设置
    */
-  function initHoldings() {
+  async function initHoldings() {
     const records = getHoldings()
 
     const cleanedRecords = records.map((r: any) => {
@@ -165,13 +162,16 @@ export const useHoldingStore = defineStore('holding', () => {
         saveHoldings(cleanedRecords)
         console.log('[数据迁移] 已清理旧字段并保存')
       }
-      refreshEstimates()
+      // [FIX] 等待 refreshEstimates() 完成，确保 isUpdated 字段被正确设置
+      await refreshEstimates()
     }
   }
 
   /**
    * 刷新所有持仓的估值和收益
    * [WHAT] 使用综合数据获取函数，确保数据准确
+   * [FIX] 性能优化：已更新的基金（isUpdated === true）直接跳过，不需要再调 API
+   *       净值已发布的基金没有估值变化，跳过可以节省大量重仓股价拉取开销
    */
   async function refreshEstimates() {
     if (holdings.value.length === 0) {
@@ -181,22 +181,48 @@ export const useHoldingStore = defineStore('holding', () => {
 
     isRefreshing.value = true
     const holdingsList = [...holdings.value]
-    // console.log('[refreshAllHoldings] 开始刷新，共', holdingsList.length, '只基金:', holdingsList.map(h => h.code))
 
     try {
-      // [WHAT] 并发获取所有基金的准确数据
-      const results = await Promise.all(
-        holdingsList.map(holding => fetchFundAccurateData(holding.code, holding.isQDII).catch(() => null))
-      )
+      // [FIX] 只刷新未更新的基金（净值未发布，需要估值）
+      // 已更新的基金直接用当前 holding 数据，无需重复拉取
+      const staleHoldings = holdingsList.filter(h => !h.isUpdated)
 
-      results.forEach((data, index) => {
-        if (data) {
-          updateHoldingWithAccurateData(holdingsList[index].code, data)
-        } else {
-          const item = holdings.value.find((h) => h.code === holdingsList[index].code)
-          if (item) item.loading = false
+      // 先处理已更新的基金：直接复用 holding 数据，不调 API
+      holdingsList.forEach(holding => {
+        if (holding.isUpdated && holding.currentValue > 0) {
+          const data = {
+            code: holding.code,
+            name: holding.name || '',
+            nav: holding.currentValue,
+            navDate: holding.valueDate || '',
+            navChange: 0,
+            estimate: 0,
+            estimateTime: '',
+            estimateChange: 0,
+            currentValue: holding.currentValue,
+            dayChange: parseFloat(holding.todayChange || '0'),
+            dataSource: 'nav' as const,
+            updateTime: new Date().toISOString()
+          }
+          updateHoldingWithAccurateData(holding.code, data)
         }
       })
+
+      // 再处理未更新的基金（需要估值）
+      if (staleHoldings.length > 0) {
+        const results = await Promise.all(
+          staleHoldings.map(holding => fetchFundAccurateData(holding.code, holding.isQDII).catch(() => null))
+        )
+
+        results.forEach((data, index) => {
+          if (data) {
+            updateHoldingWithAccurateData(staleHoldings[index].code, data)
+          } else {
+            const item = holdings.value.find((h) => h.code === staleHoldings[index].code)
+            if (item) item.loading = false
+          }
+        })
+      }
     } finally {
       isRefreshing.value = false
     }
@@ -205,153 +231,53 @@ export const useHoldingStore = defineStore('holding', () => {
   /**
    * 使用准确数据更新持仓
    * [WHAT] 接收多源验证后的准确数据，计算收益
+   * [FIX] updateHoldingWithAccurateData **本身是同步写回**（没有 await 在持有数据更新路径上）
+   *       trendPrediction / fundScore 拆到独立的异步后台任务，绝不阻塞 holding 写回
+   *       彻底消除竞态条件：调成本 → 存 holding → 任何旧的 updateHoldingWithAccurateData 
+   *       都不可能再用快照覆盖，因为写回是同步的、且基底是实时读的 holdings.value[index]
    */
-  async function updateHoldingWithAccurateData(code: string, data: FundAccurateData) {
+  function updateHoldingWithAccurateData(code: string, data: FundAccurateData): void {
     const index = holdings.value.findIndex((h) => h.code === code)
     if (index === -1) return
 
-    const holding = holdings.value[index]
     const currentValue = data.currentValue
-
-    // console.log('更新持仓数据:', { code, currentValue, data })
-
-    // 保存净值到本地存储
     updateFundNetValue(code, currentValue)
 
-    // [EDGE] 如果净值无效，跳过计算
+    // [EDGE] 净值无效只更新 name
     if (currentValue <= 0) {
-      holdings.value[index] = {
-        ...holding,
-        name: data.name || holding.name,
-        loading: false
-      }
+      const h = holdings.value[index]
+      holdings.value[index] = { ...h, name: data.name || h.name, loading: false }
       return
     }
 
-    // [EDGE] 计算份额和服务费 — 记录计算过程以便调试
-    const rawBuyNetValue = holding.buyNetValue
-    const rawMarketValue = holding.marketValue
-    const rawStoredShares = holding.shares
+    // 实时读取 holding（不是快照！每次都读最新的）
+    const h = holdings.value[index]
 
-    // 计算买入净值（优先使用持仓记录中的买入净值，否则使用当前净值作为回退）
-    const buyNav = rawBuyNetValue > 0 ? rawBuyNetValue : currentValue
-
-    // 计算持有份额：如果记录中已有份额则直接使用，否则用市值 / 买入净值 计算
-    let shares = rawStoredShares
-    if (!shares || shares <= 0) {
-      const denominator = buyNav || 1
-      const computedShares = (rawMarketValue || 0) / denominator
-      console.log(`计算持有份额: holding.marketValue = ${rawMarketValue}, buyNav = ${buyNav}, shares = marketValue / buyNav = (${rawMarketValue || 0}) / (${denominator}) = ${computedShares}`)
-      shares = computedShares
-    } else {
-      // console.log(`使用已有份额: holding.shares = ${shares}`)
-    }
-
-    // 已移除买入净值流程的单行日志，避免重复输出
-
-    // 严格按照份额和净值计算市值和收益
+    // 基于最新 holding 算 marketValue / profit
+    const shares = h.shares || 0
+    const buyNav = h.buyNetValue || currentValue
     const marketValue = shares * currentValue
-
-    // [FIX] 持有收益计算逻辑
-    // 统一使用公式: profit = (当前净值 - 买入净值) × 持有份额
-    // 不需要判断周末/工作日，直接用公式计算即可
     const profit = (currentValue - buyNav) * shares
-
-    // [FIX] 今日收益 = 份额 × 昨日净值 × 涨幅%
-    // [WHY] 涨幅是基于昨日净值计算的: dayChange = (currentValue - prevNav) / prevNav * 100
-    //       所以 todayProfit = shares * (currentValue - prevNav) = shares * prevNav * dayChange / 100
-    //       如果用 currentValue 代替 prevNav，当涨幅较大时会产生明显误差
-    // prevNav = currentValue / (1 + dayChange/100)
+    const profitRate = marketValue > 0 ? profit / marketValue * 100 : 0
     const prevNav = data.dayChange !== 0 ? currentValue / (1 + data.dayChange / 100) : currentValue
     const todayProfit = shares * prevNav * (data.dayChange / 100)
 
-    // [DEBUG] 详细打印计算过程
-    // console.log(`========== [收益计算-刷新] ${code} ==========`)
-    // console.log(`买入净值 (buyNav): ${buyNav}`)
-    // console.log(`持有份额 (shares): ${shares}`)
-    // console.log(`--- 使用当前值计算 ---`)
-    // console.log(`当前值 (currentValue): ${currentValue} (来源: ${data.dataSource}, 日期: ${data.navDate || data.estimateTime?.split(' ')[0]})`)
-    // console.log(`持有收益: (currentValue - buyNav) × shares = (${currentValue} - ${buyNav}) × ${shares} = ${profit}`)
-    // if (data.nav > 0) {
-    //   console.log(`--- 使用历史净值计算 ---`)
-    //   console.log(`历史净值 (nav): ${data.nav} (日期: ${data.navDate})`)
-    //   const profitByNav = (data.nav - buyNav) * shares
-    //   console.log(`持有收益: (nav - buyNav) × shares = (${data.nav} - ${buyNav}) × ${shares} = ${profitByNav}`)
-    // }
-    // if (data.estimate > 0) {
-    //   console.log(`--- 使用估值计算 ---`)
-    //   console.log(`估值 (estimate): ${data.estimate} (日期: ${data.estimateTime})`)
-    //   const profitByEstimate = (data.estimate - buyNav) * shares
-    //   console.log(`持有收益: (estimate - buyNav) × shares = (${data.estimate} - ${buyNav}) × ${shares} = ${profitByEstimate}`)
-    // }
-    // console.log(`今日涨幅: ${data.dayChange}%, 今日收益: todayProfit = shares × currentValue × dayChange = ${shares} × ${currentValue} × ${data.dayChange}% = ${todayProfit}`)
-    // console.log(`=============================================`)
-
-    const profitRate = marketValue > 0 ? profit / marketValue * 100 : 0
-
-    // 计算趋势预测和综合评分
-    let trendPrediction: TrendPrediction | undefined
-    let fundScore: FundScore | undefined
-    try {
-      const historyResult = await fetchNetValueHistoryFast(code, 90)
-      const historyData = historyResult.records || []
-      if (historyData && historyData.length >= 30) {
-        const netValuePoints = historyData.map(item => ({
-          date: item.date,
-          value: item.netValue,
-          change: item.changeRate
-        }))
-        trendPrediction = predictTrend(netValuePoints)
-
-        // 计算综合评分
-        const returnAnalysis = calculateReturnAnalysis(netValuePoints)
-        fundScore = calculateFundScore(returnAnalysis)
-      }
-    } catch (error) {
-      console.error('计算趋势预测和评分失败:', error)
-    }
-
-    // [WHAT] 判断是否已更新：根据净值日期判断（QDII 基金允许晚一天更新）
     const today = getTradingDateStr()
-
-    // 检查是否有今日净值数据
     const hasTodayNav = data.nav > 0 && data.navDate === today
-
-    // [WHAT] 计算前一个工作日（用于QDII基金判断）
-    // [WHY] 使用节假日API判断，如果是节假日则继续往前推
     const prevWorkday = getPrevWorkdaySync(today)
-
-    // QDII 基金：如果有前一个工作日净值也视为已更新（因为时差问题）
-    const isQDII = holding.isQDII === true
+    const isQDII = h.isQDII === true
     const hasPrevWorkdayNavForQDII = isQDII && data.nav > 0 && data.navDate === prevWorkday
-
-    // 如果有今日净值，或者 QDII 有前一个工作日净值
     const isUpdated = hasTodayNav || hasPrevWorkdayNavForQDII
 
-    // [WHAT] 计算添加后累计涨跌幅
-    // 正确公式：(当前净值 - 买入净值) / 买入净值 * 100%
     let addedGain: number | undefined
-    if (holding.buyNetValue && holding.buyNetValue > 0 && currentValue > 0) {
-      addedGain = ((currentValue - holding.buyNetValue) / holding.buyNetValue) * 100
+    if (buyNav > 0 && currentValue > 0) {
+      addedGain = ((currentValue - buyNav) / buyNav) * 100
     }
 
-    // console.log('更新状态判断:', {
-    //   code,
-    //   isQDII,
-    //   dataSource: data.dataSource,
-    //   navDate: data.navDate,
-    //   nav: data.nav,
-    //   today,
-    //   yesterday,
-    //   hasTodayNav,
-    //   hasYesterdayNavForQDII,
-    //   isUpdated,
-    //   currentValue: data.currentValue
-    // })
-
-    holdings.value[index] = {
-      ...holding,
-      name: data.name || holding.name,
+    // 同步写回！基底是实时 holding，不会有竞态
+    const updated = {
+      ...h,
+      name: data.name || h.name,
       currentValue,
       marketValue,
       profit,
@@ -359,17 +285,47 @@ export const useHoldingStore = defineStore('holding', () => {
       todayChange: data.dayChange.toFixed(2),
       todayProfit,
       loading: false,
-      shares,
-      trendPrediction,
       dataSource: data.dataSource,
       valueDate: data.navDate || data.estimateTime?.split(' ')[0],
       isUpdated,
       addedGain,
-      fundScore
+      // trendPrediction / fundScore 不在这里写 —— 下面后台任务独立更新
     }
 
-    // 保存更新后的持仓到本地存储
-    upsertHolding(holdings.value[index])
+    // console.log(`[updateHolding] ${code} shares=${updated.shares?.toFixed(2)}, buyNet=${updated.buyNetValue?.toFixed(4)}, marketValue=${updated.marketValue?.toFixed(2)}, profit=${updated.profit?.toFixed(2)}, isUpdated=${isUpdated}`)
+
+    holdings.value[index] = updated
+    saveHoldings(holdings.value as any[])
+
+      // [FIX] trendPrediction / fundScore 异步后台任务，独立更新
+      // 这个任务可能稍后完成，但它只更新 trendPrediction / fundScore，spread ...holdings.value[index]
+      // 时会读最新 holding，不会覆盖 shares / buyNetValue 等用户可编辑字段
+      ; (async () => {
+        try {
+          const historyResult = await fetchNetValueHistoryFast(code, 90)
+          const historyData = historyResult.records || []
+          if (historyData && historyData.length >= 30) {
+            const netValuePoints = historyData.map(item => ({
+              date: item.date,
+              value: item.netValue,
+              change: item.changeRate
+            }))
+            const trendPrediction = predictTrend(netValuePoints)
+            const returnAnalysis = calculateReturnAnalysis(netValuePoints)
+            const fundScore = calculateFundScore(returnAnalysis)
+
+            // 再次读最新 holding 作为基底，不覆盖 shares / buyNetValue
+            const h2 = holdings.value[index]
+            if (h2) {
+              h2.trendPrediction = trendPrediction
+              h2.fundScore = fundScore
+              saveHoldings(holdings.value as any[])
+            }
+          }
+        } catch (error) {
+          // 静默：后台评分失败不影响主流程
+        }
+      })()
   }
 
   /**
@@ -387,7 +343,6 @@ export const useHoldingStore = defineStore('holding', () => {
         loading: false
       }
 
-      upsertHolding(updatedHolding)
       holdings.value.splice(index, 1, updatedHolding)
     } else {
       const newHolding = {
@@ -395,20 +350,21 @@ export const useHoldingStore = defineStore('holding', () => {
         loading: false
       }
 
-      upsertHolding(newHolding)
       holdings.value.push(newHolding)
     }
+    // [FIX] 直接存整个内存数组（holdings.value 是唯一权威），杜绝 storage.ts upsertHolding 的 read-modify-write 竞态
+    saveHoldings(holdings.value as any[])
   }
 
   /**
    * 删除持仓
    */
   function removeHolding(code: string) {
-    removeFromStorage(code)
     const index = holdings.value.findIndex((h) => h.code === code)
     if (index > -1) {
       holdings.value.splice(index, 1)
     }
+    saveHoldings(holdings.value as any[])
   }
 
   /**
@@ -462,6 +418,7 @@ export const useHoldingStore = defineStore('holding', () => {
     // Actions
     initHoldings,
     refreshEstimates,
+    updateHoldingWithAccurateData,
     addOrUpdateHolding,
     removeHolding,
     hasHolding,

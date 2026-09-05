@@ -7,7 +7,7 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund } from '@/utils/storage'
+import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund, updateTradesByCode } from '@/utils/storage'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
@@ -97,11 +97,39 @@ async function openTopHoldings(fund: any, event: Event) {
   }
 }
 
-async function preloadAllFundPrices(fundCodes: string[]) {
+async function preloadAllFundPrices(fundCodes: string[], forceRefresh: boolean = false) {
   const uniqueCodes = [...new Set(fundCodes)]
+  
+  // [FIX] 性能优化：先检查所有基金的净值更新状态
+  // 非交易时间 + 净值已更新的基金，不再获取估值，减少 API 调用
+  const holdingsMap = new Map<string, any>(holdingStore.holdings.map((h: any) => [h.code, h]))
+  
   await Promise.all(uniqueCodes.map(async (code) => {
     try {
-      const info = await fetchFundAccurateData(code, false, true)
+      // [FIX] 从 holdingStore 获取基金的 isQDII 属性，确保QDII基金净值判断正确
+      const holding = holdingsMap.get(code)
+      const isQDII = holding?.isQDII || false
+      
+      // [FIX] 性能优化：如果净值已更新，直接使用净值，不再获取估值
+      // 判断逻辑：isUpdated === true 表示净值已更新
+      if (holding?.isUpdated && holding?.currentValue > 0) {
+        liveFundData.value.set(code, {
+          estimate: 0,
+          nav: holding.currentValue,
+          currentValue: holding.currentValue,
+          dataSource: 'nav',
+          dayChange: holding.todayChange ? parseFloat(holding.todayChange) : 0
+        })
+        
+        // 净值已更新，同步更新交易记录
+        if (holding.currentValue > 0 && holding.valueDate) {
+          updateTradesByCode(code, holding.currentValue, holding.valueDate)
+        }
+        return
+      }
+      
+      // [FIX] 非强制刷新时复用缓存，避免 initHoldings 已拉过的数据重复拉
+      const info = await fetchFundAccurateData(code, isQDII, forceRefresh)
       liveFundData.value.set(code, {
         estimate: info.estimate || 0,
         nav: info.nav || 0,
@@ -109,6 +137,16 @@ async function preloadAllFundPrices(fundCodes: string[]) {
         dataSource: info.dataSource,
         dayChange: info.dayChange || 0
       })
+      
+      // [FIX] 净值已更新时，同步更新交易记录的净值状态（估值转净值）
+      // 不再需要二次调用，updateTradesByCode 已统一处理 QDII 基金净值日期滞后问题
+      if (info.nav > 0 && info.navDate) {
+        updateTradesByCode(code, info.nav, info.navDate)
+      }
+      
+      // [FIX] 同步更新 holdingStore：让未更新的基金也能共享这次拉取的数据
+      // （之前 refreshAll 先调 refreshEstimates 就是为了这个，现在合并到一起了）
+      holdingStore.updateHoldingWithAccurateData(code, info)
     } catch (e) { /* 静默失败 */ }
   }))
 }
@@ -196,18 +234,17 @@ const observeHoldings = computed(() => {
 })
 
 // ============ 交易记录（带 postReturn 计算 + 按基金分组） ============
-const allTradesWithReturn = ref<any[]>([])
-
-function refreshTrades() {
+// [FIX] 改为 computed，直接依赖 liveFundData，实现渐进式显示
+// liveFundData 每 set 一次就触发重算，交易记录面板不需要等 preloadAllFundPrices 全部完成
+const allTradesWithReturn = computed(() => {
   const trades = getTrades()
-  // 从 liveFundData 计算 postReturn
-  allTradesWithReturn.value = trades
+  return trades
     .map(t => ({ ...t, postReturn: calcPostReturn(t) }))
     .sort((a, b) => {
       if (a.code !== b.code) return a.code.localeCompare(b.code)
       return (b.createdAt || 0) - (a.createdAt || 0)
     })
-}
+})
 
 // 按基金分组（复用 Trader 逻辑）
 const groupedTrades = computed(() => {
@@ -325,13 +362,10 @@ async function loadIndices() {
 }
 
 // ============ 核心刷新 ============
-async function refreshAll() {
+async function refreshAll(forceRefresh: boolean = false) {
   refreshing.value = true
   try {
-    // 1. 刷新持仓估值（会更新 holdingStore）
-    await holdingStore.refreshEstimates()
-
-    // 2. 收集所有需要实时价格的基金代码
+    // 1. 收集所有需要实时价格的基金代码
     const codes = new Set<string>()
     // 交易记录里的
     getTrades().forEach(t => codes.add(t.code))
@@ -343,16 +377,14 @@ async function refreshAll() {
     // 持仓里的
     holdingStore.holdings.forEach((h: any) => codes.add(h.code))
 
-    // 3. 并发拉取所有基金实时数据
-    await preloadAllFundPrices([...codes])
+    // 2. 并发拉取所有基金实时数据（未更新的才拉，已更新的直接复用 holdingStore）
+    // [FIX] 非强制刷新时复用缓存，避免 initHoldings 拉过之后重复拉
+    await preloadAllFundPrices([...codes], forceRefresh)
 
-    // 4. 刷新交易记录涨跌幅
-    refreshTrades()
-
-    // 5. 刷新指数
+    // 3. 刷新指数
     await loadIndices()
 
-    // 6. 触发闪动效果
+    // 5. 触发闪动效果
     flashTick.value++
   } catch (e) {
     console.error('[Panorama] 刷新失败:', e)
@@ -371,7 +403,8 @@ onMounted(async () => {
   setInterval(updateTime, 1000)
 
   // 关键：初始化 holdingStore，否则持仓数据为空
-  holdingStore.initHoldings()
+  // [FIX] 等待 initHoldings 完成，确保 isUpdated 字段被正确设置
+  await holdingStore.initHoldings()
 
   // 先加载指数（快）
   loadIndices()
@@ -826,7 +859,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
         </button>
-        <button class="refresh-btn" :class="{ spinning: refreshing }" @click="refreshAll" :disabled="refreshing">↻</button>
+        <button class="refresh-btn" :class="{ spinning: refreshing }" @click="() => refreshAll(true)" :disabled="refreshing" title="手动刷新">↻</button>
       </div>
     </header>
 
@@ -1171,7 +1204,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="observe-row"
               @click="goDetail(fund.code)"
             >
-              <span class="observe-name" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
+              <span class="observe-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
               <span 
                 class="observe-today"
                 :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'"
@@ -2145,9 +2178,9 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 /* 交易时间内：已更新=橙色，未更新=绿色 */
-.fm-name.fm-updated { color: #ff9800; }
-.fm-name.fm-pending { color: #4caf50; }
-.fm-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
+.fm-name.fm-updated, .observe-name.fm-updated { color: #ff9800; }
+.fm-name.fm-pending, .observe-name.fm-pending { color: #4caf50; }
+.fm-name.fm-in-trading, .observe-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
 
 .fm-score {
   font-size: 11px;

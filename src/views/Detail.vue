@@ -96,7 +96,8 @@ async function loadTrades() {
 // [FIX] 异步检查并更新交易记录的计算数据
 async function checkAndUpdateTradeCalculations(today: string) {
   try {
-    const data = await fetchFundAccurateData(fundCode.value, false, true)
+    const isQDII = holdingInfo.value?.isQDII === true
+    const data = await fetchFundAccurateData(fundCode.value, isQDII, true)
     console.log('[Detail.loadTrades] 获取到的数据:', {
       nav: data.nav,
       navDate: data.navDate,
@@ -105,34 +106,16 @@ async function checkAndUpdateTradeCalculations(today: string) {
       today
     })
     
-    // [FIX] 关键逻辑：
-    // 1. data.nav 是最新的净值（可能是昨天或更早的）
-    // 2. data.navDate 是这个净值的日期
-    // 3. 如果有估值交易的日期 <= data.navDate，说明这些交易应该用净值而不是估值
+    // [FIX] 关键逻辑：有正式净值就直接更新该基金所有 estimated 交易记录
+    // updateTradesByCode 内部已正确处理所有 estimated 记录，不再需要提前过滤日期
     if (data.nav > 0 && data.navDate) {
-      const allTrades = getTrades()
-      let needUpdate = false
-      
-      allTrades.forEach(t => {
-        if (t.code === fundCode.value && t.estimated && t.date <= data.navDate) {
-          console.log('[Detail.loadTrades] 发现需要更新的交易:', {
-            id: t.id,
-            tradeDate: t.date,
-            navDate: data.navDate,
-            oldNetValue: t.netValue,
-            newNetValue: data.nav
-          })
-          needUpdate = true
-        }
-      })
-      
-      if (needUpdate) {
-        updateTradesByCode(fundCode.value, data.nav, data.navDate)
-      }
+      updateTradesByCode(fundCode.value, data.nav, data.navDate)
     }
     
     // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
-    if (data.dataSource !== 'nav') {
+    // [FIX] 增加 holding.isUpdated 前置判断：如果 holdingStore 已确认净值更新，不恢复 estimated
+    const holdingConfirmedUpdated = holdingStore.holdings.some((h: any) => h.code === fundCode.value && h.isUpdated)
+    if (data.dataSource !== 'nav' && !holdingConfirmedUpdated) {
       const allTrades = getTrades()
       let needSave = false
       allTrades.forEach(t => {
@@ -302,8 +285,8 @@ async function openTradeDialog() {
   }
 
   tasks.push(
-    // [FIX] 使用 forceRefresh 强制获取最新数据
-    fetchFundAccurateData(fundCode.value, false, true).then(data => {
+    // [FIX] 使用 forceRefresh 强制获取最新数据，正确传递 isQDII
+    fetchFundAccurateData(fundCode.value, holdingInfo.value?.isQDII === true, true).then(data => {
       const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
       const estimateVal = data.estimate || 0
       const navVal = data.nav || 0
@@ -624,6 +607,7 @@ onMounted(async () => {
 })
 
 onActivated(() => {
+  loadFundData()
   loadTrades()
 })
 
@@ -645,9 +629,52 @@ async function loadFundData() {
   isLoading.value = true
   
   try {
-    // [WHAT] 获取QDII标识，从持仓信息或默认false
-    const isQDII = holdingInfo.value?.isQDII || false
-    // [FIX] 使用 forceRefresh 强制获取最新数据
+    // [FIX] 快速路径：如果 holdingStore 已经有且净值已更新，直接使用（与 PanoramaDashboard 保持一致）
+    // [WHY] holdingStore 的 isUpdated 判断已经包含 QDII prevWorkday 逻辑，比自己调 API 更准确
+    const holding = holdingStore.holdings.find((h: any) => h.code === fundCode.value)
+    const isQDII = holding?.isQDII === true
+    if (holding?.isUpdated && holding?.currentValue > 0) {
+      fundInfo.value = {
+        fundcode: holding.code,
+        name: holding.name,
+        dwjz: holding.currentValue.toString(),
+        gsz: holding.currentValue.toString(),
+        gszzl: (holding.todayChange || '0').toString(),
+        gztime: holding.valueDate || '',
+        dataSource: 'nav',
+        navDate: holding.valueDate || ''
+      }
+      // 同步更新交易记录
+      if (holding.valueDate) {
+        updateTradesByCode(holding.code, holding.currentValue, holding.valueDate)
+      }
+      // 仍然异步刷新一次（非阻塞），确保数据最新
+      // [FIX] 保护：holding.isUpdated === true 时，不允许 API 把 dataSource 从 'nav' 降级为 'estimate'
+      fetchFundAccurateData(fundCode.value, isQDII, true).then(accurateData => {
+        if (accurateData) {
+          // 如果 holdingStore 确认已更新，但 API 返回非 nav，保持 holdingStore 的判断
+          const finalDataSource = holding.isUpdated && accurateData.dataSource !== 'nav' ? 'nav' : accurateData.dataSource
+          const finalCurrentValue = finalDataSource === 'nav' ? accurateData.nav : accurateData.currentValue
+          fundInfo.value = {
+            fundcode: accurateData.code,
+            name: accurateData.name || holding.name,
+            dwjz: accurateData.nav.toString(),
+            gsz: finalCurrentValue.toString(),
+            gszzl: accurateData.dayChange.toString(),
+            gztime: accurateData.estimateTime || accurateData.navDate,
+            dataSource: finalDataSource,
+            navDate: accurateData.navDate
+          }
+          if (accurateData.nav > 0 && accurateData.navDate) {
+            updateTradesByCode(fundCode.value, accurateData.nav, accurateData.navDate)
+          }
+        }
+      }).catch(() => {})
+      isLoading.value = false
+      return
+    }
+
+    // 常规路径：净值未更新或未持有，调 API 获取
     const accurateData = await fetchFundAccurateData(fundCode.value, isQDII, true).catch(() => null)
     
     if (accurateData) {

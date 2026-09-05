@@ -266,6 +266,8 @@ function findMatchedETF(etfList: any[], keywords: string[]): any | null {
 /**
  * 获取基金实时估值（带缓存）
  * [NOTE] 开盘前使用缓存数据，开盘后获取实时数据
+ * [FIX] 非交易时间（收盘后/周末）直接返回持久化缓存的估值，不再拉重仓股价重新计算
+ *       3:00 收盘后估值就固定了，每次重新拉重仓股价计算完全浪费
  * @param code 基金代码
  * @param forceRefresh 是否强制刷新（忽略缓存）
  */
@@ -279,6 +281,26 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
     if (forceRefresh) {
       cache.delete(cacheKey)
       persistCache.delete(cacheKey)
+    } else {
+      // [FIX] 非交易时间直接返回持久化缓存的估值（3点收盘时最后一次计算结果）
+      // 不再拉重仓股价 + 重新计算估值，节省大量网络请求
+      const now = new Date()
+      const dayOfWeek = now.getDay()
+      const today = getTradingDateStr(now)
+      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !isHolidaySync(today)
+      const currentHour = now.getHours()
+      const isBeforeTrading = currentHour < 9 || (currentHour === 9 && now.getMinutes() < 30)
+      const isAfterTrading = currentHour >= 15
+      const isNonTradingTime = !isWeekday || isBeforeTrading || isAfterTrading
+
+      if (isNonTradingTime) {
+        if (persisted) {
+          console.log(`[fetchFundEstimateFast] ${code} 非交易时间，返回持久化缓存估值`)
+          return persisted
+        }
+        // 没有持久化缓存也不重仓拉股价，让上层 fallback 处理
+        throw new Error('Non-trading hours, no persisted estimate cache')
+      }
     }
 
     const holdings = await fetchTopHoldings(code, forceRefresh)
@@ -1752,9 +1774,9 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     }
   }
 
-  // [WHAT] 缓存30秒（交易时间内）或5分钟（非交易时间）
-  // [WHAT] QDII基金缓存时间更短，因为它们的净值可能会在不同时间更新
-  const ttl = isQDII ? 10000 : (inTradingTime ? 30000 : 300000)
+  // [FIX] 缓存30秒（交易时间内）或12小时（非交易时间）
+  // 非交易时间估值已冻结、净值已发布，数据长时间不变，不需要频繁过期
+  const ttl = inTradingTime ? (isQDII ? 10000 : 30000) : (isQDII ? 3600000 : 43200000)
   cache.set(cacheKey, result, ttl)
 
   return result

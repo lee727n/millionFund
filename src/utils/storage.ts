@@ -295,22 +295,18 @@ export function updateTradeNetValue(id: string, netValue: number): void {
 /**
  * 更新某基金所有交易记录的净值（估值转正式净值）
  * [WHY] 只要获取到了最新净值（nav > 0），就可以更新估值交易记录
- * [FIX] 更新条件：
- *   1. t.estimated === true 且 t.date <= navDate（估值转净值，且交易日期在净值日期之前或相同）
- *   2. t.date === navDate（今天的交易，净值刚更新，可能之前用了错误的值）
- *       这是为了修复之前bug导致的错误净值（用了估值或旧净值，但标记为"净"）
+ * [FIX] 更新条件（简化为两种场景，解决 QDII 基金净值日期滞后问题）：
+ *   1. t.estimated === true：创建时用的估值，还没被正式净值覆盖 —— 只要有正式净值就更新，不再受日期限制
+ *      （原来的 t.date <= navDate 条件对 QDII 基金失效，因为 navDate 是前一个工作日，
+ *       而今天的交易记录日期 > navDate，但依然需要用最新净值更新）
+ *   2. t.date === navDate：今天的交易，净值刚更新，可能之前用了错误的值（修复 bug 遗留）
  */
 export function updateTradesByCode(code: string, netValue: number, navDate?: string): void {
   const trades = getTrades()
   let changed = false
   trades.forEach(t => {
     if (t.code === code && netValue > 0) {
-      // [FIX] 满足以下条件之一就更新：
-      // 1. estimated === true 且 tradeDate <= navDate（估值转净值，日期有效）
-      // 2. navDate === t.date（今天的交易，净值刚更新，强制更新）
-      const isEstimatedAndOldDate = t.estimated && navDate && t.date <= navDate
-      const isTodayTrade = navDate && t.date === navDate
-      const shouldUpdate = isEstimatedAndOldDate || isTodayTrade
+      const shouldUpdate = t.estimated || (navDate && t.date === navDate)
 
       if (shouldUpdate) {
         // 避免重复更新相同的值
