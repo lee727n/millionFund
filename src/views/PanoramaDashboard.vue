@@ -7,10 +7,11 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund, updateTradesByCode } from '@/utils/storage'
+import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund } from '@/utils/storage'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
+import { useFundValuation } from '@/composables/useFundValuation'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 
 const router = useRouter()
@@ -77,8 +78,9 @@ function openStarKLine() {
 }
 
 // ============ 基金实时数据缓存（供交易记录 + AI追踪 共用） ============
-// 格式: Map<code, { estimate, nav, currentValue, dataSource }>
-const liveFundData = ref<Map<string, any>>(new Map())
+// [REFACTOR] 估值拉取 / 缓存 / 收益率计算统一由 useFundValuation 负责，此处不再内联实现
+// 格式: Map<code, { estimate, nav, currentValue, dataSource, dayChange, navDate }>
+const { liveFundData, loadFundData, calcPostReturn } = useFundValuation()
 
 // ============ 前10大重仓股弹窗 ============
 const topHoldingsModal = ref<{ open: boolean; fund: any; stocks: HoldingStock[]; loading: boolean }>({
@@ -95,77 +97,6 @@ async function openTopHoldings(fund: any, event: Event) {
   } finally {
     topHoldingsModal.value.loading = false
   }
-}
-
-async function preloadAllFundPrices(fundCodes: string[], forceRefresh: boolean = false) {
-  const uniqueCodes = [...new Set(fundCodes)]
-  
-  // [FIX] 性能优化：先检查所有基金的净值更新状态
-  // 非交易时间 + 净值已更新的基金，不再获取估值，减少 API 调用
-  const holdingsMap = new Map<string, any>(holdingStore.holdings.map((h: any) => [h.code, h]))
-  
-  await Promise.all(uniqueCodes.map(async (code) => {
-    try {
-      // [FIX] 从 holdingStore 获取基金的 isQDII 属性，确保QDII基金净值判断正确
-      const holding = holdingsMap.get(code)
-      const isQDII = holding?.isQDII || false
-      
-      // [FIX] 性能优化：如果净值已更新，直接使用净值，不再获取估值
-      // 判断逻辑：isUpdated === true 表示净值已更新
-      if (holding?.isUpdated && holding?.currentValue > 0) {
-        liveFundData.value.set(code, {
-          estimate: 0,
-          nav: holding.currentValue,
-          currentValue: holding.currentValue,
-          dataSource: 'nav',
-          dayChange: holding.todayChange ? parseFloat(holding.todayChange) : 0
-        })
-        
-        // 净值已更新，同步更新交易记录
-        if (holding.currentValue > 0 && holding.valueDate) {
-          updateTradesByCode(code, holding.currentValue, holding.valueDate)
-        }
-        return
-      }
-      
-      // [FIX] 非强制刷新时复用缓存，避免 initHoldings 已拉过的数据重复拉
-      const info = await fetchFundAccurateData(code, isQDII, forceRefresh)
-      liveFundData.value.set(code, {
-        estimate: info.estimate || 0,
-        nav: info.nav || 0,
-        currentValue: info.currentValue || 0,
-        dataSource: info.dataSource,
-        dayChange: info.dayChange || 0
-      })
-      
-      // [FIX] 净值已更新时，同步更新交易记录的净值状态（估值转净值）
-      // 不再需要二次调用，updateTradesByCode 已统一处理 QDII 基金净值日期滞后问题
-      if (info.nav > 0 && info.navDate) {
-        updateTradesByCode(code, info.nav, info.navDate)
-      }
-      
-      // [FIX] 同步更新 holdingStore：让未更新的基金也能共享这次拉取的数据
-      // （之前 refreshAll 先调 refreshEstimates 就是为了这个，现在合并到一起了）
-      holdingStore.updateHoldingWithAccurateData(code, info)
-    } catch (e) { /* 静默失败 */ }
-  }))
-}
-
-// ============ 计算交易记录 postReturn（复用 TradeCenter 逻辑） ============
-function calcPostReturn(trade: any): number {
-  const data = liveFundData.value.get(trade.code)
-  if (!data || trade.netValue <= 0) return 0
-  // 当前值：如果净值已更新用净值，否则用估值
-  let currentValue = 0
-  if (data.dataSource === 'nav' && data.nav > 0) {
-    currentValue = data.nav
-  } else if (data.estimate > 0) {
-    currentValue = data.estimate
-  } else {
-    currentValue = data.currentValue || 0
-  }
-  if (currentValue <= 0) return 0
-  return ((currentValue - trade.netValue) / trade.netValue) * 100
 }
 
 // ============ Portfolio 持仓 ============
@@ -235,7 +166,7 @@ const observeHoldings = computed(() => {
 
 // ============ 交易记录（带 postReturn 计算 + 按基金分组） ============
 // [FIX] 改为 computed，直接依赖 liveFundData，实现渐进式显示
-// liveFundData 每 set 一次就触发重算，交易记录面板不需要等 preloadAllFundPrices 全部完成
+// liveFundData 每 set 一次就触发重算，交易记录面板不需要等 loadFundData 全部完成
 const allTradesWithReturn = computed(() => {
   const trades = getTrades()
   return trades
@@ -379,7 +310,7 @@ async function refreshAll(forceRefresh: boolean = false) {
 
     // 2. 并发拉取所有基金实时数据（未更新的才拉，已更新的直接复用 holdingStore）
     // [FIX] 非强制刷新时复用缓存，避免 initHoldings 拉过之后重复拉
-    await preloadAllFundPrices([...codes], forceRefresh)
+    await loadFundData([...codes], forceRefresh)
 
     // 3. 刷新指数
     await loadIndices()

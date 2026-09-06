@@ -820,22 +820,23 @@ async function cloudRestoreHoldings() {
   }
 }
 
-// [WHAT] 清空所有持仓数据
+// [WHAT] 清空所有持仓数据（含交易记录与做T记录）
 async function clearAllHoldings() {
   try {
     await showConfirmDialog({
       title: '确认清空',
-      message: '确定要清空所有持仓数据吗？此操作不可恢复！',
+      message: '确定要清空所有持仓、交易和做T记录吗？此操作不可恢复！',
     })
-    
-    // 清空 localStorage
-    localStorage.removeItem('fund_holdings')
-    localStorage.removeItem('fund_trades')
-    
+
+    // [FIX] 必须一并清空做T记录，否则会残留孤儿 T 交易（引用着已被删除的持仓）
+    // [WHY] 走 storage 的 save* API 而不是直接 removeItem，避免硬编码 key 与 STORAGE_KEYS 漂移
+    saveHoldings([])
+    saveTrades([])
+    saveTTrades([])
+
     // 清空 store
     holdingStore.holdings = []
-    saveTrades([])
-    
+
     showToast('已清空所有持仓数据')
   } catch {
     // 用户取消

@@ -34,10 +34,15 @@ export function checkVersionAndClearCache(): void {
     // [WHAT] 清除 localStorage 中的 API 缓存（保留用户数据）
     const keysToRemove: string[] = []
     // [FIX] 用户数据 key 白名单，版本更新时绝不能删除
+    // [CRITICAL] 任何以 fund_ / api_ / market_ / estimate_ 开头的「用户数据」key 都必须登记在这里，
+    //            否则会被下面的缓存清理逻辑误删。
+    // [BUG] T_TRADES('fund_t_trades') 以 fund_ 开头会命中 CACHE_PREFIXES，
+    //       之前漏登记导致每次版本更新做T记录被清空。新增存储 key 时务必同步此名单。
     const preservedKeys: string[] = [
       STORAGE_KEYS.WATCHLIST,
       STORAGE_KEYS.HOLDINGS,
       STORAGE_KEYS.TRADES,
+      STORAGE_KEYS.T_TRADES,
       STORAGE_KEYS.FUND_NET_VALUES,
       STORAGE_KEYS.SOURCE_FILTER,
       STORAGE_KEYS.APP_VERSION,

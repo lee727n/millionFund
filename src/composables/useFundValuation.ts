@@ -29,7 +29,7 @@ export function useFundValuation() {
    * 批量加载基金数据
    * [OPTIMIZATION] 非交易时间 + 净值已更新的基金，直接使用 holdingStore 数据，避免不必要的API调用
    */
-  async function loadFundData(fundCodes: string[]) {
+  async function loadFundData(fundCodes: string[], forceRefresh: boolean = false) {
     const uniqueCodes = [...new Set(fundCodes)]
     const holdingsMap = new Map<string, any>(holdingStore.holdings.map((h: any) => [h.code, h]))
 
@@ -58,7 +58,7 @@ export function useFundValuation() {
         }
 
         // 净值未更新或 holdingStore 数据不完整，调用API获取最新数据
-        const info = await fetchFundAccurateData(code, isQDII, true)
+        const info = await fetchFundAccurateData(code, isQDII, forceRefresh)
         liveFundData.value.set(code, {
           estimate: info.estimate || 0,
           nav: info.nav || 0,
@@ -72,6 +72,10 @@ export function useFundValuation() {
         if (info.nav > 0 && info.navDate) {
           updateTradesByCode(code, info.nav, info.navDate)
         }
+
+        // [FIX] 同步回写 holdingStore：让未更新的持仓也能共享这次拉取的数据
+        // [WHY] 本 composable 只负责「估值是多少」，持仓收益重算归 holdingStore，两者在此衔接
+        holdingStore.updateHoldingWithAccurateData(code, info)
       } catch (e) {
         console.warn(`[useFundValuation] 加载基金数据失败: ${code}`, e)
       }
