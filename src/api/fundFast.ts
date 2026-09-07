@@ -8,14 +8,10 @@ import { isMobile } from '@/utils/platform'
 import { isTradingTime, persistCache, fetchETFRank } from './tiantianApi'
 import type { FundEstimate, NetValueRecord } from '@/types/fund'
 import { getPrevWorkdaySync, isHolidaySync, clearHolidayCache } from '../utils/holiday'
-
-function getTradingDateStr(date: Date = new Date()): string {
-  const hour = date.getHours()
-  if (hour < 9) {
-    date = new Date(date.getTime() - 24 * 60 * 60 * 1000)
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+import { getFundNetValues } from '../utils/storage'
+// [REFACTOR] isNavUpToDate 已抽到 utils/navDate.ts，与 holding.ts 共用同一份
+// [NOTE] getProgressDateStr()（9 点前归属上一交易日）只服务于 holding.ts 的进度条，本文件一律用自然日
+import { getCalendarDateStr, isNavUpToDate } from '../utils/navDate'
 
 // [WHAT] 清除指定基金的缓存数据（不包括持仓缓存）
 // [FIX] 持仓缓存保持持久化，只有手动刷新时才清除
@@ -286,7 +282,7 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
       // 不再拉重仓股价 + 重新计算估值，节省大量网络请求
       const now = new Date()
       const dayOfWeek = now.getDay()
-      const today = getTradingDateStr(now)
+      const today = getCalendarDateStr(now)
       const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !isHolidaySync(today)
       const currentHour = now.getHours()
       const isBeforeTrading = currentHour < 9 || (currentHour === 9 && now.getMinutes() < 30)
@@ -552,26 +548,6 @@ async function fetchOfficialFundEstimate(code: string): Promise<FundEstimate | n
   })
 }
 
-/**
- * 批量获取基金估值（并发优化）
- */
-export async function fetchFundEstimatesBatch(codes: string[]): Promise<Map<string, FundEstimate>> {
-  const results = new Map<string, FundEstimate>()
-
-  // 并发请求所有基金
-  const promises = codes.map(async code => {
-    try {
-      const data = await fetchFundEstimateFast(code)
-      results.set(code, data)
-    } catch {
-      // 静默失败
-    }
-  })
-
-  await Promise.all(promises)
-  return results
-}
-
 // ========== 历史净值API（使用JSONP避免跨域） ==========
 
 /**
@@ -588,16 +564,18 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
   if (!forceRefresh) {
     const cached = cache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
     if (cached) {
-      const tradingDate = getTradingDateStr()
+      const tradingDate = getCalendarDateStr()
       const latestDate = cached.records[0]?.date
       if (latestDate === tradingDate) {
         return cached
       }
-      // [FIX] 交易时间内，只有当缓存包含上一个交易日数据时才使用
-      // [WHY] 交易时间内今日净值尚未发布，最新可用的是上一个交易日的净值
+      // [FIX] 18:00 前，只有当缓存包含上一个交易日数据时才使用
+      // [WHY] 今日净值要傍晚才发布，18:00 前最新可用的就是上一个交易日的净值
       //       如果缓存比上一个交易日还旧（如跨周末/节假日），必须重新获取
+      //       [NOTE] 窗口从 9~18 点放宽到 0~18 点：0~9 点同样适用「上一交易日即最新」，
+      //              否则早间会白白穿透缓存重新请求一次净值历史
       const hour = new Date().getHours()
-      if (hour >= 9 && hour < 18) {
+      if (hour < 18) {
         const prevWorkday = getPrevWorkdaySync(tradingDate)
         if (latestDate === prevWorkday) {
           return cached
@@ -607,16 +585,18 @@ export async function fetchNetValueHistoryFast(code: string, days = 30, forceRef
 
     const persistCached = persistCache.get<{ records: NetValueRecord[], fundName: string }>(cacheKey)
     if (persistCached && persistCached.records.length > 0) {
-      const tradingDate = getTradingDateStr()
+      const tradingDate = getCalendarDateStr()
       const latestDate = persistCached.records[0]?.date
       if (latestDate === tradingDate) {
         cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
         return persistCached
       }
-      // [FIX] 交易时间内，只有当缓存包含上一个交易日数据时才使用持久化缓存
+      // [FIX] 18:00 前，只有当缓存包含上一个交易日数据时才使用持久化缓存
       // [WHY] 防止跨设备恢复后使用旧缓存导致市值计算错误
+      //       [NOTE] 窗口从 9~18 点放宽到 0~18 点：0~9 点同样适用「上一交易日即最新」，
+      //              否则早间会白白穿透缓存重新请求一次净值历史
       const hour = new Date().getHours()
-      if (hour >= 9 && hour < 18) {
+      if (hour < 18) {
         const prevWorkday = getPrevWorkdaySync(tradingDate)
         if (latestDate === prevWorkday) {
           cache.set(cacheKey, persistCached, CACHE_TTL.NET_VALUE)
@@ -1598,6 +1578,11 @@ export interface FundAccurateData {
   dayChange: number
   // 数据源状态
   dataSource: 'nav' | 'estimate' | 'fallback' | 'local_cache'
+  // [WHAT] navDate 是否就是「当前应该拿到的那一期净值」（今天，或 QDII 的前一工作日）
+  // [WHY] dataSource 表示「currentValue 用的是哪类数据」，不能反过来推断净值是否已更新：
+  //       盘前/非交易日回退到旧净值时 dataSource 也是 'nav'，但那一期净值并不属于今天。
+  //       调用方要用「今天的交易能不能用这个净值确认」就必须看这个字段。
+  navIsCurrent: boolean
   updateTime: string
 }
 
@@ -1611,7 +1596,10 @@ export interface FundAccurateData {
  * @param forceRefresh 是否强制刷新（忽略缓存）
  */
 export async function fetchFundAccurateData(code: string, isQDII: boolean = false, forceRefresh: boolean = false): Promise<FundAccurateData> {
-  const cacheKey = `accurate_${code}`
+  // [WHY] 这里不做整体缓存：result 的 currentValue / dataSource 依赖「当前是否盘中、
+  //       净值是否已发布」这类实时判断，整体缓存会把过期的判定结果返回给调用方
+  //       （例如 15:00 前后跨越收盘、或净值刚发布的那 30 秒）。
+  //       真正的缓存命中由下面两个子函数各自负责。
 
   // [WHAT] 获取估值数据和历史净值数据
   const [estimateData, historyResult] = await Promise.all([
@@ -1628,7 +1616,9 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   // })
 
   const now = new Date()
-  const today = getTradingDateStr(now)
+  // [WHAT] 自然日。本文件所有日期判断都用自然日；
+  //        「9 点前归属上一交易日」那个宽限期是进度条专属的（getProgressDateStr），不在这里用。
+  const today = getCalendarDateStr(now)
   const currentHour = now.getHours()
   const currentMinute = now.getMinutes()
 
@@ -1666,6 +1656,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     currentValue: 0,
     dayChange: 0,
     dataSource: 'fallback',
+    navIsCurrent: false,
     updateTime: now.toISOString()
   }
 
@@ -1676,33 +1667,25 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
   //   code,
   //   today,
   //   navDate: navData?.date,
-  //   isNavFromToday,
   //   nav: result.nav,
   //   navChange: result.navChange,
   //   estimate: result.estimate,
   //   estimateChange: result.estimateChange
   // })
 
-  // [WHAT] 判断净值日期是否是今日
-  const isNavFromToday = navData?.date === today
+  // [WHAT] 判断净值是否已更新
+  // [WHY] 与 holding.ts 的 isUpdated 共用 utils/navDate.ts 的 isNavUpToDate，避免两份公式各自漂移
+  // [WHAT] 自然日口径：今天的净值出来了吗
+  const isNavUpdated = isNavUpToDate({ nav: result.nav, navDate: result.navDate, isQDII, today })
+  // [WHAT] 交易守卫口径，同样是自然日
+  // [WHY] 上游 Detail.vue / TradeCenter.vue 靠 navIsCurrent 决定「要不要把今天的交易恢复成 estimated」。
+  //       这里若误用进度条口径（9 点前归属上一交易日），早上 navIsCurrent 会恒为 true，
+  //       守卫被跳过，而 updateTradesByCode 对 estimated 交易无条件确认 →
+  //       今天 08:00 的单被 T-1 的净值确认掉，份额算错。
+  result.navIsCurrent = isNavUpToDate({ nav: result.nav, navDate: result.navDate, isQDII, today })
 
-  // [WHAT] 判断估值是否是今日
-  const estimateDate = result.estimateTime?.split(' ')[0]
-  const isEstimateFromToday = estimateDate === today
-
-  // [WHAT] 判断净值是否已更新（与holding.ts中的isUpdated逻辑一致）
-  // [WHY] QDII基金由于时差问题，净值更新会晚一天，需要判断前一个工作日的净值
-  const hasTodayNav = result.nav > 0 && result.navDate === today
-
-  // [WHAT] 计算前一个工作日（用于QDII基金判断）
-  // [WHY] 使用节假日API判断，如果是节假日则继续往前推
-  const prevWorkday = getPrevWorkdaySync(today)
-
-  const hasPrevWorkdayNavForQDII = isQDII && result.nav > 0 && result.navDate === prevWorkday
-  const isNavUpdated = hasTodayNav || hasPrevWorkdayNavForQDII
-
-  // console.log(`[数据源判断] ${code}: isWeekday=${isWeekday}, isNavUpdated=${isNavUpdated}, navDate=${result.navDate}, today=${today}, hasTodayNav=${hasTodayNav}, hasYesterdayNavForQDII=${hasYesterdayNavForQDII}, isQDII=${isQDII}`)
-  // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}, isEstimateFromToday=${isEstimateFromToday}`)
+  // console.log(`[数据源判断] ${code}: isWeekday=${isWeekday}, isNavUpdated=${isNavUpdated}, navDate=${result.navDate}, today=${today}, isQDII=${isQDII}`)
+  // console.log(`[数据源判断] ${code}: estimate=${result.estimate}, estimateChange=${result.estimateChange}, estimateTime=${result.estimateTime}`)
 
   // [FIX] 根据是否是交易日和净值是否已更新来决定使用估值还是净值
   // [WHY] 交易日：净值已更新用净值，净值未更新用估值
@@ -1736,7 +1719,10 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
       // 非交易时间（如盘前），使用上一个净值
       result.currentValue = result.nav
       result.dayChange = result.navChange
-      result.dataSource = 'estimate'
+      // [FIX] 这里用的是净值，dataSource 必须标 'nav' 而不是 'estimate'
+      // [WHY] 下游靠 dataSource 决定 UI 文案（Detail「净值/估值涨幅」、全景页「净/估」角标）
+      //       和交易弹窗的成交价基准类型。标成 'estimate' 会让净值被当成估值显示和参与判断。
+      result.dataSource = 'nav'
     }
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
@@ -1758,26 +1744,20 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
       result.dataSource = 'fallback'
     } else {
       // [FIX] 2. 使用localStorage中保存的净值映射（用于跨设备恢复）
+      // [WHY] 走 getFundNetValues() 而不是硬编码 'fund_net_values'，
+      //       避免 key 与 STORAGE_KEYS 漂移（fund_t_trades 就是因为 key 不在白名单被误删的）
       try {
-        const netValuesStr = localStorage.getItem('fund_net_values')
-        if (netValuesStr) {
-          const netValues = JSON.parse(netValuesStr)
-          if (netValues[code] && netValues[code] > 0) {
-            result.currentValue = netValues[code]
-            result.dayChange = 0
-            result.dataSource = 'local_cache'
-          }
+        const netValues = getFundNetValues()
+        if (netValues[code] && netValues[code] > 0) {
+          result.currentValue = netValues[code]
+          result.dayChange = 0
+          result.dataSource = 'local_cache'
         }
       } catch (e) {
         // 静默失败
       }
     }
   }
-
-  // [FIX] 缓存30秒（交易时间内）或12小时（非交易时间）
-  // 非交易时间估值已冻结、净值已发布，数据长时间不变，不需要频繁过期
-  const ttl = inTradingTime ? (isQDII ? 10000 : 30000) : (isQDII ? 3600000 : 43200000)
-  cache.set(cacheKey, result, ttl)
 
   return result
 }

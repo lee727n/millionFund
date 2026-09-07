@@ -7,15 +7,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { HoldingRecord, HoldingSummary } from '@/types/fund'
 import { getHoldings, saveHoldings } from '@/utils/storage'
-import { getPrevWorkdaySync } from '@/utils/holiday'
-
-function getTradingDateStr(date: Date = new Date()): string {
-  const hour = date.getHours()
-  if (hour < 9) {
-    date = new Date(date.getTime() - 24 * 60 * 60 * 1000)
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+// [REFACTOR] getProgressDateStr / isNavUpToDate 已抽到 utils/navDate.ts，与 fundFast.ts 共用同一份
+import { isNavUpToDate, getProgressDateStr } from '@/utils/navDate'
 import { updateFundNetValue } from '@/utils/storage'
 import { fetchFundAccurateData, type FundAccurateData, clearHoldingsCache as clearFundHoldingsCache } from '@/api/fundFast'
 import { fetchNetValueHistoryFast } from '@/api/fundFast'
@@ -202,6 +195,8 @@ export const useHoldingStore = defineStore('holding', () => {
             currentValue: holding.currentValue,
             dayChange: parseFloat(holding.todayChange || '0'),
             dataSource: 'nav' as const,
+            // 这些持仓已被 holdingStore 判定为 isUpdated，净值就是当前这一期
+            navIsCurrent: true,
             updateTime: new Date().toISOString()
           }
           updateHoldingWithAccurateData(holding.code, data)
@@ -262,12 +257,18 @@ export const useHoldingStore = defineStore('holding', () => {
     const prevNav = data.dayChange !== 0 ? currentValue / (1 + data.dayChange / 100) : currentValue
     const todayProfit = shares * prevNav * (data.dayChange / 100)
 
-    const today = getTradingDateStr()
-    const hasTodayNav = data.nav > 0 && data.navDate === today
-    const prevWorkday = getPrevWorkdaySync(today)
     const isQDII = h.isQDII === true
-    const hasPrevWorkdayNavForQDII = isQDII && data.nav > 0 && data.navDate === prevWorkday
-    const isUpdated = hasTodayNav || hasPrevWorkdayNavForQDII
+    // [WHAT] 判断净值是否已更新（进度条口径）
+    // [WHY] 与 fundFast.ts 共用 utils/navDate.ts 的 isNavUpToDate，避免两份公式各自漂移
+    // [SCOPE] 全项目**只有这里**用进度条口径 getProgressDateStr()：
+    //         9 点前归属上一交易日，是刻意设计的宽限期，否则整个早上进度条都是空的。
+    //         其余一切场景（估值、交易守卫、缓存）都用 isNavUpToDate 的默认自然日。
+    const isUpdated = isNavUpToDate({
+      nav: data.nav,
+      navDate: data.navDate,
+      isQDII,
+      today: getProgressDateStr()
+    })
 
     let addedGain: number | undefined
     if (buyNav > 0 && currentValue > 0) {

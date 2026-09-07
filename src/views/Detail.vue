@@ -7,8 +7,8 @@ import { ref, onMounted, onUnmounted, computed, watch, onActivated, nextTick } f
 import { useRoute, useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
-import { 
-  fetchFundEstimateFast, fetchLatestNetValue,
+import {
+  fetchLatestNetValue,
   fetchFundAccurateData,
 } from '@/api/fundFast'
 import { 
@@ -115,7 +115,10 @@ async function checkAndUpdateTradeCalculations(today: string) {
     // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
     // [FIX] 增加 holding.isUpdated 前置判断：如果 holdingStore 已确认净值更新，不恢复 estimated
     const holdingConfirmedUpdated = holdingStore.holdings.some((h: any) => h.code === fundCode.value && h.isUpdated)
-    if (data.dataSource !== 'nav' && !holdingConfirmedUpdated) {
+    // [FIX] 判断依据改用 navIsCurrent，不再用 dataSource
+    // [WHY] 盘前/非交易日回退到旧净值时 dataSource 同样是 'nav'，但那期净值并不属于今天。
+    //       用 dataSource 做代理会把今天添加的交易用上一期净值错误地「确认」掉（份额算错）。
+    if (!data.navIsCurrent && !holdingConfirmedUpdated) {
       const allTrades = getTrades()
       let needSave = false
       allTrades.forEach(t => {
