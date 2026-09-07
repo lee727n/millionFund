@@ -32,8 +32,10 @@ export interface HoldingWithProfit extends HoldingRecord {
   loading?: boolean
   /** 趋势预测 */
   trendPrediction?: TrendPrediction
-  /** 数据来源（'nav' | 'estimate' | 'fallback'） */
+  /** [DEPRECATED] 数据来源（'nav' | 'estimate' | 'fallback'）—— 仅日志排查，判定一律用 isNav */
   dataSource?: string
+  /** currentValue 用的是净值还是估值（唯一判定出口，等价于 resolveFundValue().isNav） */
+  isNav?: boolean
   /** 最新净值/估值的日期 */
   valueDate?: string
   /** 是否已更新（根据日期判断） */
@@ -119,10 +121,15 @@ export const useHoldingStore = defineStore('holding', () => {
       }
       const source = (sourceMap[rest.source] ?? rest.source) || undefined
 
+      // [MIGRATION] isNav 是新字段，存量数据里没有。
+      // 从旧的 dataSource 回灌一次，否则老持仓在刷新前会从「净值」错显示成「估值」。
+      const isNav = rest.isNav ?? (rest.dataSource === 'nav')
+
       return {
         ...rest,
         industrySectors,
-        source
+        source,
+        isNav
       }
     })
 
@@ -142,7 +149,9 @@ export const useHoldingStore = defineStore('holding', () => {
       r.lastUpdateDate !== undefined ||
       r.originProfit !== undefined ||
       r.lastTodayProfit !== undefined ||
-      Array.isArray(r.industrySectors)
+      Array.isArray(r.industrySectors) ||
+      // isNav 是本轮新增字段：即使旧记录没有 dataSource，也要落盘一次迁移结果
+      r.isNav === undefined
     ) || recordsNeedSourceMigration
 
     holdings.value = cleanedRecords.map((r) => ({
@@ -194,6 +203,8 @@ export const useHoldingStore = defineStore('holding', () => {
             estimateChange: 0,
             currentValue: holding.currentValue,
             dayChange: parseFloat(holding.todayChange || '0'),
+            // [WHAT] 这里塞的是 holding.currentValue，按净值处理
+            isNav: true,
             dataSource: 'nav' as const,
             // 这些持仓已被 holdingStore 判定为 isUpdated，净值就是当前这一期
             navIsCurrent: true,
@@ -287,6 +298,8 @@ export const useHoldingStore = defineStore('holding', () => {
       todayProfit,
       loading: false,
       dataSource: data.dataSource,
+      // [WHY] 直接透传 fetchFundAccurateData 的结论，本层不做二次推导
+      isNav: data.isNav,
       valueDate: data.navDate || data.estimateTime?.split(' ')[0],
       isUpdated,
       addedGain,

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { getTrades, removeTrade, getHoldings, updateTradesByCode, saveTrades, getTTrades, removeTTrade } from '@/utils/storage'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
+import { getCalendarDateStr } from '@/utils/navDate'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import type { TradeRecord, TTradeRecord } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
@@ -25,7 +26,7 @@ const calculatingReturns = ref(true) // 涨跌幅计算中
 
 // [FIX] 保存每个基金的完整数据（估值、净值、数据源）
 // 用于根据交易记录的类型选择合适的当前值进行涨跌幅计算
-const fundDataMap = ref<Map<string, { estimate: number; nav: number; currentValue: number; dataSource: string }>>(new Map())
+const fundDataMap = ref<Map<string, { estimate: number; nav: number; currentValue: number; dataSource: string; isNav: boolean }>>(new Map())
 
 // 账户图标映射
 const accountIcons: Record<string, string> = {
@@ -89,7 +90,7 @@ async function loadTrades() {
 
 // [FIX] 异步加载交易记录的计算数据（估值检查、涨跌幅等）
 async function loadTradeCalculations(trades: TradeRecord[]) {
-  const today = new Date().toLocaleDateString('en-CA')
+  const today = getCalendarDateStr()
   
   // 检查是否有估值交易记录（estimated: true），自动更新为净值
   const estimatedTrades = trades.filter(t => t.estimated)
@@ -156,7 +157,8 @@ async function loadTradeCalculations(trades: TradeRecord[]) {
         estimate: data.estimate || 0,
         nav: data.nav || 0,
         currentValue: data.currentValue || 0,
-        dataSource: data.dataSource
+        dataSource: data.dataSource,
+        isNav: data.isNav
       })
     } catch (e) {
       // 静默失败
@@ -257,7 +259,8 @@ const groupedTrades = computed(() => {
       // 3. 涨跌幅 = (最新值 - 交易成本) / 交易成本
       
       let currentValue = 0
-      if (fundData.dataSource === 'nav' && fundData.nav > 0) {
+      // [HOW] isNav 由 fetchFundAccurateData 统一判定，不再用 dataSource 二次推导
+      if (fundData.isNav && fundData.nav > 0) {
         // 今天净值已更新，用净值
         currentValue = fundData.nav
       } else if (fundData.estimate > 0) {

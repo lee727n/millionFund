@@ -12,6 +12,7 @@ import { useAppUpdateStore } from '@/stores/appUpdate'
 import { APP_VERSION } from '@/config/version'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
+import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
 import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getFundNetValues, saveFundNetValues, getTTrades, saveTTrades } from '@/utils/storage'
@@ -431,6 +432,7 @@ async function backupHoldings() {
       todayProfit,
       trendPrediction,
       dataSource,
+      isNav,
       valueDate,
       isUpdated,
       // 保留的字段
@@ -660,6 +662,7 @@ async function cloudBackupHoldings() {
         todayProfit,
         trendPrediction,
         dataSource,
+        isNav,
         valueDate,
         isUpdated,
         ...rest 
@@ -1020,7 +1023,7 @@ async function batchImport() {
           name: fundName,
           buyNetValue: buyNetValue,
           shares: shares,
-          buyDate: navDate || new Date().toLocaleDateString('en-CA'),
+          buyDate: navDate || getCalendarDateStr(),
           holdingDays: 0,
           industrySectors: industrySectors,
           source: item.source,
@@ -1038,7 +1041,7 @@ async function batchImport() {
           code: fundCode,
           name: fundName,
           type: 'buy',
-          date: navDate || new Date().toLocaleDateString('en-CA'), // 标记在净值日期
+          date: navDate || getCalendarDateStr(), // 标记在净值日期
           amount: cost,
           netValue: buyNetValue,
           shares: shares,

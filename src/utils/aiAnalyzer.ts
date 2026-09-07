@@ -60,6 +60,8 @@ interface FundDataPoint {
   nav: number
   currentValue: number
   dataSource: string
+  /** currentValue 用的是净值还是估值（唯一判定出口） */
+  isNav: boolean
 }
 
 // ============ 主入口 ============
@@ -158,7 +160,10 @@ export function analyzeTrades(
   let totalPnL = 0
   trades.forEach(t => {
     const fd = fundDataMap.get(t.code)
-    if (!fd || fd.dataSource === '') return
+    // [FIX] 原写法用 `fd.dataSource === ''` 当「这条没数据」，是 dataSource 的第三种语义。
+    //       两个调用方（TradeCenter / Panorama）都只写四值枚举，恒不为空，这个分支是死代码；
+    //       「没数据」的真实等价于 getCurrentValue() 返回 0，下面那行 cv <= 0 已经兜住了。
+    if (!fd) return
     const cv = getCurrentValue(fd)
     if (cv <= 0 || t.netValue <= 0) return
     const pnl = (cv - t.netValue) / t.netValue * t.amount / 100
@@ -390,7 +395,8 @@ function analyzeSellTrade(
 // ============ 工具函数 ============
 
 function getCurrentValue(fd: FundDataPoint): number {
-  if (fd.dataSource === 'nav' && fd.nav > 0) return fd.nav
+  // [HOW] isNav 由上游 fetchFundAccurateData 统一判定
+  if (fd.isNav && fd.nav > 0) return fd.nav
   if (fd.estimate > 0) return fd.estimate
   return fd.currentValue || 0
 }

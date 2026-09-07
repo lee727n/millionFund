@@ -11,7 +11,14 @@ export interface FundValuationData {
   estimate: number
   nav: number
   currentValue: number
+  /**
+   * [DEPRECATED] 仅用于日志排查，不要再拿它做「是净值还是估值」的判断
+   * [WHY] 它同时被拿来表达「数据类型」和「数据新旧」两种含义，盘前/周末会自相矛盾
+   * 判断一律用 isNav
+   */
   dataSource: 'nav' | 'estimate' | 'fallback' | 'local_cache'
+  /** currentValue 用的是净值还是估值（唯一判定出口，等价于 resolveFundValue().isNav） */
+  isNav: boolean
   dayChange: number
   navDate?: string
 }
@@ -46,6 +53,8 @@ export function useFundValuation() {
             nav: holding.currentValue,
             currentValue: holding.currentValue,
             dataSource: 'nav',
+            // 快路径：拿的是 holding 上已落地的净值，所以恒为净值
+            isNav: true,
             dayChange: holding.todayChange ? parseFloat(holding.todayChange) : 0,
             navDate: holding.valueDate
           })
@@ -64,6 +73,8 @@ export function useFundValuation() {
           nav: info.nav || 0,
           currentValue: info.currentValue || 0,
           dataSource: info.dataSource,
+          // [WHY] 直接透传 fetchFundAccurateData 的结论，本层不做二次推导
+          isNav: info.isNav,
           dayChange: info.dayChange || 0,
           navDate: info.navDate
         })
@@ -83,13 +94,6 @@ export function useFundValuation() {
   }
 
   /**
-   * 获取单个基金的估值数据
-   */
-  function getFundData(code: string): FundValuationData | undefined {
-    return liveFundData.value.get(code)
-  }
-
-  /**
    * 计算交易记录的 postReturn
    * [WHY] 统一计算逻辑，避免各模块重复实现
    */
@@ -99,7 +103,7 @@ export function useFundValuation() {
 
     // 当前值：如果净值已更新用净值，否则用估值
     let currentValue = 0
-    if (data.dataSource === 'nav' && data.nav > 0) {
+    if (data.isNav && data.nav > 0) {
       currentValue = data.nav
     } else if (data.estimate > 0) {
       currentValue = data.estimate
@@ -114,7 +118,6 @@ export function useFundValuation() {
   return {
     liveFundData,
     loadFundData,
-    getFundData,
     calcPostReturn
   }
 }

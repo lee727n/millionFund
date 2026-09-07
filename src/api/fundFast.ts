@@ -1576,7 +1576,17 @@ export interface FundAccurateData {
   // 推荐使用值（自动选择最准确的）
   currentValue: number
   dayChange: number
+  // [WHAT] currentValue 里装的到底是净值还是估值
+  // [WHY] 不能由 dataSource 反推 —— dataSource 是四值枚举，'fallback' / 'local_cache'
+  //       两个分支塞进 currentValue 的其实是净值（dwjz / 本地净值映射），按
+  //       `dataSource === 'nav'` 推导会得到 false，导致 UI 把净值显示成「估值」、
+  //       交易弹窗把成交价标成 isEstimate。
+  //       所以 isNav 必须在每个 currentValue 赋值点显式设置，与值绑定。
+  // [USAGE] UI 的「净 / 估」文案、交易弹窗基准类型一律读这个字段，不要读 dataSource。
+  isNav: boolean
   // 数据源状态
+  // [DEPRECATED] 仅用于日志排查，禁止参与任何判断。要看「是不是净值」读 isNav，
+  //              要看「净值是不是今天的」读 navIsCurrent。
   dataSource: 'nav' | 'estimate' | 'fallback' | 'local_cache'
   // [WHAT] navDate 是否就是「当前应该拿到的那一期净值」（今天，或 QDII 的前一工作日）
   // [WHY] dataSource 表示「currentValue 用的是哪类数据」，不能反过来推断净值是否已更新：
@@ -1655,6 +1665,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     estimateChange: parseFloat(estimateData?.gszzl || '0') || 0,
     currentValue: 0,
     dayChange: 0,
+    isNav: false,
     dataSource: 'fallback',
     navIsCurrent: false,
     updateTime: now.toISOString()
@@ -1694,6 +1705,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     // [WHAT] 交易日 + 净值已更新，使用净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
+    result.isNav = true
     result.dataSource = 'nav'
   } else if (isWeekday && result.estimate > 0) {
     // [WHAT] 交易日 + 净值未更新，使用估值
@@ -1704,6 +1716,7 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     } else {
       result.dayChange = result.estimateChange
     }
+    result.isNav = false
     result.dataSource = 'estimate'
   } else if (isWeekday && !isNavUpdated && result.nav > 0) {
     // [FIX] 交易日 + 净值未更新 + 无估值
@@ -1714,25 +1727,30 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
       console.log(`[fetchFundAccurateData] ${code} 交易时间内估值失败，跳过更新保持之前数据`)
       result.currentValue = 0
       result.dayChange = 0
+      result.isNav = false
       result.dataSource = 'fallback'
     } else {
       // 非交易时间（如盘前），使用上一个净值
       result.currentValue = result.nav
       result.dayChange = result.navChange
+      result.isNav = true
       // [FIX] 这里用的是净值，dataSource 必须标 'nav' 而不是 'estimate'
       // [WHY] 下游靠 dataSource 决定 UI 文案（Detail「净值/估值涨幅」、全景页「净/估」角标）
       //       和交易弹窗的成交价基准类型。标成 'estimate' 会让净值被当成估值显示和参与判断。
+      //       [NOTE] 新代码请读 isNav，这里保留 dataSource 只为兼容旧调用方。
       result.dataSource = 'nav'
     }
   } else if (result.nav > 0) {
     // [WHAT] 非交易日，使用最新净值
     result.currentValue = result.nav
     result.dayChange = result.navChange
+    result.isNav = true
     result.dataSource = 'nav'
   } else if (result.estimate > 0) {
     // [EDGE] 无净值但有估值，使用估值
     result.currentValue = result.estimate
     result.dayChange = result.estimateChange
+    result.isNav = false
     result.dataSource = 'estimate'
   } else {
     // [EDGE] 无数据可用，按优先级尝试多个fallback
@@ -1741,6 +1759,9 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     if (dwjz > 0) {
       result.currentValue = dwjz
       result.dayChange = 0
+      // [FIX] dwjz 是「单位净值」，是净值不是估值。
+      //       dataSource 这里是 'fallback'，若按 `dataSource === 'nav'` 推 isNav 会错标成估值。
+      result.isNav = true
       result.dataSource = 'fallback'
     } else {
       // [FIX] 2. 使用localStorage中保存的净值映射（用于跨设备恢复）
@@ -1751,6 +1772,8 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
         if (netValues[code] && netValues[code] > 0) {
           result.currentValue = netValues[code]
           result.dayChange = 0
+          // [FIX] 本地存的也是净值，同理必须显式标 isNav = true
+          result.isNav = true
           result.dataSource = 'local_cache'
         }
       } catch (e) {

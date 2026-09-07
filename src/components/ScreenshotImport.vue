@@ -8,6 +8,7 @@ import { showToast, showLoadingToast, closeToast, showConfirmDialog } from 'vant
 import { recognizeHoldings, recognizeText, recognizeTextLocal, parseHoldingTextOnline, parseHoldingTextLocal, type RecognizedHolding, setBaiduOcrConfig, getBaiduOcrConfig, setPreferredLocalOcr, getPreferredLocalOcr } from '@/utils/ocr'
 import { searchFund, fetchFundEstimate, fetchFundList } from '@/api/fund'
 import { fetchLatestNetValue, fetchFundAccurateData } from '@/api/fundFast'
+import { getCalendarDateStr } from '@/utils/navDate'
 import { useHoldingStore } from '@/stores/holding'
 import { addTrade } from '@/utils/storage'
 import type { HoldingRecord, FundInfo } from '@/types/fund'
@@ -608,7 +609,7 @@ async function confirmImport() {
 
         // [FIX] 使用 fetchFundAccurateData 获取最新净值
         let currentNav = h.netValue || 1
-        let navDate = new Date().toLocaleDateString('en-CA') // 默认今天
+        let navDate = getCalendarDateStr() // 默认今天
         try {
           const accurateData = await fetchFundAccurateData(h.code, h.fundInfo?.type?.includes('QDII'))
           if (accurateData && accurateData.currentValue > 0) {

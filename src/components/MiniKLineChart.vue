@@ -57,7 +57,9 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const realtimeData = ref<{
   currentValue: number
   dayChange: number
-  dataSource: string  // 'nav' | 'estimate' | 'fallback'
+  dataSource: string  // [DEPRECATED] 仅日志排查，判定一律用 isNav
+  /** currentValue 用的是净值还是估值（唯一判定出口） */
+  isNav: boolean
 } | null>(null)
 
 // ========== 点击交互 ==========
@@ -171,7 +173,8 @@ async function loadRealtime() {
       realtimeData.value = {
         currentValue: data.currentValue,
         dayChange: data.dayChange,
-        dataSource: data.dataSource
+        dataSource: data.dataSource,
+        isNav: data.isNav
       }
       await nextTick()
       drawChart()
@@ -345,9 +348,9 @@ function drawChart() {
     ctx.fillText(displayName, padding.left, infoBarHeight - 3)
 
     // 当天涨跌幅（中间位置）
-    // [FIX] 参考 Detail 逻辑：dataSource === 'nav' 是净值涨幅，否则是估值涨幅
+    // [HOW] isNav 由 fetchFundAccurateData 统一判定，不再用 dataSource 二次推导
     if (realtimeData.value && realtimeData.value.dayChange !== undefined) {
-      const isNav = realtimeData.value.dataSource === 'nav'
+      const isNav = realtimeData.value.isNav
       const dayChange = realtimeData.value.dayChange
       const changeColor = dayChange >= 0 ? colors.upColor : colors.downColor
       const changeStr = `${dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}% ${isNav ? '净值' : '估值'}`

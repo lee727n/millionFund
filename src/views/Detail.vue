@@ -24,6 +24,8 @@ import {
 import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade, getTrades, saveTrades, getTTradesByCode, archiveTTrade, removeTTrade } from '@/utils/storage'
 import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import type { TradeRecord, TradeType, TTradeRecord } from '@/types/fund'
+import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
+import { getCalendarDateStr } from '@/utils/navDate'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,11 +51,10 @@ const tTrades = ref<TTradeRecord[]>([])
 const tradesWithReturn = computed(() => {
   const currentNav = parseFloat(fundInfo.value?.dwjz || '0')
   const currentEstimate = parseFloat(fundInfo.value?.gsz || '0')
-  const dataSource = fundInfo.value?.dataSource
-  
+
   // 选择最新值：今天净值更新了用净值，没更新用估值
   let currentValue = 0
-  if (dataSource === 'nav' && currentNav > 0) {
+  if (fundInfo.value?.isNav && currentNav > 0) {
     currentValue = currentNav
   } else if (currentEstimate > 0) {
     currentValue = currentEstimate
@@ -81,7 +82,7 @@ async function loadTrades() {
   trades.value = getTradesByCode(fundCode.value)
   tTrades.value = getTTradesByCode(fundCode.value)
   
-  const today = new Date().toLocaleDateString('en-CA')
+  const today = getCalendarDateStr()
   const allTrades = trades.value
   const estimatedTrades = allTrades.filter(t => t.estimated)
   const todayTradesNotEstimated = allTrades.filter(t => t.date === today && !t.estimated)
@@ -253,8 +254,23 @@ const tradeFormData = ref({
 })
 const tradeNetValueHistory = ref<{ time: string; value: number }[]>([])
 let tradeHistoryFund = ''
-let tradeRealTimeValue = 0
-let tradeRealTimeIsEstimate = true
+// [WHAT] 交易弹窗的实时值：resolveFundValue 的结果，供 lookupNetValue / onTradeDateChange 复用
+// [WHY] 原来是 value + isEstimate 两个独立变量，必须手写保持同步，漏改一处就会
+//       「显示净值却标成估值」。合并成一个结果对象，isEstimate 由 isConfirmed 推导。
+let tradeRealtimeValue: FundValueResult | null = null
+
+// [WHAT] 把实时值写进交易表单
+function applyRealtimeValue() {
+  if (!tradeRealtimeValue) return
+  const r = tradeRealtimeValue
+  // [WHAT] value === 0 是「本次没取到值」的信号（盘中估值失败时特意置 0，
+  //        为的是让 updateHoldingWithAccurateData 跳过更新、保持旧市值）。
+  //        但交易弹窗不能空着，此时退回上一期净值，并保持 estimated。
+  const v = r.hasValue ? r.value : r.nav
+  if (!(v > 0)) return
+  tradeFormData.value.netValue = v.toFixed(4)
+  tradeFormData.value.isEstimate = !r.isConfirmed
+}
 
 async function openTradeDialog() {
   if (!fundCode.value) return
@@ -264,7 +280,7 @@ async function openTradeDialog() {
     type: 'buy',
     amount: '',
     netValue: fundInfo.value?.gsz || fundInfo.value?.dwjz || '',
-    date: new Date().toLocaleDateString('en-CA'), // 本地时间 YYYY-MM-DD
+    date: getCalendarDateStr(), // 本地时间 YYYY-MM-DD
     isEstimate: true
   }
   showTradeDialog.value = true
@@ -289,64 +305,25 @@ async function openTradeDialog() {
 
   tasks.push(
     // [FIX] 使用 forceRefresh 强制获取最新数据，正确传递 isQDII
-    fetchFundAccurateData(fundCode.value, holdingInfo.value?.isQDII === true, true).then(data => {
-      const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
-      const estimateVal = data.estimate || 0
-      const navVal = data.nav || 0
-      const navDate = data.navDate || ''
-      
-      // [FIX] 使用 dataSource 判断，不要再加多余条件
-      // dataSource === 'nav' 表示净值已更新，应该用净值
-      // dataSource === 'estimate' 表示应该用估值（即使 estimateVal 为0，因为非交易时间）
-      const shouldUseNav = data.dataSource === 'nav' && navVal > 0
-      const shouldUseEstimate = data.dataSource === 'estimate'
-      
-      // [DEBUG] 打印交易弹窗数据
+    // [WHAT] 判断「用净值还是估值 / 净值是不是今天的」全部交给 resolveFundValue，
+    //        这里只消费结果，不再自己写 dataSource 分支
+    resolveFundValue(fundCode.value, holdingInfo.value?.isQDII === true, true).then(result => {
+      tradeRealtimeValue = result
+      const today = getCalendarDateStr() // 本地时间 YYYY-MM-DD
+
       console.log('[openTradeDialog] 实时数据:', {
-        estimateVal,
-        navVal,
-        navDate,
-        dataSource: data.dataSource,
-        currentValue: data.currentValue,
-        today,
-        shouldUseNav,
-        shouldUseEstimate
+        value: result.value,
+        isNav: result.isNav,
+        navIsCurrent: result.navIsCurrent,
+        isConfirmed: result.isConfirmed,
+        nav: result.nav,
+        navDate: result.navDate,
+        estimate: result.estimate,
+        today
       })
-      
-      if (shouldUseNav) {
-        tradeRealTimeValue = navVal
-        tradeRealTimeIsEstimate = false
-      } else if (shouldUseEstimate) {
-        // [FIX] 即使 estimateVal 为0，也使用 data.currentValue（可能是上一个净值）
-        tradeRealTimeValue = estimateVal > 0 ? estimateVal : data.currentValue
-        tradeRealTimeIsEstimate = true  // 关键：标记为估值
-      } else {
-        // Fallback: 如果 dataSource 逻辑有问题，使用日期比较
-        const isNavUpdated = navDate === today
-        if (isNavUpdated && navVal > 0) {
-          tradeRealTimeValue = navVal
-          tradeRealTimeIsEstimate = false
-        } else {
-          tradeRealTimeValue = estimateVal > 0 ? estimateVal : navVal
-          tradeRealTimeIsEstimate = true  // 关键：标记为估值
-        }
-      }
-      
-      // [DEBUG] 打印最终结果
-      console.log('[openTradeDialog] 最终选择:', {
-        tradeRealTimeValue,
-        tradeRealTimeIsEstimate,
-        shouldUseNav,
-        shouldUseEstimate
-      })
-      
-      if (tradeHistoryFund !== fundCode.value) {
-        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
-        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
-      }
-      if (tradeFormData.value.date >= today) {
-        tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
-        tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+
+      if (tradeHistoryFund !== fundCode.value || tradeFormData.value.date >= today) {
+        applyRealtimeValue()
       }
     }).catch(() => {})
   )
@@ -357,14 +334,11 @@ async function openTradeDialog() {
 // [WHAT] 根据日期查找净值；今天/未来用实时数据，过去用历史
 function lookupNetValue(date: string) {
   if (!date) return
-  const today = new Date().toLocaleDateString('en-CA') // 本地时间 YYYY-MM-DD
+  const today = getCalendarDateStr() // 本地时间 YYYY-MM-DD
 
   // 今天或未来日期 → 使用实时数据（可能是估值或净值）
   if (date >= today) {
-    if (tradeRealTimeValue > 0) {
-      tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
-      tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
-    }
+    applyRealtimeValue()
     return
   }
 
@@ -406,10 +380,9 @@ function onTradeDateChange(newDate: string) {
   if (newDate && tradeNetValueHistory.value.length > 0) {
     lookupNetValue(newDate)
   }
-  const today = new Date().toLocaleDateString('en-CA') // 本地时间
-  if (newDate >= today && tradeRealTimeValue > 0) {
-    tradeFormData.value.netValue = tradeRealTimeValue.toFixed(4)
-    tradeFormData.value.isEstimate = tradeRealTimeIsEstimate
+  const today = getCalendarDateStr() // 本地时间
+  if (newDate >= today) {
+    applyRealtimeValue()
   }
 }
 
@@ -428,7 +401,7 @@ async function submitTrade() {
 
   const amount = parseFloat(tradeFormData.value.amount)
   const netValue = parseFloat(tradeFormData.value.netValue)
-  const date = tradeFormData.value.date || new Date().toLocaleDateString('en-CA') // 本地时间
+  const date = tradeFormData.value.date || getCalendarDateStr() // 本地时间
   const type = tradeFormData.value.type
   const isEstimate = tradeFormData.value.isEstimate
   
@@ -503,7 +476,8 @@ async function submitTrade() {
 }
 
 // 数据状态
-const fundInfo = ref<(FundEstimate & { dataSource?: string; navDate?: string }) | null>(null)
+// [NOTE] dataSource 已废弃仅留作日志排查；「是净值还是估值」一律读 isNav
+const fundInfo = ref<(FundEstimate & { dataSource?: string; navDate?: string; isNav?: boolean }) | null>(null)
 const isLoading = ref(true)
 
 // [WHAT] 趋势预测
@@ -645,6 +619,8 @@ async function loadFundData() {
         gszzl: (holding.todayChange || '0').toString(),
         gztime: holding.valueDate || '',
         dataSource: 'nav',
+        // 快路径：拿的是 holding 上已落地的净值
+        isNav: true,
         navDate: holding.valueDate || ''
       }
       // 同步更新交易记录
@@ -656,8 +632,10 @@ async function loadFundData() {
       fetchFundAccurateData(fundCode.value, isQDII, true).then(accurateData => {
         if (accurateData) {
           // 如果 holdingStore 确认已更新，但 API 返回非 nav，保持 holdingStore 的判断
-          const finalDataSource = holding.isUpdated && accurateData.dataSource !== 'nav' ? 'nav' : accurateData.dataSource
-          const finalCurrentValue = finalDataSource === 'nav' ? accurateData.nav : accurateData.currentValue
+          // [NOTE] 这是历史补丁：holdingStore 已确认本期净值落地时，不允许 API 降级为估值
+          const finalIsNav = holding.isUpdated ? true : accurateData.isNav
+          const finalDataSource = finalIsNav ? 'nav' : accurateData.dataSource
+          const finalCurrentValue = finalIsNav ? accurateData.nav : accurateData.currentValue
           fundInfo.value = {
             fundcode: accurateData.code,
             name: accurateData.name || holding.name,
@@ -666,6 +644,7 @@ async function loadFundData() {
             gszzl: accurateData.dayChange.toString(),
             gztime: accurateData.estimateTime || accurateData.navDate,
             dataSource: finalDataSource,
+            isNav: finalIsNav,
             navDate: accurateData.navDate
           }
           if (accurateData.nav > 0 && accurateData.navDate) {
@@ -690,6 +669,7 @@ async function loadFundData() {
         gszzl: accurateData.dayChange.toString(),
         gztime: accurateData.estimateTime || accurateData.navDate,
         dataSource: accurateData.dataSource,
+        isNav: accurateData.isNav,
         navDate: accurateData.navDate
       }
     } else {
@@ -1090,11 +1070,11 @@ function formatPercent(num: number): string {
             <span class="fund-code">{{ fundInfo?.navDate || '--' }}</span>
             <span class="info-divider">|</span>
             <span class="estimate-tag" :class="isUp ? 'up' : 'down'">
-              {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}
+              {{ fundInfo?.isNav ? '净值' : '估值' }}涨幅 {{ formatPercent(priceChangePercent) }}
             </span>
             <span class="info-divider">|</span>
             <span class="estimate-tag">
-              {{ fundInfo?.dataSource === 'nav' ? '净值' : '估值' }} {{ fundInfo?.gsz ? parseFloat(fundInfo.gsz).toFixed(4) : '--' }}
+              {{ fundInfo?.isNav ? '净值' : '估值' }} {{ fundInfo?.gsz ? parseFloat(fundInfo.gsz).toFixed(4) : '--' }}
             </span>
           </div>
           <div v-if="holdingDetails" class="fund-info-row holding-info-row">

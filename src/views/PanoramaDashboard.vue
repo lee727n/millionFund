@@ -7,11 +7,13 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund } from '@/utils/storage'
+import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund, getPanoramaColWidths, savePanoramaColWidths } from '@/utils/storage'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { useFundValuation } from '@/composables/useFundValuation'
+import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
+import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 
 const router = useRouter()
@@ -32,6 +34,92 @@ watch(flashTick, async () => {
   await nextTick()
   flashActive.value = true
   setTimeout(() => { flashActive.value = false }, 800)
+})
+
+// ============ 列宽拖拽调整 ============
+// [WHAT] 全景大屏三列宽度可拖拽调整，持久化到 localStorage
+// [WHY] 用户需要根据内容多少自由分配各列宽度
+const colWidths = ref<[number, number, number]>(getPanoramaColWidths())
+const draggingResizer = ref<number | null>(null)  // 当前拖拽的分隔条索引 (0=左中之间, 1=中右之间)
+const dragStartX = ref(0)
+const dragStartWidths = ref<[number, number, number]>([0, 0, 0])
+const mainGridRef = ref<HTMLElement | null>(null)
+
+function onResizerMouseDown(e: MouseEvent, index: number) {
+  e.preventDefault()
+  e.stopPropagation()
+  draggingResizer.value = index
+  dragStartX.value = e.clientX
+  dragStartWidths.value = [...colWidths.value]
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onResizerTouchStart(e: TouchEvent, index: number) {
+  e.preventDefault()
+  e.stopPropagation()
+  draggingResizer.value = index
+  dragStartX.value = e.touches[0].clientX
+  dragStartWidths.value = [...colWidths.value]
+}
+
+function onMouseMove(e: MouseEvent) {
+  if (draggingResizer.value === null) return
+  handleDragMove(e.clientX)
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (draggingResizer.value === null) return
+  e.preventDefault()
+  handleDragMove(e.touches[0].clientX)
+}
+
+function handleDragMove(currentX: number) {
+  if (draggingResizer.value === null) return
+  const grid = mainGridRef.value
+  if (!grid) return
+  const gridWidth = grid.clientWidth
+  const deltaPct = ((currentX - dragStartX.value) / gridWidth) * 100
+  const idx = draggingResizer.value
+  // idx=0: 调整 col0 和 col1; idx=1: 调整 col1 和 col2
+  const newW0 = dragStartWidths.value[0]
+  const newW1 = dragStartWidths.value[1]
+  const newW2 = dragStartWidths.value[2]
+  const MIN_WIDTH = 15  // 每列最小 15%
+  if (idx === 0) {
+    // 左列和中列此消彼长
+    const w0 = Math.max(MIN_WIDTH, Math.min(newW0 + deltaPct, 100 - MIN_WIDTH * 2))
+    const w1 = Math.max(MIN_WIDTH, dragStartWidths.value[0] + dragStartWidths.value[1] - w0)
+    colWidths.value = [w0, w1, newW2]
+  } else {
+    // 中列和右列此消彼长
+    const w1 = Math.max(MIN_WIDTH, Math.min(newW1 + deltaPct, 100 - MIN_WIDTH * 2))
+    const w2 = Math.max(MIN_WIDTH, dragStartWidths.value[1] + dragStartWidths.value[2] - w1)
+    colWidths.value = [newW0, w1, w2]
+  }
+}
+
+function onDragEnd() {
+  if (draggingResizer.value !== null) {
+    draggingResizer.value = null
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    savePanoramaColWidths(colWidths.value)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onDragEnd)
+  window.addEventListener('touchmove', onTouchMove, { passive: false })
+  window.addEventListener('touchend', onDragEnd)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onDragEnd)
+  window.removeEventListener('touchmove', onTouchMove)
+  window.removeEventListener('touchend', onDragEnd)
 })
 
 // ============ 交易状态 ============
@@ -177,12 +265,79 @@ const allTradesWithReturn = computed(() => {
     })
 })
 
+// ============ 交易记录时间过滤 ============
+// [WHY] 交易只发生在交易日，用「近N个自然日」过滤会踩坑：
+//       周一选「近3天」= 09-07/09-06/09-05，上周五 09-04 反而被排除，而周末根本没交易。
+//       所以区间一律按「有交易的日期」倒序取前 N 个，工作日/节假日自动对齐。
+const tradeFilter = ref<string>('all')   // 'all' | 'recent3' | 'recent5' | 'prev' | 'YYYY-MM-DD'
+const showTradeFilterMenu = ref(false)
+
+const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+function getWeekdayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return WEEKDAY_CN[new Date(y, m - 1, d).getDay()]
+}
+
+// 实际有交易的日期（倒序）+ 当天条数。只列有数据的日期，避免点到空白日
+const tradeDateStats = computed(() => {
+  const map = new Map<string, number>()
+  allTradesWithReturn.value.forEach(t => {
+    if (!t.date) return
+    map.set(t.date, (map.get(t.date) || 0) + 1)
+  })
+  return Array.from(map.entries())
+    .map(([date, count]) => ({ date, count, weekday: getWeekdayLabel(date) }))
+    .sort((a, b) => b.date.localeCompare(a.date))
+})
+
+// 「上一交易日」= 严格早于今天、且确实有交易的最近一天
+// [WHAT] 周一打开就是上周五；若周五没操作会继续往前找到最近一次有交易的日子
+const prevTradeDate = computed(() => {
+  const today = getCalendarDateStr()
+  return tradeDateStats.value.find(d => d.date < today) || null
+})
+
+const tradeFilterLabel = computed(() => {
+  const f = tradeFilter.value
+  if (f === 'all') return '全部'
+  if (f === 'recent3') return '近3个交易日'
+  if (f === 'recent5') return '近一周'
+  if (f === 'prev') return prevTradeDate.value ? `上一交易日 ${prevTradeDate.value.date.slice(5)}` : '上一交易日'
+  return f
+})
+
+const filteredTrades = computed(() => {
+  const f = tradeFilter.value
+  if (f === 'all') return allTradesWithReturn.value
+  if (f === 'recent3' || f === 'recent5') {
+    const n = f === 'recent3' ? 3 : 5
+    const dates = new Set(tradeDateStats.value.slice(0, n).map(d => d.date))
+    return allTradesWithReturn.value.filter(t => dates.has(t.date))
+  }
+  if (f === 'prev') {
+    return prevTradeDate.value
+      ? allTradesWithReturn.value.filter(t => t.date === prevTradeDate.value!.date)
+      : []
+  }
+  // 精确日期
+  return allTradesWithReturn.value.filter(t => t.date === f)
+})
+
+function selectTradeFilter(value: string) {
+  tradeFilter.value = value
+  showTradeFilterMenu.value = false
+}
+
+function toggleTradeFilterMenu() {
+  showTradeFilterMenu.value = !showTradeFilterMenu.value
+}
+
 // 按基金分组（复用 Trader 逻辑）
 const groupedTrades = computed(() => {
   const holdingCodes = new Set(holdingStore.holdings.map((h: any) => h.code))
   const groups = new Map<string, any>()
 
-  allTradesWithReturn.value.forEach(trade => {
+  filteredTrades.value.forEach(trade => {
     if (!groups.has(trade.code)) {
       const isCleared = !holdingCodes.has(trade.code)
       groups.set(trade.code, {
@@ -462,23 +617,20 @@ async function openTradeDialog() {
     type: 'buy',
     amount: '',
     netValue: holding.currentValue ? holding.currentValue.toFixed(4) : '',
-    date: new Date().toLocaleDateString('en-CA'),
+    date: getCalendarDateStr(),
     isEstimate: true
   }
   showTradeDialog.value = true
   await nextTick()
   try {
-    const data = await fetchFundAccurateData(holding.code, holding.isQDII, true)
-    const shouldUseNav = data.dataSource === 'nav' && data.nav > 0
-    if (shouldUseNav) {
-      tradeFormData.value.netValue = data.nav.toFixed(4)
-      tradeFormData.value.isEstimate = false
-    } else {
-      const v = (data.estimate || data.currentValue || 0)
-      if (v > 0) {
-        tradeFormData.value.netValue = v.toFixed(4)
-        tradeFormData.value.isEstimate = true
-      }
+    // [HOW] 取值的唯一出口：净值/估值判定、是否为最新净值，都由 resolveFundValue 给出
+    const r: FundValueResult = await resolveFundValue(holding.code, holding.isQDII === true, true)
+    // value 为 0 表示「本次不更新」，此时退回净值兜底，不动表单
+    const v = r.hasValue ? r.value : r.nav
+    if (v > 0) {
+      tradeFormData.value.netValue = v.toFixed(4)
+      // 只有「是净值」且「这期净值就是今天的」才算已确认，否则一律按估值提交
+      tradeFormData.value.isEstimate = !r.isConfirmed
     }
   } catch {}
 }
@@ -488,7 +640,7 @@ async function submitTrade() {
   const amount = parseFloat(tradeFormData.value.amount)
   const netValue = parseFloat(tradeFormData.value.netValue)
   const type = tradeFormData.value.type
-  const date = tradeFormData.value.date || new Date().toLocaleDateString('en-CA')
+  const date = tradeFormData.value.date || getCalendarDateStr()
   if (!amount || amount <= 0) return showToast('请输入有效的交易金额')
   if (!netValue || netValue <= 0) return showToast('请输入有效的净值')
   const shares = amount / netValue
@@ -616,7 +768,7 @@ function openAddAITrackingDialog() {
   if (h) {
     newRecord.value.sellCode = h.code
     newRecord.value.sellName = h.name
-    newRecord.value.date = new Date().toLocaleDateString('en-CA')
+    newRecord.value.date = getCalendarDateStr()
   }
   showAddModal.value = true
 }
@@ -639,7 +791,7 @@ async function confirmAddRecord() {
   try {
     let sellName = newRecord.value.sellName, buyName = newRecord.value.buyName
     let sellNav = 0, buyNav = 0, sellNavEstimated = false, buyNavEstimated = false
-    const targetDate = newRecord.value.date || new Date().toLocaleDateString('en-CA')
+    const targetDate = newRecord.value.date || getCalendarDateStr()
     if (newRecord.value.date) {
       const days = Math.ceil((Date.now() - new Date(newRecord.value.date).getTime()) / 86400000) + 10
       const [sellH, buyH] = await Promise.all([
@@ -794,10 +946,10 @@ function getFundNameClass(fund: any): Record<string, boolean> {
       </div>
     </header>
 
-    <!-- ========== 主区域：3 列布局 ========== -->
-    <main class="main-grid">
+    <!-- ========== 主区域：3 列布局（可拖拽调整宽度） ========== -->
+    <main class="main-grid" ref="mainGridRef">
       <!-- ========== 左列：Portfolio ========== -->
-      <section class="col col-portfolio">
+      <section class="col col-portfolio" :style="{ flexBasis: colWidths[0] + '%', flexGrow: 0, flexShrink: 0 }">
         <div class="panel-header">
           <span class="panel-title">💼 Portfolio 持仓</span>
           <span class="panel-sub">共 {{ totalStats.count }} 只 · 市值 {{ fmtMoney(totalStats.marketValue) }}</span>
@@ -874,8 +1026,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <div class="fm-row fm-row-bottom">
                 <div class="fm-row-bottom-left">
                   <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
                   </span>
                   <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
                 </div>
@@ -949,8 +1101,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <div class="fm-row fm-row-bottom">
                 <div class="fm-row-bottom-left">
                   <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
                   </span>
                   <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
                 </div>
@@ -1024,8 +1176,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <div class="fm-row fm-row-bottom">
                 <div class="fm-row-bottom-left">
                   <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
                   </span>
                   <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
                 </div>
@@ -1095,8 +1247,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               <div class="fm-row fm-row-bottom">
                 <div class="fm-row-bottom-left">
                   <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.dataSource === 'nav' ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.dataSource === 'nav' ? '净' : '估' }}
+                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
+                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
                   </span>
                   <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
                 </div>
@@ -1120,8 +1272,16 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div><!-- /col-scroll -->
       </section>
 
+      <!-- 拖拽分隔条 1 -->
+      <div
+        class="col-resizer"
+        :class="{ active: draggingResizer === 0 }"
+        @mousedown="onResizerMouseDown($event, 0)"
+        @touchstart="onResizerTouchStart($event, 0)"
+      ><div class="col-resizer-handle"></div></div>
+
       <!-- ========== 中列：量化观察 + AI追踪 ========== -->
-      <section class="col col-center">
+      <section class="col col-center" :style="{ flexBasis: colWidths[1] + '%', flexGrow: 0, flexShrink: 0 }">
         <!-- 量化观察 -->
         <div class="panel-block">
           <div class="panel-header">
@@ -1198,8 +1358,16 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
       </section>
 
+      <!-- 拖拽分隔条 2 -->
+      <div
+        class="col-resizer"
+        :class="{ active: draggingResizer === 1 }"
+        @mousedown="onResizerMouseDown($event, 1)"
+        @touchstart="onResizerTouchStart($event, 1)"
+      ><div class="col-resizer-handle"></div></div>
+
       <!-- ========== 右列：交易记录 + AI 交易分析 ========== -->
-      <section class="col col-right">
+      <section class="col col-right" :style="{ flexBasis: colWidths[2] + '%', flexGrow: 0, flexShrink: 0 }">
         <!-- AI 交易分析 -->
         <div class="panel-block">
           <div class="panel-header">
@@ -1250,7 +1418,41 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         <div class="panel-block panel-block-trades">
           <div class="panel-header">
             <span class="panel-title">📋 交易记录</span>
-            <span class="panel-sub">{{ allTradesWithReturn.length }} 条 · {{ groupedTrades.length }} 只基金</span>
+            <!-- 时间过滤下拉：按「交易日」而非自然日 -->
+            <div class="trade-filter" @click.stop>
+              <div class="trade-filter-btn" @click="toggleTradeFilterMenu">
+                <span class="tf-label">{{ tradeFilterLabel }}</span>
+                <span class="tf-arrow" :class="{ open: showTradeFilterMenu }">▾</span>
+              </div>
+              <div class="trade-filter-menu" v-if="showTradeFilterMenu" @click.stop>
+                <div class="tf-item" :class="{ active: tradeFilter === 'all' }" @click="selectTradeFilter('all')">全部</div>
+                <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3个交易日</div>
+                <div class="tf-item" :class="{ active: tradeFilter === 'recent5' }" @click="selectTradeFilter('recent5')">近一周</div>
+                <div
+                  class="tf-item tf-prev"
+                  :class="{ active: tradeFilter === 'prev', disabled: !prevTradeDate }"
+                  @click="prevTradeDate && selectTradeFilter('prev')"
+                >
+                  上一交易日
+                  <span class="tf-hint" v-if="prevTradeDate">{{ prevTradeDate.date.slice(5) }} {{ prevTradeDate.weekday }}</span>
+                </div>
+                <div class="tf-divider" v-if="tradeDateStats.length > 0"></div>
+                <div class="tf-scroll">
+                  <div
+                    v-for="d in tradeDateStats"
+                    :key="d.date"
+                    class="tf-item tf-date"
+                    :class="{ active: tradeFilter === d.date }"
+                    @click="selectTradeFilter(d.date)"
+                  >
+                    <span class="tf-date-str">{{ d.date.slice(5) }}</span>
+                    <span class="tf-weekday">{{ d.weekday }}</span>
+                    <span class="tf-count">{{ d.count }}条</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <span class="panel-sub">{{ filteredTrades.length }} 条 · {{ groupedTrades.length }} 只基金</span>
           </div>
           <div class="trade-list grouped" v-if="groupedTrades.length > 0">
             <div 
@@ -1300,6 +1502,9 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
       </section>
     </main>
+
+    <!-- 交易过滤下拉：点击外部关闭 -->
+    <div class="tf-overlay" v-if="showTradeFilterMenu" @click="showTradeFilterMenu = false"></div>
 
     <!-- 长按快捷操作条 -->
     <div
@@ -1790,9 +1995,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 /* ============ 主区域 ============ */
 .main-grid {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 1.2fr;
-  gap: 12px;
+  display: flex;
+  gap: 0;
   padding: 12px;
   min-height: 0;
   overflow: hidden;
@@ -1804,6 +2008,38 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   gap: 12px;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ============ 列拖拽分隔条 ============ */
+.col-resizer {
+  flex: 0 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+}
+
+.col-resizer-handle {
+  width: 3px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--border-light);
+  transition: all 0.2s;
+}
+
+.col-resizer:hover .col-resizer-handle {
+  height: 60px;
+  width: 4px;
+  background: var(--color-primary, #3b82f6);
+}
+
+.col-resizer.active .col-resizer-handle {
+  height: 80%;
+  width: 4px;
+  background: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
 }
 
 /* ============ Panel 通用 ============ */
@@ -2480,6 +2716,131 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 /* 交易记录 */
 .panel-block-trades { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .panel-block-trades .panel-header { flex-shrink: 0; }
+
+/* ============ 交易记录时间过滤下拉 ============ */
+.trade-filter {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.trade-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.trade-filter-btn:hover {
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.tf-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tf-arrow {
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  line-height: 1;
+}
+.tf-arrow.open { transform: rotate(180deg); }
+
+.tf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+}
+
+.trade-filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 9100;
+  min-width: 190px;
+  background: #1e2a3a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 4px;
+  animation: tf-slide-down 0.14s ease-out;
+}
+
+@keyframes tf-slide-down {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tf-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: #cbd5e1;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.tf-item:hover { background: rgba(255, 255, 255, 0.08); }
+.tf-item.active {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+  font-weight: 600;
+}
+.tf-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tf-item.disabled:hover { background: transparent; }
+
+.tf-prev { justify-content: space-between; }
+.tf-hint {
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+.tf-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 2px;
+}
+
+.tf-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.tf-scroll::-webkit-scrollbar { width: 4px; }
+.tf-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.tf-date { justify-content: flex-start; }
+.tf-date-str {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+}
+.tf-weekday {
+  font-size: 10px;
+  color: #64748b;
+}
+.tf-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Consolas, monospace;
+}
 
 /* 交易记录 - 分组卡片风格（Trader 同款） */
 .trade-list.grouped {

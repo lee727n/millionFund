@@ -242,7 +242,7 @@ function getRatioStyle(ratio: number) {
         </div>
         <div class="trend-column">
           <div class="trend-item">
-            <span class="trend-label">{{ fund.dataSource === 'nav' ? '净值' : '估值' }}</span>
+            <span class="trend-label">{{ fund.isNav ? '净值' : '估值' }}</span>
             <span class="trend-value" :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'">
               {{ fund.currentValue?.toFixed(3) || '--' }}
             </span>

@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   TRADES: 'fund_trades',
   T_TRADES: 'fund_t_trades',
   STARRED_FUNDS: 'fund_starred_funds',
+  PANORAMA_COL_WIDTHS: 'panorama_col_widths',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -46,7 +47,8 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.FUND_NET_VALUES,
       STORAGE_KEYS.SOURCE_FILTER,
       STORAGE_KEYS.APP_VERSION,
-      STORAGE_KEYS.STARRED_FUNDS
+      STORAGE_KEYS.STARRED_FUNDS,
+      STORAGE_KEYS.PANORAMA_COL_WIDTHS
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
@@ -525,4 +527,25 @@ export function removeStarredFund(code: string): void {
  */
 export function isStarredFund(code: string): boolean {
   return getStarredFunds().includes(code)
+}
+
+// ========== 全景大屏列宽 ==========
+
+/**
+ * 默认列宽比例（百分比）: 左列 37%, 中列 28%, 右列 35%
+ */
+const DEFAULT_COL_WIDTHS: [number, number, number] = [37, 28, 35]
+
+/**
+ * 获取全景大屏列宽
+ */
+export function getPanoramaColWidths(): [number, number, number] {
+  return getItem<[number, number, number]>(STORAGE_KEYS.PANORAMA_COL_WIDTHS, DEFAULT_COL_WIDTHS)
+}
+
+/**
+ * 保存全景大屏列宽
+ */
+export function savePanoramaColWidths(widths: [number, number, number]): void {
+  setItem(STORAGE_KEYS.PANORAMA_COL_WIDTHS, widths)
 }

@@ -9,7 +9,10 @@
 > 任何以这些前缀开头的「用户数据」key 都必须登记进 `preservedKeys`，否则每次版本更新都会被静默删除。
 > 已发生事故：`fund_t_trades`（做T记录）因漏登记被清空，2026-09-05 修复。
 
-当前白名单：watchlist / holdings / trades / **t_trades** / net_values / source_filter / app_version / starred_funds。
+当前白名单：watchlist / holdings / trades / **t_trades** / net_values / source_filter / app_version / starred_funds / **panorama_col_widths**。
+
+> 补充：新增 UI 偏好类 key 时，**优先选不以那些前缀开头的名字**（如 `panorama_col_widths`），
+> 这样即使漏登记也不会被误删；但仍然登记进白名单，双保险。
 
 ## 数据结构
 
@@ -79,6 +82,29 @@ Detail/TradeCenter 的交易守卫失效 → `updateTradesByCode` 对 estimated 
 配套改动：`fundFast.ts` 净值历史缓存判定窗口由 `hour >= 9 && hour < 18` 放宽为 `hour < 18`
 （改成自然日后 `latestDate === today` 在早间永不成立，不放宽会导致 0~9 点白白穿透缓存重新请求）。
 `vue-tsc -b` 退出码 0；核对脚本 `/tmp/verify-navdate-final.mjs`。
+
+## 全景大屏（PanoramaDashboard.vue）三列可拖拽调宽（2026-09-07 已实现）
+
+`.main-grid` 已从 CSS grid（`grid-template-columns: 1.3fr 1fr 1.2fr` 写死）改为 **flex + 百分比 flexBasis**：
+每列 `:style="{ flexBasis: colWidths[i] + '%', flexGrow: 0, flexShrink: 0 }"`，列间插 2 个 `.col-resizer`
+（12px 宽占位，代替原来 grid 的 12px gap，所以视觉间距不变；内含 3px 竖条 handle，hover 变蓝加长）。
+
+- 拖拽用「相邻两列和守恒」：idx=0 时 `w1 = start[0]+start[1]-w0`；idx=1 时 `w2 = start[1]+start[2]-w1`；另一列不动。总和恒 100%，`MIN_WIDTH = 15%`。
+- 宽度持久化在 `panorama_col_widths`，默认 `[37, 28, 35]`（等价原 1.3:1:1.2）。
+- 鼠标 + 触摸都支持；touchmove 必须 `{ passive: false }` 才能 preventDefault。
+- 文件里有**两组** `onMounted`/`onUnmounted`（新增的监听拖拽事件那组在前面）—— Vue 3 允许多次调用同一生命周期钩子并按序执行，**不是 bug**，别去合并。
+
+## 交易记录时间过滤：一律按「交易日」，不用自然日（2026-09-07 定下的口径）
+
+**背景**：用户周一想看上周五的交易，发现「近3天（自然日）」把周五排除了——因为周六周日
+被算进区间却不可能有交易。
+
+> **规则**：任何「近 N 天」的交易过滤，都基于「实际有交易的日期」倒序取前 N 个（见
+> `PanoramaDashboard.vue` 的 `tradeDateStats`）。**不要**用 `Date.now() - N*86400000` 算自然日区间。
+> 这样周末/节假日自动对齐，还不用查节假日表。
+
+「上一交易日」= 严格 `< 今天` 且有交易的最近一天，周一打开就是上周五。
+这套口径以后做交易中心、持仓页的交易过滤时应保持一致。
 
 ## 构建环境坑
 
