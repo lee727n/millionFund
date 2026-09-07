@@ -215,11 +215,78 @@ async function refreshData() {
   }
 }
 
-// 筛选后的交易记录
-const filteredTrades = computed(() => {
+// 账户筛选后的交易记录
+const accountFilteredTrades = computed(() => {
   if (!accountFilter.value) return allTrades.value
   return allTrades.value.filter(t => t.source === accountFilter.value)
 })
+
+// ============ 时间过滤（与全景大屏同款口径） ============
+// [WHY] 交易只发生在交易日，用「近N个自然日」过滤会踩坑：
+//       周一选「近3天」= 09-07/09-06/09-05，上周五 09-04 反而被排除，而周末根本没交易。
+//       所以区间一律按「有交易的日期」倒序取前 N 个，周末/节假日自动对齐。
+const tradeFilter = ref<string>('all')   // 'all' | 'recent3' | 'recent5' | 'prev' | 'YYYY-MM-DD'
+const showTradeFilterMenu = ref(false)
+
+const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+function getWeekdayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return WEEKDAY_CN[new Date(y, m - 1, d).getDay()]
+}
+
+// 实际有交易的日期（倒序）+ 当天条数。基于账户过滤后的结果，
+// 这样切到「支付宝」时日期列表只列支付宝有交易的日子，不会点空
+const tradeDateStats = computed(() => {
+  const map = new Map<string, number>()
+  accountFilteredTrades.value.forEach(t => {
+    if (!t.date) return
+    map.set(t.date, (map.get(t.date) || 0) + 1)
+  })
+  return Array.from(map.entries())
+    .map(([date, count]) => ({ date, count, weekday: getWeekdayLabel(date) }))
+    .sort((a, b) => b.date.localeCompare(a.date))
+})
+
+// 「上一交易日」= 严格早于今天、且确实有交易的最近一天（周一打开就是上周五）
+const prevTradeDate = computed(() => {
+  const today = getCalendarDateStr()
+  return tradeDateStats.value.find(d => d.date < today) || null
+})
+
+const tradeFilterLabel = computed(() => {
+  const f = tradeFilter.value
+  if (f === 'all') return '全部'
+  if (f === 'recent3') return '近3个交易日'
+  if (f === 'recent5') return '近一周'
+  if (f === 'prev') return prevTradeDate.value ? `上一交易日 ${prevTradeDate.value.date.slice(5)}` : '上一交易日'
+  return f
+})
+
+// 最终列表 = 账户过滤 + 时间过滤（两者叠加）
+const filteredTrades = computed(() => {
+  const f = tradeFilter.value
+  const list = accountFilteredTrades.value
+  if (f === 'all') return list
+  if (f === 'recent3' || f === 'recent5') {
+    const n = f === 'recent3' ? 3 : 5
+    const dates = new Set(tradeDateStats.value.slice(0, n).map(d => d.date))
+    return list.filter(t => dates.has(t.date))
+  }
+  if (f === 'prev') {
+    return prevTradeDate.value ? list.filter(t => t.date === prevTradeDate.value!.date) : []
+  }
+  // 精确日期
+  return list.filter(t => t.date === f)
+})
+
+function selectTradeFilter(value: string) {
+  tradeFilter.value = value
+  showTradeFilterMenu.value = false
+}
+
+function toggleTradeFilterMenu() {
+  showTradeFilterMenu.value = !showTradeFilterMenu.value
+}
 
 // 按基金分组的交易记录
 const groupedTrades = computed(() => {
@@ -343,6 +410,15 @@ async function deleteTrade(trade: TradeRecord) {
 // 切换账户筛选（再次点击取消筛选）
 function toggleAccountFilter(account: string) {
   accountFilter.value = accountFilter.value === account ? '' : account
+}
+
+// [WHAT] 账户 + 时间任一生效即为「筛选中」，用于区分「真没数据」和「筛选后为空」
+const hasAnyFilter = computed(() => !!accountFilter.value || tradeFilter.value !== 'all')
+
+function clearAllFilters() {
+  accountFilter.value = ''
+  tradeFilter.value = 'all'
+  showTradeFilterMenu.value = false
 }
 
 // ========== T交易归档展示 ==========
@@ -480,6 +556,40 @@ onMounted(() => {
         >
           <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
         </button>
+        <!-- 时间过滤下拉：按「交易日」而非自然日 -->
+        <div class="trade-filter" @click.stop>
+          <div class="trade-filter-btn" @click="toggleTradeFilterMenu">
+            <span class="tf-label">{{ tradeFilterLabel }}</span>
+            <span class="tf-arrow" :class="{ open: showTradeFilterMenu }">▾</span>
+          </div>
+          <div class="trade-filter-menu" v-if="showTradeFilterMenu" @click.stop>
+            <div class="tf-item" :class="{ active: tradeFilter === 'all' }" @click="selectTradeFilter('all')">全部</div>
+            <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3个交易日</div>
+            <div class="tf-item" :class="{ active: tradeFilter === 'recent5' }" @click="selectTradeFilter('recent5')">近一周</div>
+            <div
+              class="tf-item tf-prev"
+              :class="{ active: tradeFilter === 'prev', disabled: !prevTradeDate }"
+              @click="prevTradeDate && selectTradeFilter('prev')"
+            >
+              上一交易日
+              <span class="tf-hint" v-if="prevTradeDate">{{ prevTradeDate.date.slice(5) }} {{ prevTradeDate.weekday }}</span>
+            </div>
+            <div class="tf-divider" v-if="tradeDateStats.length > 0"></div>
+            <div class="tf-scroll">
+              <div
+                v-for="d in tradeDateStats"
+                :key="d.date"
+                class="tf-item tf-date"
+                :class="{ active: tradeFilter === d.date }"
+                @click="selectTradeFilter(d.date)"
+              >
+                <span class="tf-date-str">{{ d.date.slice(5) }}</span>
+                <span class="tf-weekday">{{ d.weekday }}</span>
+                <span class="tf-count">{{ d.count }}条</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="header-right">
         <button 
@@ -596,17 +706,22 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 交易过滤下拉：点击外部关闭 -->
+    <div class="tf-overlay" v-if="showTradeFilterMenu" @click="showTradeFilterMenu = false"></div>
+
     <!-- 加载状态 -->
     <div v-if="loading && allTrades.length === 0" class="loading-state">
       <div class="loading-spinner"></div>
       <span>加载中...</span>
     </div>
 
-    <!-- 空状态 -->
+    <!-- 空状态：区分「真没数据」和「筛选后为空」 -->
     <div v-else-if="groupedTrades.length === 0" class="empty-state">
       <div class="empty-icon">📝</div>
-      <div class="empty-text">暂无交易记录</div>
-      <div class="empty-hint">在首页或详情页点击「交易」按钮开始记录</div>
+      <div class="empty-text">{{ hasAnyFilter ? '当前筛选下没有交易' : '暂无交易记录' }}</div>
+      <div class="empty-hint" v-if="hasAnyFilter">换个时间范围，或清除筛选看看</div>
+      <div class="empty-hint" v-else>在首页或详情页点击「交易」按钮开始记录</div>
+      <button v-if="hasAnyFilter" class="clear-filter-btn" @click="clearAllFilters">清除筛选</button>
     </div>
 
     <!-- 基金分组卡片 -->
@@ -814,6 +929,132 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
+/* ============ 时间过滤下拉（按交易日，与全景大屏同款） ============ */
+.trade-filter {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.trade-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.trade-filter-btn:hover {
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.tf-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tf-arrow {
+  font-size: 9px;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+  line-height: 1;
+}
+.tf-arrow.open { transform: rotate(180deg); }
+
+/* 本页无其它 z-index 使用，900/910 足够且不遮挡 Vant 弹窗 */
+.tf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+
+.trade-filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 910;
+  min-width: 190px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  animation: tf-slide-down 0.14s ease-out;
+}
+
+@keyframes tf-slide-down {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tf-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--text-primary);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.tf-item:hover { background: var(--bg-secondary); }
+.tf-item.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--color-primary, #3b82f6);
+  font-weight: 600;
+}
+.tf-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tf-item.disabled:hover { background: transparent; }
+
+.tf-prev { justify-content: space-between; }
+.tf-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+.tf-divider {
+  height: 1px;
+  background: var(--border-color, #e0e0e0);
+  margin: 4px 2px;
+}
+
+.tf-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.tf-scroll::-webkit-scrollbar { width: 4px; }
+.tf-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-color, #e0e0e0);
+  border-radius: 2px;
+}
+
+.tf-date { justify-content: flex-start; }
+.tf-date-str {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+}
+.tf-weekday {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.tf-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
 /* 筛选按钮 */
 .filter-btn {
   display: flex;
@@ -868,6 +1109,22 @@ onMounted(() => {
 
 .empty-hint {
   font-size: 12px;
+}
+
+.clear-filter-btn {
+  margin-top: 12px;
+  padding: 7px 18px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.clear-filter-btn:hover {
+  border-color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
 }
 
 .loading-spinner {

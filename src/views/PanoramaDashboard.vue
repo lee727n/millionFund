@@ -1377,23 +1377,13 @@ function getFundNameClass(fund: any): Record<string, boolean> {
           </div>
 
           <!-- 汇总统计 -->
+          <!-- 只保留待处理信号数，压成一行（累计盈亏/最佳/最差已移除，省空间给信号列表） -->
           <div class="ai-summary">
-            <div class="ai-stat" :class="aiAnalysis.summary.totalPnL >= 0 ? 'up' : 'down'">
-              <span class="ai-stat-value">{{ aiAnalysis.summary.totalPnL >= 0 ? '+' : '' }}{{ fmtMoney(aiAnalysis.summary.totalPnL) }}</span>
-              <span class="ai-stat-label">累计盈亏</span>
-            </div>
-            <div class="ai-stat" v-if="aiAnalysis.summary.bestTrade">
-              <span class="ai-stat-value up">{{ aiAnalysis.summary.bestTrade.return.toFixed(1) }}%</span>
-              <span class="ai-stat-label">最佳 {{ (aiAnalysis.summary.bestTrade.name || '').slice(0, 6) }}</span>
-            </div>
-            <div class="ai-stat" v-if="aiAnalysis.summary.worstTrade">
-              <span class="ai-stat-value down">{{ aiAnalysis.summary.worstTrade.return.toFixed(1) }}%</span>
-              <span class="ai-stat-label">最差 {{ (aiAnalysis.summary.worstTrade.name || '').slice(0, 6) }}</span>
-            </div>
-            <div class="ai-stat">
-              <span class="ai-stat-value">{{ aiAnalysis.signals.length }}</span>
-              <span class="ai-stat-label">待处理信号</span>
-            </div>
+            <span class="ai-summary-label">待处理信号</span>
+            <span
+              class="ai-summary-count"
+              :class="{ 'has-signal': aiAnalysis.signals.length > 0 }"
+            >{{ aiAnalysis.signals.length }}</span>
           </div>
 
           <!-- 信号列表 -->
@@ -1825,7 +1815,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .observe-added.up,
 .track-change-item.up,
 .track-diff.up,
-.ai-stat-value.up,
 .signal-score.up,
 .trade-return.up,
 .fm-today.up {
@@ -1839,7 +1828,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .observe-added.down,
 .track-change-item.down,
 .track-diff.down,
-.ai-stat-value.down,
 .signal-score.down,
 .trade-return.down,
 .fm-added.down,
@@ -2636,33 +2624,40 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 /* AI 交易分析 */
+/* 一行式：左边标签，右边数字徽章 */
 .ai-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.ai-stat {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 4px;
-  background: var(--bg-primary);
-  border-radius: 5px;
+  justify-content: space-between;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
 }
 
-.ai-stat-value {
+.ai-summary-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 无信号=灰扑扑，有信号=琥珀色高亮，一眼分辨 */
+.ai-summary-count {
   font-size: 14px;
   font-weight: 700;
   font-family: 'SF Mono', Consolas, monospace;
+  color: var(--text-secondary);
+  min-width: 26px;
+  text-align: center;
+  padding: 1px 9px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  border: 1px solid transparent;
+  transition: all 0.2s;
 }
 
-.ai-stat-label {
-  font-size: 10px;
-  color: var(--text-muted);
+.ai-summary-count.has-signal {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .ai-signal-list {
