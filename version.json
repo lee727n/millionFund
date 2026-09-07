@@ -1,10 +1,10 @@
 {
-    "version": "3.9.3",
-    "code": 393,
-    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.9.3/fund-app-v3.9.3.apk",
-    "apkUrlCn": "https://gitee.com/lee727n/millionFund/releases/download/v3.9.3/fund-app-v3.9.3.apk",
-    "updateContent": "- 1.T交易记录\n- 2.AI辅助分析交易记录",
+    "version": "3.9.4",
+    "code": 394,
+    "apkUrl": "https://github.com/lee727n/millionFund/releases/download/v3.9.4/fund-app-v3.9.4.apk",
+    "apkUrlCn": "https://gitee.com/lee727n/millionFund/releases/download/v3.9.4/fund-app-v3.9.4.apk",
+    "updateContent": "- 1.交易记按交易日过滤\n- 2分析交易记录",
     "forceUpdate": false,
     "minSupportVersion": "1.0.0",
-    "publishDate": "2026-09-04"
+    "publishDate": "2026-09-07"
 }
