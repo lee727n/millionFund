@@ -4,21 +4,52 @@
 // [WHAT] 新增：点击显示交易点信息 + 估值显示 + 1分钟自动刷新
 // [DEPS] 复用 OKXChart 的业绩收益率算法和 findDateIndex 容错匹配
 
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { fetchSimpleKLineData, fetchHS300History, fetchFundAccurateData, type SimpleKLineData } from '@/api/fundFast'
 import { getTradesByCode, getTTradesByCode } from '@/utils/storage'
 import { useThemeStore } from '@/stores/theme'
 
+/** 外部传入的实时数据（估值 / 净值） */
+interface MiniKLineRealtime {
+  currentValue: number
+  dayChange: number
+  /** currentValue 用的是净值还是估值 —— 唯一判定出口，等价于 fetchFundAccurateData().isNav */
+  isNav: boolean
+}
+
 // ========== Props ==========
-const props = defineProps<{
+// [FIX] showHS300 默认 true —— Vue 3 对「未传入的 Boolean 类型 prop」会默认 false，
+//       导致 `props.showHS300 !== false` 这个本意「默认开、显式 false 才关」的判断
+//       永远为 false，沪深300 对比线整条不画。必须用 withDefaults 显式给默认值。
+const props = withDefaults(defineProps<{
   fundCode: string
   period?: '1m' | '3m' | '6m' | '1y'
+  /** 是否绘制沪深300 对比线；默认 true，传 false 关闭 */
   showHS300?: boolean
   fundName?: string
   marketValue?: number
   returnRate?: number
   costNavValue?: number
-}>()
+  /**
+   * [WHAT] 父层（如全景大屏）已经拉好的实时数据，传进来就不再自己请求
+   * [WHY] 全景大屏一页十几个图，各自 fetchFundAccurateData 会把请求放大 N 倍，
+   *       而且可能与页面其它模块拿到的估值/净值口径不一致
+   * [EDGE] 传 null / 不传 → 退回组件内部自己拉（独立星标K线页就是这么用）
+   */
+  realtime?: MiniKLineRealtime | null
+  /** dark = 固定深色（独立星标K线页是深色底）；auto = 跟随全局主题（全景大屏深浅色都要能看） */
+  colorScheme?: 'dark' | 'auto'
+  /**
+   * [WHAT] 右上角被父层悬浮按钮（「详情 / 移除」）占掉的宽度，px
+   * [WHY] 信息条和 Y 轴顶部刻度原来都顶到最右边，正好被按钮盖住。
+   *       组件自己不知道父层盖了几个按钮，所以由父层（StarKLinePanel）算好传进来；
+   *       传 0 / 不传 = 右上角没东西，按原样画满。
+   */
+  topRightReserve?: number
+}>(), {
+  showHS300: true,
+  topRightReserve: 0,
+})
 
 // ========== 常量 ==========
 const PERIOD_DAYS: Record<string, number> = {
@@ -29,7 +60,21 @@ const DEFAULT_PERIOD = '3m'
 // ========== 主题 ==========
 const themeStore = useThemeStore()
 function getColors() {
-  // [FIX] 强制深色配色，因为 StarKLine 页面是深色背景
+  const isLight = props.colorScheme === 'auto' && themeStore?.actualTheme === 'light'
+  if (isLight) {
+    return {
+      bgPrimary: '#ffffff',
+      textPrimary: '#1f2329',
+      textSecondary: '#8b939e',
+      gridColor: '#eef0f3',
+      borderColor: '#dfe3e8',
+      upColor: '#f6465d',
+      downColor: '#0ecb81',
+      // 白底上 #f0b90b 偏浅看不清，压深一档
+      hs300Color: '#c98a00',
+    }
+  }
+  // 默认深色：StarKLine 页面是深色背景
   return {
     bgPrimary: '#0b0e11',
     textPrimary: '#eaecef',
@@ -38,6 +83,7 @@ function getColors() {
     borderColor: '#2b3139',
     upColor: '#f6465d',
     downColor: '#0ecb81',
+    hs300Color: '#f0b90b',
   }
 }
 
@@ -62,6 +108,10 @@ const realtimeData = ref<{
   isNav: boolean
 } | null>(null)
 
+// [WHAT] 实际采用的实时数据：外部传入优先，没传才用自己拉的
+// [WHY] 组件内部所有绘制点只认 rt，避免「外部数据」和「自取数据」两套分支各写一遍
+const rt = computed(() => props.realtime ?? realtimeData.value)
+
 // ========== 点击交互 ==========
 const clickedPoint = ref<{ x: number; y: number; data: any } | null>(null)
 
@@ -69,6 +119,42 @@ const clickedPoint = ref<{ x: number; y: number; data: any } | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // ========== 工具函数 ==========
+
+/** [WHAT] 悬浮按钮的高度（StarKLinePanel 的 .skp-ctrl-btn 22px + 2px 外边距），用于判断 Y 轴顶部刻度是否被压住 */
+const RESERVE_BOTTOM = 26
+/** [WHAT] 单行排版时给基金名留的最小宽度；右侧值排完还不够就整段不画，绝不压字 */
+const MIN_NAME_WIDTH = 34
+
+/**
+ * [WHAT] 顶部信息条的排版：单行还是两行、信息条多高、画布 padding
+ * [WHY] 原来 drawChart 和 handleCanvasClick 各写一份 padding 计算，改一处忘一处坐标就对不上；
+ *       抽出来两边共用，点击命中判定和绘制永远一致
+ * [HOW] 窄图（手机 2 列 / 全景列）一行塞不下「名称 + 涨跌幅 + 累计涨幅」会互相压字，
+ *       图够高时拆两行：基金名独占第一行，涨跌幅 / 累计涨幅放第二行
+ */
+function computeLayout(width: number, height: number) {
+  const hasInfo = !!props.fundName || props.marketValue != null || props.returnRate != null
+  const compact = width < 280
+  const twoLineHeader = hasInfo && compact && height >= 130
+  const infoBarHeight = hasInfo ? (twoLineHeader ? 26 : 14) : 0
+  const padding = { top: 2 + infoBarHeight, right: 40, bottom: 16, left: 4 }
+  return { hasInfo, twoLineHeader, infoBarHeight, padding }
+}
+
+/** [WHAT] 按像素宽度截断文本，超长加省略号（canvas 没有 text-overflow，只能二分找能放下的最长前缀） */
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (maxWidth <= 10) return ''
+  if (ctx.measureText(text).width <= maxWidth) return text
+  let lo = 0
+  let hi = text.length
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid
+    else hi = mid - 1
+  }
+  return lo > 0 ? text.slice(0, lo) + '…' : ''
+}
+
 function findDateIndex(data: { time: string }[], targetDate: string): number {
   if (!targetDate || data.length === 0) return -1
   const strictIdx = data.findIndex(d => d.time === targetDate)
@@ -138,6 +224,13 @@ function getPerformanceData(filtered: SimpleKLineData[]): PerfPoint[] {
 }
 
 // ========== 数据加载 ==========
+/** HS300 返回值是「新->旧」，这里转成图表要的「旧->新」 */
+function toHS300Points(records: { date: string; netValue: number }[]) {
+  return records.map(item => ({ time: item.date, value: item.netValue })).reverse()
+}
+
+let retryTimer: number | null = null
+
 async function loadData() {
   if (!props.fundCode) return
   isLoading.value = true
@@ -149,7 +242,20 @@ async function loadData() {
     const kline = await fetchSimpleKLineData(props.fundCode, 400)
     const hs300 = await fetchHS300History(400)
     rawData.value = kline
-    hs300Data.value = hs300.map(item => ({ time: item.date, value: item.netValue })).reverse()
+    hs300Data.value = toHS300Points(hs300)
+
+    // [EDGE] 拿不到沪深300（脚本超时/被别的请求挤掉）时补一次，否则对比线整条消失
+    if (hs300.length === 0) {
+      console.warn('[MiniKLineChart] 沪深300数据为空，对比线不显示:', props.fundCode)
+      retryTimer = window.setTimeout(async () => {
+        const retry = await fetchHS300History(400)
+        if (retry.length > 0) {
+          hs300Data.value = toHS300Points(retry)
+          await nextTick()
+          drawChart()
+        }
+      }, 2000)
+    }
 
     await nextTick()
     drawChart()
@@ -165,6 +271,8 @@ async function loadData() {
 // [FIX] 参考 Detail 逻辑：调用 fetchFundAccurateData
 async function loadRealtime() {
   if (!props.fundCode) return
+  // [WHAT] 外部已给实时数据（全景大屏）时不再自己请求，避免重复拉取
+  if (props.realtime) return
   try {
     const data = await fetchFundAccurateData(props.fundCode)
     // [DEBUG] 调试日志
@@ -202,12 +310,10 @@ function handleCanvasClick(e: MouseEvent) {
   const perfData = getPerformanceData(filtered)
   if (perfData.length === 0) return
 
-  // 计算图表区域
+  // 计算图表区域（与 drawChart 共用同一套排版，命中判定才不会和画出来的位置错开）
   const width = rect.width
   const height = rect.height
-  const hasInfo = props.fundName || props.marketValue !== undefined
-  const infoBarHeight = hasInfo ? 14 : 0
-  const padding = { top: 2 + infoBarHeight, right: 40, bottom: 16, left: 4 }
+  const { padding } = computeLayout(width, height)
   const mainHeight = height - padding.top - padding.bottom
   const chartWidth = width - padding.left - padding.right
 
@@ -327,9 +433,7 @@ function drawChart() {
   const width = rect.width
   const height = rect.height
   // [FIX] 紧凑布局：padding 大幅缩小，让更多空间留给曲线
-  const hasInfo = props.fundName || props.marketValue !== undefined
-  const infoBarHeight = hasInfo ? 14 : 0
-  const padding = { top: 2 + infoBarHeight, right: 40, bottom: 16, left: 4 }
+  const { hasInfo, twoLineHeader, infoBarHeight, padding } = computeLayout(width, height)
   const mainHeight = height - padding.top - padding.bottom
   const chartWidth = width - padding.left - padding.right
   const colors = getColors()
@@ -339,44 +443,75 @@ function drawChart() {
   ctx.fillRect(0, 0, width, height)
 
   // ========== 顶部信息条 ==========
+  // [FIX] 原来是「名称左 / 涨跌幅居中 / 市值偏右 / 收益率最右」四组死坐标：
+  //       窄图（手机 2 列 186px、全景列 ~145px）上名称会和居中的涨跌幅压字，
+  //       收益率又正好落在右上角「详情 / 移除」按钮底下。
+  //       现在改成：右侧的量按 measureText 实际宽度从右往左排（右边界让开悬浮按钮），
+  //       基金名拿剩下的空间并按像素截断；放不下就直接不画，宁缺勿重叠。
   if (hasInfo) {
-    // 基金名称（代码）
+    const reserve = props.topRightReserve || 0
+    const rightLimit = width - 2 - reserve
+    // [WHAT] 窄图上省掉「净值 / 估值」后缀（约 26px），把空间让给基金名
+    const compact = width < 280
+    const suffix = compact ? '' : (rt.value ? (rt.value.isNav ? ' 净值' : ' 估值') : '')
+
+    // 右对齐的量：累计收益率 → 市值 → 当日涨跌幅（从右往左依次排）
+    const rightItems: { text: string; color: string; font: string }[] = []
+    if (props.returnRate !== undefined && props.returnRate !== null) {
+      rightItems.push({
+        text: `${props.returnRate >= 0 ? '+' : ''}${props.returnRate.toFixed(2)}%`,
+        color: props.returnRate >= 0 ? colors.upColor : colors.downColor,
+        font: 'bold 9px Arial',
+      })
+    }
+    if (props.marketValue !== undefined && props.marketValue !== null) {
+      rightItems.push({
+        text: `¥${props.marketValue.toFixed(0)}`,
+        color: colors.textSecondary,
+        font: '9px Arial',
+      })
+    }
+    // [HOW] isNav 由数据生产方（fetchFundAccurateData / useFundValuation）统一判定，此处只消费
+    if (rt.value && rt.value.dayChange !== undefined) {
+      const dayChange = rt.value.dayChange
+      rightItems.push({
+        text: `${dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}%${suffix}`,
+        color: dayChange >= 0 ? colors.upColor : colors.downColor,
+        font: 'bold 10px Arial',
+      })
+    }
+
+    // 先量后画：两行时名称独占第一行（整行宽），单行时只拿右侧排完剩下的空间
+    const GAP = 6
+    const placed: { text: string; color: string; font: string; x: number }[] = []
+    let cursor = rightLimit
+    for (const it of rightItems) {
+      ctx.font = it.font
+      const w = ctx.measureText(it.text).width
+      if (!twoLineHeader && cursor - w - padding.left < MIN_NAME_WIDTH) break // 放不下就整段不画
+      placed.push({ ...it, x: cursor })
+      cursor = cursor - w - GAP
+    }
+    const nameMax = twoLineHeader
+      ? rightLimit - padding.left - 2
+      : Math.max(0, cursor - padding.left - 2)
+
+    // 基金名称（代码兜底）
     ctx.fillStyle = colors.textPrimary
     ctx.font = 'bold 10px Arial'
     ctx.textAlign = 'left'
-    const displayName = (props.fundName || props.fundCode).slice(0, 8)
-    ctx.fillText(displayName, padding.left, infoBarHeight - 3)
+    ctx.fillText(
+      ellipsize(ctx, props.fundName || props.fundCode, nameMax),
+      padding.left,
+      twoLineHeader ? 11 : infoBarHeight - 3
+    )
 
-    // 当天涨跌幅（中间位置）
-    // [HOW] isNav 由 fetchFundAccurateData 统一判定，不再用 dataSource 二次推导
-    if (realtimeData.value && realtimeData.value.dayChange !== undefined) {
-      const isNav = realtimeData.value.isNav
-      const dayChange = realtimeData.value.dayChange
-      const changeColor = dayChange >= 0 ? colors.upColor : colors.downColor
-      const changeStr = `${dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}% ${isNav ? '净值' : '估值'}`
-      ctx.fillStyle = changeColor
-      ctx.font = 'bold 10px Arial'
-      ctx.textAlign = 'center'
-      ctx.fillText(changeStr, width / 2, infoBarHeight - 3)
-    }
-
-    // 持仓市值
-    if (props.marketValue !== undefined && props.marketValue !== null) {
-      const mvStr = `¥${props.marketValue.toFixed(0)}`
-      ctx.fillStyle = colors.textSecondary
-      ctx.font = '9px Arial'
-      ctx.textAlign = 'right'
-      ctx.fillText(mvStr, width - padding.right - 40, infoBarHeight - 3)
-    }
-
-    // 收益率
-    if (props.returnRate !== undefined && props.returnRate !== null) {
-      const rateColor = props.returnRate >= 0 ? colors.upColor : colors.downColor
-      const rateStr = `${props.returnRate >= 0 ? '+' : ''}${props.returnRate.toFixed(2)}%`
-      ctx.fillStyle = rateColor
-      ctx.font = 'bold 9px Arial'
-      ctx.textAlign = 'right'
-      ctx.fillText(rateStr, width - padding.left, infoBarHeight - 3)
+    // 右侧的量
+    ctx.textAlign = 'right'
+    for (const it of placed) {
+      ctx.font = it.font
+      ctx.fillStyle = it.color
+      ctx.fillText(it.text, it.x, twoLineHeader ? 23 : infoBarHeight - 3)
     }
   }
 
@@ -396,7 +531,7 @@ function drawChart() {
   // [FIX] 延伸点的收益率必须相对于 filtered[0].value 计算，与 getPerformanceData 基准一致
   //       不能用 lastPoint.value，否则 Y 坐标完全错误（Detail 页面也是以第一个点为基准）
   let extendedPerfData = perfData
-  if (realtimeData.value && realtimeData.value.currentValue > 0) {
+  if (rt.value && rt.value.currentValue > 0) {
     const today = new Date()
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     
@@ -405,7 +540,7 @@ function drawChart() {
     
     if (lastDate !== todayStr) {
       const fundFirstValue = filtered[0]?.value || 1
-      const fundReturn = ((realtimeData.value.currentValue - fundFirstValue) / fundFirstValue) * 100
+      const fundReturn = ((rt.value.currentValue - fundFirstValue) / fundFirstValue) * 100
       
       extendedPerfData = [...perfData, {
         time: todayStr,
@@ -440,11 +575,19 @@ function drawChart() {
   ctx.fillStyle = colors.textSecondary
   ctx.font = '8px Arial'
   ctx.textAlign = 'left'
+  const reserve = props.topRightReserve || 0
   for (let i = 0; i <= 4; i++) {
     const r = maxR - range * i / 4
     const y = toY(r)
     ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(width - padding.right, y); ctx.stroke()
-    ctx.fillText(`${r.toFixed(1)}%`, width - padding.right + 3, y + 3)
+    // [FIX] 最上面那个刻度（累计涨幅）正好落在右上角「移除」按钮底下 → 改成右对齐并左移让开
+    if (reserve > 0 && y < RESERVE_BOTTOM) {
+      ctx.textAlign = 'right'
+      ctx.fillText(`${r.toFixed(1)}%`, width - reserve - 2, y + 3)
+      ctx.textAlign = 'left'
+    } else {
+      ctx.fillText(`${r.toFixed(1)}%`, width - padding.right + 3, y + 3)
+    }
   }
 
   // ========== 0% 基准线 ==========
@@ -491,18 +634,22 @@ function drawChart() {
     ctx.stroke()
   }
 
-  // ========== 沪深300 曲线（灰色虚线） ==========
+  // ========== 沪深300 曲线 ==========
+  // [FIX] 原来是「灰色半透明虚线」，小图里基本看不见，用户以为没画。
+  //       改成和 Detail 页 OKXChart 一致的黄色实线（浅色主题压深一档保证可读）
   if (showHS300Line) {
-    ctx.strokeStyle = colors.textSecondary + '80'; ctx.lineWidth = 1; ctx.setLineDash([4, 3])
+    ctx.strokeStyle = colors.hs300Color
+    ctx.lineWidth = 1.3
+    ctx.setLineDash([])
     ctx.beginPath()
     let started = false
     for (let i = 0; i < perfData.length; i++) {
       const p = perfData[i]
-      if (isNaN(p.hs300Return)) continue
+      if (!p || isNaN(p.hs300Return)) continue
       const x = toX(i), y = toY(p.hs300Return)
       if (!started) { ctx.moveTo(x, y); started = true } else { ctx.lineTo(x, y) }
     }
-    ctx.stroke(); ctx.setLineDash([])
+    if (started) ctx.stroke()
   }
 
   // ========== X轴日期标签 ==========
@@ -723,6 +870,11 @@ watch(() => props.fundCode, () => {
 })
 watch(() => props.period, () => { nextTick(drawChart) })
 watch(() => themeStore?.actualTheme, () => { nextTick(drawChart) })
+// [WHAT] 外部实时数据变化就重绘；外部撤走数据（变 null）时补一次自取，兜底不空白
+watch(() => props.realtime, (val) => {
+  if (val) nextTick(drawChart)
+  else if (!realtimeData.value) loadRealtime()
+})
 // [FIX] 监听展示 props 变化时重绘（store 异步加载完成后 props 更新）
 // 必须用数组形式监听每个 prop，不能用 () => [props.a, props.b] 因为数组引用不变
 watch(
@@ -740,6 +892,10 @@ onMounted(() => {
 })
 onUnmounted(() => {
   ro?.disconnect()
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
   if (refreshTimer) {
     clearInterval(refreshTimer)
     refreshTimer = null
@@ -782,7 +938,8 @@ onUnmounted(() => {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 220px;
+  /* [WHAT] 用 CSS 变量包一层：全景大屏列里放的是小图，需要把默认 220px 压下去 */
+  min-height: var(--mini-kline-min-height, 220px);
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
   overflow: hidden;
@@ -826,7 +983,7 @@ onUnmounted(() => {
 .mini-kline-canvas-wrap {
   flex: 1;
   position: relative;
-  min-height: 180px;
+  min-height: var(--mini-kline-canvas-min-height, 180px);
 }
 
 .mini-kline-canvas {

@@ -7,7 +7,14 @@ import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
-import { getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund, getPanoramaColWidths, savePanoramaColWidths } from '@/utils/storage'
+import {
+  getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund,
+  getPanoramaColWidths, savePanoramaColWidths,
+  getPanoramaAccountOrder, savePanoramaAccountOrder,
+  getPanoramaAccountHeights, savePanoramaAccountHeights,
+  MIN_ACCOUNT_HEIGHT, PANORAMA_ACCOUNT_KEYS, DEFAULT_ACCOUNT_HEIGHTS
+} from '@/utils/storage'
+import StarKLinePanel from '@/components/StarKLinePanel.vue'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
@@ -15,11 +22,16 @@ import { useFundValuation } from '@/composables/useFundValuation'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
+import BackupActions from '@/components/BackupActions.vue'
+import { useTabbar } from '@/composables/useTabbar'
 
 const router = useRouter()
 const holdingStore = useHoldingStore()
 const aiTrackingStore = useAITrackingStore()
 const themeStore = useThemeStore()
+
+// [WHAT] 底部导航开关：全景页默认隐藏，这里给用户一个手动调出来的入口
+const { tabbarForceShow, toggleTabbar } = useTabbar()
 
 // ============ 基础状态 ============
 const indices = ref<MarketIndexSimple[]>([])
@@ -37,20 +49,41 @@ watch(flashTick, async () => {
 })
 
 // ============ 列宽拖拽调整 ============
-// [WHAT] 全景大屏三列宽度可拖拽调整，持久化到 localStorage
+// [WHAT] 全景大屏四列宽度可拖拽调整，持久化到 localStorage
 // [WHY] 用户需要根据内容多少自由分配各列宽度
-const colWidths = ref<[number, number, number]>(getPanoramaColWidths())
-const draggingResizer = ref<number | null>(null)  // 当前拖拽的分隔条索引 (0=左中之间, 1=中右之间)
+// 列序: 0=Portfolio 1=K线全景 2=量化观察+AI追踪 3=交易记录+AI分析
+const COL_COUNT = 4
+const MIN_COL_WIDTH = 12  // 每列最小 12%（4 列最多占 48%，不会互相挤没）
+const RESIZER_WIDTH = 12  // 与 .col-resizer 的 flex-basis 保持一致
+type ColWidths = [number, number, number, number]
+
+const colWidths = ref<ColWidths>(getPanoramaColWidths())
+const draggingResizer = ref<number | null>(null)  // 当前拖拽的分隔条索引 (0=1|2之间, 1=2|3之间, 2=3|4之间)
 const dragStartX = ref(0)
-const dragStartWidths = ref<[number, number, number]>([0, 0, 0])
+const dragStartWidths = ref<ColWidths>([0, 0, 0, 0])
 const mainGridRef = ref<HTMLElement | null>(null)
+
+/**
+ * [WHAT] 列宽按百分比分，但要给中间的分隔条让出固定像素宽
+ * [WHY] 4 列百分比之和恒为 100%，再加上 3 条 12px 的分隔条就会超出容器 36px；
+ *       .main-grid 是 overflow:hidden，超出的部分表现为最后一列右边被切掉
+ * [HOW] 把 36px 平分到 4 列上，每列减掉 9px，总宽正好回到 100%
+ */
+const COL_BASIS_OFFSET = (RESIZER_WIDTH * (COL_COUNT - 1)) / COL_COUNT  // 9px
+function colStyle(index: number) {
+  return {
+    flexBasis: `calc(${colWidths.value[index]}% - ${COL_BASIS_OFFSET}px)`,
+    flexGrow: 0,
+    flexShrink: 0,
+  }
+}
 
 function onResizerMouseDown(e: MouseEvent, index: number) {
   e.preventDefault()
   e.stopPropagation()
   draggingResizer.value = index
   dragStartX.value = e.clientX
-  dragStartWidths.value = [...colWidths.value]
+  dragStartWidths.value = [...colWidths.value] as ColWidths
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
 }
@@ -60,7 +93,7 @@ function onResizerTouchStart(e: TouchEvent, index: number) {
   e.stopPropagation()
   draggingResizer.value = index
   dragStartX.value = e.touches[0].clientX
-  dragStartWidths.value = [...colWidths.value]
+  dragStartWidths.value = [...colWidths.value] as ColWidths
 }
 
 function onMouseMove(e: MouseEvent) {
@@ -78,25 +111,26 @@ function handleDragMove(currentX: number) {
   if (draggingResizer.value === null) return
   const grid = mainGridRef.value
   if (!grid) return
-  const gridWidth = grid.clientWidth
+  // [FIX] 列的百分比是相对「内容区」算的，clamp 掉 padding 后拖拽手感才对得上鼠标位移
+  const cs = window.getComputedStyle(grid)
+  const innerWidth = grid.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+  const gridWidth = innerWidth > 0 ? innerWidth : grid.clientWidth
   const deltaPct = ((currentX - dragStartX.value) / gridWidth) * 100
   const idx = draggingResizer.value
-  // idx=0: 调整 col0 和 col1; idx=1: 调整 col1 和 col2
-  const newW0 = dragStartWidths.value[0]
-  const newW1 = dragStartWidths.value[1]
-  const newW2 = dragStartWidths.value[2]
-  const MIN_WIDTH = 15  // 每列最小 15%
-  if (idx === 0) {
-    // 左列和中列此消彼长
-    const w0 = Math.max(MIN_WIDTH, Math.min(newW0 + deltaPct, 100 - MIN_WIDTH * 2))
-    const w1 = Math.max(MIN_WIDTH, dragStartWidths.value[0] + dragStartWidths.value[1] - w0)
-    colWidths.value = [w0, w1, newW2]
-  } else {
-    // 中列和右列此消彼长
-    const w1 = Math.max(MIN_WIDTH, Math.min(newW1 + deltaPct, 100 - MIN_WIDTH * 2))
-    const w2 = Math.max(MIN_WIDTH, dragStartWidths.value[1] + dragStartWidths.value[2] - w1)
-    colWidths.value = [newW0, w1, w2]
-  }
+  if (idx < 0 || idx >= COL_COUNT - 1) return
+
+  // [WHAT] 只有被拖的分隔条两侧的相邻列此消彼长，两列之和恒定 → 总和永远 100%
+  const start = dragStartWidths.value
+  const pairSum = (start[idx] ?? 0) + (start[idx + 1] ?? 0)
+  // [EDGE] 两列初始和就已经小于 2*MIN 时，取一半，避免上下界交叉
+  const lower = Math.min(MIN_COL_WIDTH, pairSum / 2)
+  const wi = Math.max(lower, Math.min((start[idx] ?? 0) + deltaPct, pairSum - lower))
+  const wj = pairSum - wi
+
+  const next = [...start] as ColWidths
+  next[idx] = +wi.toFixed(2)
+  next[idx + 1] = +wj.toFixed(2)
+  colWidths.value = next
 }
 
 function onDragEnd() {
@@ -165,6 +199,16 @@ function openStarKLine() {
   window.open('/star-kline', '_blank')
 }
 
+// ============ K线全景列 ============
+const klinePanelRef = ref<InstanceType<typeof StarKLinePanel> | null>(null)
+const klinePeriod = ref<'1m' | '3m' | '6m' | '1y'>('3m')
+const klinePeriodTabs = [
+  { key: '1m', label: '1月' },
+  { key: '3m', label: '3月' },
+  { key: '6m', label: '6月' },
+  { key: '1y', label: '1年' },
+] as const
+
 // ============ 基金实时数据缓存（供交易记录 + AI追踪 共用） ============
 // [REFACTOR] 估值拉取 / 缓存 / 收益率计算统一由 useFundValuation 负责，此处不再内联实现
 // 格式: Map<code, { estimate, nav, currentValue, dataSource, dayChange, navDate }>
@@ -231,6 +275,160 @@ const aliStats = computed(() => calcAccountStats(aliHoldings.value))
 const txStats = computed(() => calcAccountStats(txHoldings.value))
 const jdStats = computed(() => calcAccountStats(jdHoldings.value))
 const otherStats = computed(() => calcAccountStats(otherHoldings.value))
+
+// ============ 持仓列：账户区块顺序 + 高度（都能拖） ============
+// [WHY] 原来 4 个账户区块是 4 段几乎一模一样的静态模板，顺序/高度写死。
+//       抽成 accountSections 后：顺序就是数组顺序，高度就是每段的内联 max-height，
+//       两种拖拽都只是改这两个响应式数据，模板零改动。
+const accountOrder = ref<string[]>(getPanoramaAccountOrder())
+const accountHeights = ref<Record<string, number>>(getPanoramaAccountHeights())
+
+/** [WHAT] 取某个账户区块的网格最大高度（px） */
+function accHeight(key: string): number {
+  return accountHeights.value[key] ?? 200
+}
+
+const accountSections = computed(() => {
+  // [NOTE] 图标走文件里已有的 accountIcons / getSourceIconSrc（在下方定义，computed 是惰性求值所以没问题）
+  const meta: Record<string, any> = {
+    ali:   { label: '支付宝',   icon: getSourceIconSrc('ali'), cls: 'block-ali' },
+    TX:    { label: '腾讯',     icon: getSourceIconSrc('TX'),  cls: 'block-tx' },
+    JD:    { label: '京东',     icon: getSourceIconSrc('JD'),  cls: 'block-jd' },
+    other: { label: '其他账户', icon: '',                      cls: '', fallback: '📁' }
+  }
+  const fundsOf: Record<string, any[]> = {
+    ali: aliHoldings.value, TX: txHoldings.value, JD: jdHoldings.value, other: otherHoldings.value
+  }
+  const statsOf: Record<string, any> = {
+    ali: aliStats.value, TX: txStats.value, JD: jdStats.value, other: otherStats.value
+  }
+  // [NOTE] 顺序即 accountOrder；空的账户整段不渲染（和原来的 v-if 行为一致）
+  return accountOrder.value
+    .filter(key => fundsOf[key]?.length > 0)
+    .map(key => ({
+      key,
+      label: meta[key].label,
+      icon: meta[key].icon,
+      fallback: meta[key].fallback || '',
+      cls: meta[key].cls,
+      funds: fundsOf[key],
+      stats: statsOf[key],
+      height: accHeight(key)
+    }))
+})
+
+// ---- 拖拽 1：按住标题左侧 ⋮⋮ 手柄，上下拖动换顺序 ----
+const draggingAccount = ref<string | null>(null)
+
+function onAccountHandleDown(e: PointerEvent, key: string) {
+  e.preventDefault()
+  e.stopPropagation()
+  draggingAccount.value = key
+  document.body.style.cursor = 'grabbing'
+  document.body.style.userSelect = 'none'
+}
+
+// [HOW] 光标落在哪个区块的纵向范围内，就把被拖的块插到那个位置（实时换位，和列宽拖拽同手感）
+function onAccountPointerMove(e: PointerEvent) {
+  if (!draggingAccount.value) return
+  const blocks = Array.from(
+    document.querySelectorAll<HTMLElement>('.col-portfolio .account-block[data-account]')
+  )
+  const hit = blocks.find(b => {
+    const r = b.getBoundingClientRect()
+    return e.clientY >= r.top && e.clientY <= r.bottom
+  })
+  const targetKey = hit?.dataset.account
+  if (!targetKey || targetKey === draggingAccount.value) return
+
+  const arr = [...accountOrder.value]
+  const from = arr.indexOf(draggingAccount.value)
+  const to = arr.indexOf(targetKey)
+  if (from < 0 || to < 0) return
+  arr.splice(from, 1)
+  arr.splice(to, 0, draggingAccount.value)
+  accountOrder.value = arr
+}
+
+// ---- 拖拽 2：拖区块之间的分隔条，改上下两块的显示高度（两者之和守恒）----
+const draggingAccountResizer = ref<number | null>(null)
+let accResizerStartY = 0
+let accResizerStartHeights: Record<string, number> = {}
+
+function onAccountResizerDown(e: PointerEvent, index: number) {
+  e.preventDefault()
+  e.stopPropagation()
+  const list = accountSections.value
+  if (index < 0 || index >= list.length - 1) return
+  draggingAccountResizer.value = index
+  accResizerStartY = e.clientY
+  accResizerStartHeights = {
+    [list[index].key]: accHeight(list[index].key),
+    [list[index + 1].key]: accHeight(list[index + 1].key)
+  }
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onAccountResizerMove(e: PointerEvent) {
+  const idx = draggingAccountResizer.value
+  if (idx === null) return
+  const list = accountSections.value
+  const a = list[idx]
+  const b = list[idx + 1]
+  if (!a || !b) return
+
+  const ha = accResizerStartHeights[a.key] ?? 200
+  const hb = accResizerStartHeights[b.key] ?? 200
+  const sum = ha + hb
+  // [EDGE] 两块的初始和就已经小于 2*MIN 时取一半，避免上下界交叉
+  const lower = Math.min(MIN_ACCOUNT_HEIGHT, sum / 2)
+  const na = Math.max(lower, Math.min(ha + (e.clientY - accResizerStartY), sum - lower))
+
+  accountHeights.value = {
+    ...accountHeights.value,
+    [a.key]: Math.round(na),
+    [b.key]: Math.round(sum - na)
+  }
+}
+
+/** [WHAT] 两种拖拽统一的收尾：清状态 + 落盘 */
+function onAccountDragEnd() {
+  if (draggingAccount.value) {
+    draggingAccount.value = null
+    savePanoramaAccountOrder(accountOrder.value)
+  }
+  if (draggingAccountResizer.value !== null) {
+    draggingAccountResizer.value = null
+    savePanoramaAccountHeights(accountHeights.value)
+  }
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+/** [WHAT] 恢复默认顺序和高度 */
+function resetAccountLayout() {
+  accountOrder.value = [...PANORAMA_ACCOUNT_KEYS]
+  accountHeights.value = { ...DEFAULT_ACCOUNT_HEIGHTS }
+  savePanoramaAccountOrder(accountOrder.value)
+  savePanoramaAccountHeights(accountHeights.value)
+  showToast('已恢复默认布局')
+}
+
+// [WHY] 用 pointer 事件统一鼠标/触摸；两个 move 处理各自判断自己是否在拖拽，互不干扰
+onMounted(() => {
+  window.addEventListener('pointermove', onAccountPointerMove)
+  window.addEventListener('pointermove', onAccountResizerMove)
+  window.addEventListener('pointerup', onAccountDragEnd)
+  window.addEventListener('pointercancel', onAccountDragEnd)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointermove', onAccountPointerMove)
+  window.removeEventListener('pointermove', onAccountResizerMove)
+  window.removeEventListener('pointerup', onAccountDragEnd)
+  window.removeEventListener('pointercancel', onAccountDragEnd)
+})
 
 const totalStats = computed(() => {
   const all = [...aliHoldings.value, ...txHoldings.value, ...jdHoldings.value, ...otherHoldings.value]
@@ -470,6 +668,12 @@ async function refreshAll(forceRefresh: boolean = false) {
     // 3. 刷新指数
     await loadIndices()
 
+    // 4. K线全景列跟着刷
+    // [WHAT] 实时估值已经由上面的 loadFundData → liveFundData 自动带过去（图会自己重绘）；
+    //       这里手动刷新时额外重载一次历史净值曲线，保证「一个 ↻ 全页都刷」
+    // [EDGE] 自动轮询（forceRefresh=false）不重挂载图表，避免每 60s 闪一下
+    if (forceRefresh) klinePanelRef.value?.refresh()
+
     // 5. 触发闪动效果
     flashTick.value++
   } catch (e) {
@@ -508,7 +712,9 @@ onUnmounted(() => {
 
 // ============ 跳转 ============
 function goDetail(code: string) {
-  router.push(`/detail/${code}`)
+  // [WHAT] 新窗口打开详情
+  // [WHY] 全景是常驻工作台，站内跳转会把整个大屏顶掉，回来还得重新加载
+  window.open(`/detail/${code}`, '_blank')
 }
 function goPortfolio() { router.push('/portfolio') }
 function goTradeCenter() { router.push('/trade-center') }
@@ -937,23 +1143,44 @@ function getFundNameClass(fund: any): Record<string, boolean> {
           >深</span>
         </div>
         <span class="clock">{{ currentTime }}</span>
+
+        <!-- 备份 / 云备份 / 云恢复（与「我的持仓」页共用同一套逻辑） -->
+        <BackupActions
+          class="top-backup-actions"
+          :show-local-restore="false"
+          button-class="top-text-btn"
+          @restored="() => refreshAll(true)"
+        />
+
         <button class="top-icon-btn" @click="openStarKLine" title="星标K线">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </button>
+        <button
+          class="top-icon-btn"
+          :class="{ 'is-on': tabbarForceShow }"
+          @click="toggleTabbar"
+          :title="tabbarForceShow ? '隐藏底部导航' : '显示底部导航'"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="16" rx="2"/>
+            <path d="M3 15h18"/>
           </svg>
         </button>
         <button class="refresh-btn" :class="{ spinning: refreshing }" @click="() => refreshAll(true)" :disabled="refreshing" title="手动刷新">↻</button>
       </div>
     </header>
 
-    <!-- ========== 主区域：3 列布局（可拖拽调整宽度） ========== -->
+    <!-- ========== 主区域：4 列布局（可拖拽调整宽度） ========== -->
     <main class="main-grid" ref="mainGridRef">
       <!-- ========== 左列：Portfolio ========== -->
-      <section class="col col-portfolio" :style="{ flexBasis: colWidths[0] + '%', flexGrow: 0, flexShrink: 0 }">
+      <section class="col col-portfolio" :style="colStyle(0)">
         <div class="panel-header">
           <span class="panel-title">💼 Portfolio 持仓</span>
           <span class="panel-sub">共 {{ totalStats.count }} 只 · 市值 {{ fmtMoney(totalStats.marketValue) }}</span>
           <span class="panel-link" @click="goPortfolio()">详情 →</span>
+          <span class="panel-link" @click="resetAccountLayout" title="恢复账户区块的默认顺序与高度">复位</span>
           <!-- 更新进度 -->
           <div class="update-progress" :class="[updateProgress.class, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
             <!-- 交易中：绿点呼吸 + 文字 -->
@@ -972,307 +1199,107 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
 
         <div class="col-scroll">
-          <!-- 支付宝 -->
-        <div class="account-block block-ali" v-if="aliHoldings.length > 0">
-          <div class="account-header">
-            <img src="@/assets/ali.jpg" class="account-icon" />
-            <span class="account-name">支付宝</span>
-            <span class="account-count">{{ aliStats.count }} 只</span>
-            <div class="account-spacer"></div>
-            <span class="account-stat">{{ fmtMoney(aliStats.marketValue) }}</span>
-            <span
-              class="account-profit"
-              :class="isWeekend ? 'closed' : (aliStats.todayProfit >= 0 ? 'up' : 'down')"
-            >{{ isWeekend ? '' : (aliStats.todayProfit >= 0 ? '+' : '') + fmtMoney(aliStats.todayProfit) }}</span>
-            <span 
-              class="account-pct" 
-              :class="isWeekend ? 'closed' : (aliStats.profitPercent >= 0 ? 'up' : 'down')"
+          <!-- [WHAT] 账户区块：① 按住标题左侧 ⋮⋮ 手柄上下拖 → 换顺序  ② 拖区块之间的分隔条 → 改高度 -->
+          <template v-for="(acc, accIdx) in accountSections" :key="acc.key">
+            <div
+              class="account-block"
+              :class="[acc.cls, { 'is-dragging': draggingAccount === acc.key, 'is-last': accIdx === accountSections.length - 1 }]"
+              :data-account="acc.key"
             >
-              {{ isWeekend ? '休市' : fmtPct(aliStats.profitPercent) }}
-            </span>
-          </div>
-          <div class="fund-mini-grid">
-            <div class="fund-grid-scroll">
-              <div 
-                v-for="fund in aliHoldings" 
-                :key="fund.code"
-                class="fund-mini-card"
-                @click="goDetail(fund.code)"
-                @touchstart="handleCardTouchStart($event, fund)"
-                @touchend="handleCardTouchEnd"
-                @touchmove="handleCardTouchMove"
-                @mousedown="handleCardMouseDown($event, fund)"
-                @mouseup="handleCardMouseUp"
-                @mousemove="handleCardMouseMove"
-              >
-              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
-              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
-                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
-                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-              </span>
-              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
-              <div class="fm-row fm-row-top">
-                <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
-                <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-                <span 
-                  v-if="getFundSignal(fund.code)" 
-                  class="fm-ai-signal" 
-                  :class="'signal-' + getFundSignal(fund.code).signal"
-                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
-                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+              <div class="account-header">
+                <span
+                  class="account-drag-handle"
+                  title="按住拖动，调整账户上下顺序"
+                  @pointerdown="onAccountHandleDown($event, acc.key)"
+                >&#8942;&#8942;</span>
+                <img v-if="acc.icon" :src="acc.icon" class="account-icon" />
+                <span v-else class="account-icon-fallback">{{ acc.fallback }}</span>
+                <span class="account-name">{{ acc.label }}</span>
+                <span class="account-count">{{ acc.stats.count }} 只</span>
+                <div class="account-spacer"></div>
+                <span class="account-stat">{{ fmtMoney(acc.stats.marketValue) }}</span>
+                <span
+                  v-if="acc.key !== 'other'"
+                  class="account-profit"
+                  :class="isWeekend ? 'closed' : (acc.stats.todayProfit >= 0 ? 'up' : 'down')"
+                >{{ isWeekend ? '' : (acc.stats.todayProfit >= 0 ? '+' : '') + fmtMoney(acc.stats.todayProfit) }}</span>
+                <span
+                  class="account-pct"
+                  :class="isWeekend ? 'closed' : (acc.stats.profitPercent >= 0 ? 'up' : 'down')"
+                >
+                  {{ isWeekend ? '休市' : fmtPct(acc.stats.profitPercent) }}
+                </span>
               </div>
-              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
-              <div class="fm-row fm-row-bottom">
-                <div class="fm-row-bottom-left">
-                  <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
-                  </span>
-                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                </div>
-                <div class="fm-row-bottom-right">
-                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
-                  <span 
-                    class="fm-added" 
-                    v-if="fund.addedGain !== undefined" 
-                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
+              <div class="fund-mini-grid">
+                <div class="fund-grid-scroll" :style="{ maxHeight: acc.height + 'px' }">
+                  <div
+                    v-for="fund in acc.funds"
+                    :key="fund.code"
+                    class="fund-mini-card"
+                    @click="goDetail(fund.code)"
+                    @touchstart="handleCardTouchStart($event, fund)"
+                    @touchend="handleCardTouchEnd"
+                    @touchmove="handleCardTouchMove"
+                    @mousedown="handleCardMouseDown($event, fund)"
+                    @mouseup="handleCardMouseUp"
+                    @mousemove="handleCardMouseMove"
                   >
-                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                  </span>
+                    <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
+                    <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
+                      <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
+                      {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
+                    </span>
+                    <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
+                    <div class="fm-row fm-row-top">
+                      <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
+                      <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
+                      <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
+                      <span
+                        v-if="getFundSignal(fund.code)"
+                        class="fm-ai-signal"
+                        :class="'signal-' + getFundSignal(fund.code).signal"
+                        :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                      >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+                    </div>
+                    <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+                    <div class="fm-row fm-row-bottom">
+                      <div class="fm-row-bottom-left">
+                        <span class="fm-code">{{ fund.code }}</span>
+                        <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
+                          {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
+                        </span>
+                        <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                      </div>
+                      <div class="fm-row-bottom-right">
+                        <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
+                        <span
+                          class="fm-added"
+                          v-if="fund.addedGain !== undefined"
+                          :class="fund.addedGain >= 0 ? 'up' : 'down'"
+                        >
+                          累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 腾讯 -->
-        <div class="account-block block-tx" v-if="txHoldings.length > 0">
-          <div class="account-header">
-            <img src="@/assets/TX.jpg" class="account-icon" />
-            <span class="account-name">腾讯</span>
-            <span class="account-count">{{ txStats.count }} 只</span>
-            <div class="account-spacer"></div>
-            <span class="account-stat">{{ fmtMoney(txStats.marketValue) }}</span>
-            <span
-              class="account-profit"
-              :class="isWeekend ? 'closed' : (txStats.todayProfit >= 0 ? 'up' : 'down')"
-            >{{ isWeekend ? '' : (txStats.todayProfit >= 0 ? '+' : '') + fmtMoney(txStats.todayProfit) }}</span>
-            <span 
-              class="account-pct" 
-              :class="isWeekend ? 'closed' : (txStats.profitPercent >= 0 ? 'up' : 'down')"
-            >
-              {{ isWeekend ? '休市' : fmtPct(txStats.profitPercent) }}
-            </span>
-          </div>
-          <div class="fund-mini-grid">
-            <div class="fund-grid-scroll">
-              <div 
-                v-for="fund in txHoldings" 
-                :key="fund.code"
-                class="fund-mini-card"
-                @click="goDetail(fund.code)"
-                @touchstart="handleCardTouchStart($event, fund)"
-                @touchend="handleCardTouchEnd"
-                @touchmove="handleCardTouchMove"
-                @mousedown="handleCardMouseDown($event, fund)"
-                @mouseup="handleCardMouseUp"
-                @mousemove="handleCardMouseMove"
-              >
-              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
-              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
-                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
-                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-              </span>
-              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
-              <div class="fm-row fm-row-top">
-                <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
-                <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-                <span 
-                  v-if="getFundSignal(fund.code)" 
-                  class="fm-ai-signal" 
-                  :class="'signal-' + getFundSignal(fund.code).signal"
-                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
-                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
-              </div>
-              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
-              <div class="fm-row fm-row-bottom">
-                <div class="fm-row-bottom-left">
-                  <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
-                  </span>
-                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                </div>
-                <div class="fm-row-bottom-right">
-                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
-                  <span 
-                    class="fm-added" 
-                    v-if="fund.addedGain !== undefined" 
-                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                  >
-                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                  </span>
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>
-        </div>
+            <!-- 高度分隔条：上下拖，调整相邻两个账户区块的显示高度 -->
+            <div
+              v-if="accIdx < accountSections.length - 1"
+              class="account-resizer"
+              :class="{ active: draggingAccountResizer === accIdx }"
+              @pointerdown="onAccountResizerDown($event, accIdx)"
+            ><div class="account-resizer-handle"></div></div>
+          </template>
 
-        <!-- 京东 -->
-        <div class="account-block block-jd" v-if="jdHoldings.length > 0">
-          <div class="account-header">
-            <img src="@/assets/JD.jpg" class="account-icon" />
-            <span class="account-name">京东</span>
-            <span class="account-count">{{ jdStats.count }} 只</span>
-            <div class="account-spacer"></div>
-            <span class="account-stat">{{ fmtMoney(jdStats.marketValue) }}</span>
-            <span
-              class="account-profit"
-              :class="isWeekend ? 'closed' : (jdStats.todayProfit >= 0 ? 'up' : 'down')"
-            >{{ isWeekend ? '' : (jdStats.todayProfit >= 0 ? '+' : '') + fmtMoney(jdStats.todayProfit) }}</span>
-            <span 
-              class="account-pct" 
-              :class="isWeekend ? 'closed' : (jdStats.profitPercent >= 0 ? 'up' : 'down')"
-            >
-              {{ isWeekend ? '休市' : fmtPct(jdStats.profitPercent) }}
-            </span>
-          </div>
-          <div class="fund-mini-grid">
-            <div class="fund-grid-scroll">
-              <div 
-                v-for="fund in jdHoldings" 
-                :key="fund.code"
-                class="fund-mini-card"
-                @click="goDetail(fund.code)"
-                @touchstart="handleCardTouchStart($event, fund)"
-                @touchend="handleCardTouchEnd"
-                @touchmove="handleCardTouchMove"
-                @mousedown="handleCardMouseDown($event, fund)"
-                @mouseup="handleCardMouseUp"
-                @mousemove="handleCardMouseMove"
-              >
-              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
-              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
-                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
-                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-              </span>
-              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
-              <div class="fm-row fm-row-top">
-                <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
-                <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-                <span 
-                  v-if="getFundSignal(fund.code)" 
-                  class="fm-ai-signal" 
-                  :class="'signal-' + getFundSignal(fund.code).signal"
-                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
-                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
-              </div>
-              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
-              <div class="fm-row fm-row-bottom">
-                <div class="fm-row-bottom-left">
-                  <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
-                  </span>
-                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                </div>
-                <div class="fm-row-bottom-right">
-                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
-                  <span 
-                    class="fm-added" 
-                    v-if="fund.addedGain !== undefined" 
-                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                  >
-                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                  </span>
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 其他/未分类（source=undefined 的旧数据） -->
-        <div class="account-block" v-if="otherHoldings.length > 0">
-          <div class="account-header">
-            <span class="account-icon-fallback">📁</span>
-            <span class="account-name">其他账户</span>
-            <span class="account-count">{{ otherStats.count }} 只</span>
-            <div class="account-spacer"></div>
-            <span class="account-stat">{{ fmtMoney(otherStats.marketValue) }}</span>
-            <span 
-              class="account-pct" 
-              :class="isWeekend ? 'closed' : (otherStats.profitPercent >= 0 ? 'up' : 'down')"
-            >
-              {{ isWeekend ? '休市' : fmtPct(otherStats.profitPercent) }}
-            </span>
-          </div>
-          <div class="fund-mini-grid">
-            <div class="fund-grid-scroll">
-              <div 
-                v-for="fund in otherHoldings" 
-                :key="fund.code"
-                class="fund-mini-card"
-                @click="goDetail(fund.code)"
-                @touchstart="handleCardTouchStart($event, fund)"
-                @touchend="handleCardTouchEnd"
-                @touchmove="handleCardTouchMove"
-                @mousedown="handleCardMouseDown($event, fund)"
-                @mouseup="handleCardMouseUp"
-                @mousemove="handleCardMouseMove"
-              >
-              <!-- 今日涨幅徽章（绝对定位右上角，只这一个用绝对定位） -->
-              <span class="fm-today" :class="[fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down', { 'no-data': !fund.todayChange, 'flash': flashActive }]">
-                <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
-                {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
-              </span>
-              <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
-              <div class="fm-row fm-row-top">
-                <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
-                <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-                <span 
-                  v-if="getFundSignal(fund.code)" 
-                  class="fm-ai-signal" 
-                  :class="'signal-' + getFundSignal(fund.code).signal"
-                  :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
-                >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
-              </div>
-              <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
-              <div class="fm-row fm-row-bottom">
-                <div class="fm-row-bottom-left">
-                  <span class="fm-code">{{ fund.code }}</span>
-                  <span class="fm-val-label" :class="liveFundData.get(fund.code)?.isNav ? 'is-nav' : 'is-est'">
-                    {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
-                  </span>
-                  <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
-                </div>
-                <div class="fm-row-bottom-right">
-                  <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
-                  <span 
-                    class="fm-added" 
-                    v-if="fund.addedGain !== undefined" 
-                    :class="fund.addedGain >= 0 ? 'up' : 'down'"
-                  >
-                    累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
-                  </span>
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="totalStats.count === 0" class="empty-hint">暂无持仓数据</div>
+          <div v-if="totalStats.count === 0" class="empty-hint">暂无持仓数据</div>
         </div><!-- /col-scroll -->
       </section>
 
-      <!-- 拖拽分隔条 1 -->
+      <!-- 拖拽分隔条 1：Portfolio | K线全景 -->
       <div
         class="col-resizer"
         :class="{ active: draggingResizer === 0 }"
@@ -1280,8 +1307,55 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         @touchstart="onResizerTouchStart($event, 0)"
       ><div class="col-resizer-handle"></div></div>
 
+      <!-- ========== 第二列：K线全景（与独立星标页共用 StarKLinePanel） ========== -->
+      <section class="col col-kline" :style="colStyle(1)">
+        <div class="panel-block panel-block-kline">
+          <!--
+            [WHAT] 头部用 #toolbar 插槽顶掉组件自带工具条，标题/数量/基准/全屏/周期合成一行
+            [WHAT] 复用页面自己的 liveFundData：估值/净值口径与持仓、交易记录一致，且不重复请求
+            [WHAT] 不再有自己的刷新按钮：跟着页面右上角的 ↻ 走
+          -->
+          <StarKLinePanel
+            ref="klinePanelRef"
+            v-model:period="klinePeriod"
+            :columns="2"
+            color-scheme="auto"
+            :live-data="liveFundData"
+            :show-refresh="false"
+            :show-market-value="false"
+            open-in-new-tab
+          >
+            <template #toolbar="{ period, setPeriod, count, valueBasis }">
+              <div class="panel-header">
+                <span class="panel-title">⭐ 星标K线</span>
+                <span class="panel-sub">{{ count }} 只</span>
+                <span v-if="valueBasis" class="kline-basis" :class="valueBasis === '估值' ? 'est' : 'nav'">{{ valueBasis }}</span>
+                <span class="panel-link" @click="openStarKLine">全屏 →</span>
+                <div class="kline-seg">
+                  <button
+                    v-for="t in klinePeriodTabs"
+                    :key="t.key"
+                    class="kline-seg-btn"
+                    :class="{ active: period === t.key }"
+                    @click="setPeriod(t.key)"
+                  >{{ t.label }}</button>
+                </div>
+              </div>
+            </template>
+          </StarKLinePanel>
+        </div>
+      </section>
+
+      <!-- 拖拽分隔条 2：K线全景 | 量化观察 -->
+      <div
+        class="col-resizer"
+        :class="{ active: draggingResizer === 1 }"
+        @mousedown="onResizerMouseDown($event, 1)"
+        @touchstart="onResizerTouchStart($event, 1)"
+      ><div class="col-resizer-handle"></div></div>
+
       <!-- ========== 中列：量化观察 + AI追踪 ========== -->
-      <section class="col col-center" :style="{ flexBasis: colWidths[1] + '%', flexGrow: 0, flexShrink: 0 }">
+      <section class="col col-center" :style="colStyle(2)">
         <!-- 量化观察 -->
         <div class="panel-block">
           <div class="panel-header">
@@ -1358,16 +1432,16 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
       </section>
 
-      <!-- 拖拽分隔条 2 -->
+      <!-- 拖拽分隔条 3：量化观察 | 交易记录 -->
       <div
         class="col-resizer"
-        :class="{ active: draggingResizer === 1 }"
-        @mousedown="onResizerMouseDown($event, 1)"
-        @touchstart="onResizerTouchStart($event, 1)"
+        :class="{ active: draggingResizer === 2 }"
+        @mousedown="onResizerMouseDown($event, 2)"
+        @touchstart="onResizerTouchStart($event, 2)"
       ><div class="col-resizer-handle"></div></div>
 
       <!-- ========== 右列：交易记录 + AI 交易分析 ========== -->
-      <section class="col col-right" :style="{ flexBasis: colWidths[2] + '%', flexGrow: 0, flexShrink: 0 }">
+      <section class="col col-right" :style="colStyle(3)">
         <!-- AI 交易分析 -->
         <div class="panel-block">
           <div class="panel-header">
@@ -1980,6 +2054,33 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   color: var(--primary-color);
 }
 
+/* [WHAT] 顶部图标按钮的「已开启」态（底部导航开关用） */
+.top-icon-btn.is-on {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+/* ============ 顶部备份按钮组 ============ */
+/* [WHY] 按钮渲染在 BackupActions 子组件内部，父级 scoped 样式必须走 :deep 才够得着 */
+.top-backup-actions :deep(.van-button.top-text-btn) {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.top-backup-actions :deep(.van-button.top-text-btn:hover) {
+  background: var(--bg-tertiary);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
 /* ============ 主区域 ============ */
 .main-grid {
   flex: 1;
@@ -1999,6 +2100,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 /* ============ 列拖拽分隔条 ============ */
+/* [注意] flex-basis 12px 必须和脚本里的 RESIZER_WIDTH 一致，否则最后一列会被挤出屏幕 */
 .col-resizer {
   flex: 0 0 12px;
   display: flex;
@@ -2161,21 +2263,89 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 50px;
+  /* [WHY] 原来是 50px，那是「底部 Tabbar 悬浮遮挡」时代的遗留。现在 Tabbar 是 .page-wrapper 的
+           flex 兄弟节点、不覆盖内容（全景页还默认隐藏），50px 纯属白占一屏。留 12px 收尾即可。 */
+  padding-bottom: 12px;
 }
 
+/* [WHY] 顶部不要留白：面板标题栏自带 8px 下内边距，区块之间也有分隔条 + 上一块的 10px 下内边距，
+        再给每个区块加 10px 上内边距纯属浪费。只保留下内边距做收尾呼吸。 */
 .account-block {
-  padding: 10px 14px;
+  padding: 0 14px 10px;
   border-bottom: 1px solid var(--border-light);
 }
 
 .account-block:last-child { border-bottom: none; }
+
+/* [WHY] 区块之间现在插了高度分隔条，最后一个区块不再是 :last-child，用显式 class 收尾边框 */
+.account-block.is-last { border-bottom: none; }
 
 .account-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+/* ============ 账户区块：拖拽排序 + 高度调整 ============ */
+
+/* ① 排序手柄 */
+.account-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 20px;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: -3px;
+  padding-right: 3px;
+  color: var(--text-tertiary);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.account-drag-handle:hover {
+  color: var(--primary-color);
+  background: var(--bg-tertiary);
+}
+
+.account-drag-handle:active { cursor: grabbing; }
+
+.account-block.is-dragging {
+  opacity: 0.5;
+  outline: 1px dashed var(--primary-color);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+/* ② 高度分隔条（与列宽 col-resizer 同款手感） */
+.account-resizer {
+  height: 8px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.account-resizer-handle {
+  width: 46px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-light);
+  transition: background 0.2s, width 0.2s;
+}
+
+.account-resizer:hover .account-resizer-handle,
+.account-resizer.active .account-resizer-handle {
+  background: var(--primary-color);
+  width: 78px;
 }
 
 .account-icon {
@@ -2470,6 +2640,64 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   border-radius: 8px;
   border: 1px solid var(--border-light);
   overflow: hidden;
+}
+
+/* ============ K线全景列（第二列） ============ */
+.col-kline {
+  overflow: hidden;
+}
+
+.panel-block-kline {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.panel-block-kline .panel-header {
+  flex-shrink: 0;
+  gap: 6px;
+  /* [WHAT] 标题 / 数量 / 基准 / 全屏 / 周期 全挤在一行，列被拖窄时宁可裁掉也不换行 */
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* K线头部的「估值 / 净值」基准 */
+.kline-basis {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.kline-basis.est { color: #f0a020; border-color: rgba(240, 160, 32, 0.4); }
+.kline-basis.nav { color: #12b886; border-color: rgba(18, 184, 134, 0.4); }
+
+/* K线头部的周期切换 */
+.kline-seg {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.kline-seg-btn {
+  padding: 0 7px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 18px;
+  transition: all 0.15s;
+}
+.kline-seg-btn:hover { color: var(--text-primary); }
+.kline-seg-btn.active {
+  background: var(--bg-secondary);
+  color: var(--color-primary, #3b82f6);
+  font-weight: 600;
 }
 
 /* 量化观察 */

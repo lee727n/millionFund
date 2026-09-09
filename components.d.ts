@@ -9,6 +9,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppUpdateDialog: typeof import('./src/components/AppUpdateDialog.vue')['default']
+    BackupActions: typeof import('./src/components/BackupActions.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
     MiniKLineChart: typeof import('./src/components/MiniKLineChart.vue')['default']
@@ -16,6 +17,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScreenshotImport: typeof import('./src/components/ScreenshotImport.vue')['default']
+    StarKLinePanel: typeof import('./src/components/StarKLinePanel.vue')['default']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']
     VanCheckbox: typeof import('vant/es')['Checkbox']

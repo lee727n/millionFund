@@ -5,6 +5,7 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { useTabbar } from '@/composables/useTabbar'
 
 // [WHAT] 水印文字
 const watermarkText = '软件AI百万实盘NEW'
@@ -62,8 +63,23 @@ onUnmounted(() => {
 const activeTab = ref('home')
 
 // [WHAT] 需要隐藏底部导航的页面
-const hiddenTabbarPages = ['search', 'detail', 'trades']
-const showTabbar = computed(() => !hiddenTabbarPages.includes(route.name as string))
+// [NOTE] panorama 默认隐藏以腾出纵向空间，页面顶部有开关按钮可以手动调出来
+// [NOTE] mobile-star-kline 是手机版专属页，整页都是 K 线，同样隐藏以腾出纵向空间
+const hiddenTabbarPages = ['search', 'detail', 'trades', 'panorama', 'mobile-star-kline']
+const { tabbarForceShow, setTabbarForceShow } = useTabbar()
+const showTabbar = computed(
+  () => tabbarForceShow.value || !hiddenTabbarPages.includes(route.name as string)
+)
+
+// [WHY] 手动开关只在当前停留的页面内有效，离开全景页后复位，下次进来仍是默认隐藏
+watch(
+  () => route.name,
+  (name) => {
+    if (name !== 'panorama' && tabbarForceShow.value) {
+      setTabbarForceShow(false)
+    }
+  }
+)
 
 // [WHY] 路由变化时同步更新 tab 状态
 watch(

@@ -61,6 +61,13 @@ const router = createRouter({
       meta: { title: '星标K线', keepAlive: true }
     },
     {
+      // [WHAT] 手机版专属星标K线页：一行两个图，顶部只留安全区 + 两行头部，其余全给 K 线
+      path: '/m/star-kline',
+      name: 'mobile-star-kline',
+      component: () => import('@/views/MobileStarKLine.vue'),
+      meta: { title: '星标K线' }
+    },
+    {
       path: '/trade-center',
       name: 'trade-center',
       component: () => import('@/views/TradeCenter.vue'),

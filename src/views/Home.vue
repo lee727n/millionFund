@@ -1186,10 +1186,33 @@ function openPortfolio() {
   window.open(url, '_blank')
 }
 
-// [WHAT] 打开星标K线页面
+// [WHAT] 打开星标K线页面（网页版，/star-kline）
 function openStarKline() {
   router.push('/star-kline')
 }
+
+// [WHAT] 手机版星标K线页（/m/star-kline）
+// [WHY] 手机版没有网页版那排筛选按钮，得在趋势持仓第一行单独给个入口
+function openMobileStarKline() {
+  router.push('/m/star-kline')
+}
+
+// [WHAT] 星标数量：入口图标上带个小角标，0 时图标置灰
+// [WHY] 星标可能在别处（详情页 / 星标页）增删，靠自定义事件同步，不能只在挂载时读一次
+const starredCount = ref(getStarredFunds().length)
+function refreshStarredCount() {
+  starredCount.value = getStarredFunds().length
+}
+function onStarredFundsChanged() {
+  refreshStarredCount()
+}
+onMounted(() => {
+  refreshStarredCount()
+  window.addEventListener('starred-funds-changed', onStarredFundsChanged)
+})
+onUnmounted(() => {
+  window.removeEventListener('starred-funds-changed', onStarredFundsChanged)
+})
 
 // [WHAT] 公告列表（默认 + 远程）
 const defaultNotices = [
@@ -1476,6 +1499,19 @@ function handleNameClick(code: string, name: string) {
                 {{ isWeekend ? '' : '盈亏' + Math.round(totalTodayProfit) }}
               </span>
             </div>
+            <!-- [WHAT] 手机版星标K线入口：紧跟盈亏，点进 /m/star-kline -->
+            <span
+              class="mobile-star-entry mobile-only"
+              :class="{ 'is-empty': starredCount === 0 }"
+              role="button"
+              aria-label="星标K线"
+              @click="openMobileStarKline"
+            >
+              <svg class="mobile-star-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
+              </svg>
+              <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
+            </span>
             <!-- 网页端：按钮在第一行 -->
             <div class="sort-buttons web-only">
               <img 
@@ -2480,6 +2516,60 @@ function handleNameClick(code: string, name: string) {
 
 .mobile-profit-summary .closed {
   color: #999;
+}
+
+/* [WHAT] 手机版星标K线入口：跟在盈亏后面，44px 触控区，不挤占布局
+   [WHY] 触屏点击目标太小容易点空，用负 margin 把视觉尺寸和点击区分离 */
+.mobile-star-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-star-entry::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+.mobile-star-icon {
+  width: 17px;
+  height: 17px;
+  fill: var(--color-up, #f5222d);
+  opacity: 0.95;
+}
+
+.mobile-star-entry.is-empty .mobile-star-icon {
+  fill: currentColor;
+  opacity: 0.32;
+}
+
+.mobile-star-entry:active .mobile-star-icon {
+  transform: scale(0.86);
+}
+
+.mobile-star-badge {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--color-up, #f5222d);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  font-style: normal;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .update-status {

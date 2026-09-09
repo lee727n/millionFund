@@ -14,6 +14,8 @@ const STORAGE_KEYS = {
   T_TRADES: 'fund_t_trades',
   STARRED_FUNDS: 'fund_starred_funds',
   PANORAMA_COL_WIDTHS: 'panorama_col_widths',
+  PANORAMA_ACCOUNT_ORDER: 'panorama_account_order',
+  PANORAMA_ACCOUNT_HEIGHTS: 'panorama_account_heights',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -48,7 +50,9 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.SOURCE_FILTER,
       STORAGE_KEYS.APP_VERSION,
       STORAGE_KEYS.STARRED_FUNDS,
-      STORAGE_KEYS.PANORAMA_COL_WIDTHS
+      STORAGE_KEYS.PANORAMA_COL_WIDTHS,
+      STORAGE_KEYS.PANORAMA_ACCOUNT_ORDER,
+      STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
@@ -497,6 +501,17 @@ export function getStarredFunds(): string[] {
  */
 export function saveStarredFunds(codes: string[]): void {
   setItem(STORAGE_KEYS.STARRED_FUNDS, codes)
+  notifyStarredFundsChanged()
+}
+
+/**
+ * [WHAT] 星标列表变更广播
+ * [WHY] 星标K线面板（独立页 + 全景大屏第二列）都挂在内存里，
+ *       长按卡片改星标后要让它们立刻重读，否则得等下次刷新才出现
+ */
+function notifyStarredFundsChanged(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('starred-funds-changed'))
 }
 
 /**
@@ -531,21 +546,129 @@ export function isStarredFund(code: string): boolean {
 
 // ========== 全景大屏列宽 ==========
 
+/** 全景大屏 4 列：Portfolio / K线全景 / 量化观察+AI追踪 / 交易记录+AI分析 */
+export type PanoramaColWidths = [number, number, number, number]
+
 /**
- * 默认列宽比例（百分比）: 左列 37%, 中列 28%, 右列 35%
+ * 默认列宽比例（百分比）: Portfolio 30%, K线 25%, 中列 22%, 右列 23%
  */
-const DEFAULT_COL_WIDTHS: [number, number, number] = [37, 28, 35]
+const DEFAULT_COL_WIDTHS: PanoramaColWidths = [30, 25, 22, 23]
+
+/** [WHAT] 旧版只有 3 列，迁移时给新增的 K线列预留的比例 */
+const MIGRATE_KLINE_WIDTH = 25
+
+/**
+ * [WHAT] 列宽归一化：非法值回退默认；旧 3 列迁移为 4 列；总量归一到 100%
+ * [WHY] 拖拽逻辑假设总和恒为 100%，存进去的旧数据（3 列）或脏数据会破坏这个前提
+ */
+function normalizeColWidths(raw: unknown): PanoramaColWidths {
+  if (!Array.isArray(raw) || raw.length === 0) return [...DEFAULT_COL_WIDTHS]
+  if (!raw.every(n => typeof n === 'number' && isFinite(n))) return [...DEFAULT_COL_WIDTHS]
+  const nums = raw as number[]
+  const sum = nums.reduce((a, b) => a + b, 0)
+  if (sum <= 0) return [...DEFAULT_COL_WIDTHS]
+
+  if (nums.length === 4) {
+    return nums.map(n => +(n * 100 / sum).toFixed(2)) as PanoramaColWidths
+  }
+  if (nums.length === 3) {
+    // 旧版 [持仓, 中, 右] → [持仓, K线, 中, 右]，K线列占 MIGRATE_KLINE_WIDTH，其余按比例缩放
+    const [a, b, c] = nums
+    const scale = (100 - MIGRATE_KLINE_WIDTH) / sum
+    return [
+      +(a * scale).toFixed(2),
+      MIGRATE_KLINE_WIDTH,
+      +(b * scale).toFixed(2),
+      +(c * scale).toFixed(2),
+    ]
+  }
+  return [...DEFAULT_COL_WIDTHS]
+}
 
 /**
  * 获取全景大屏列宽
  */
-export function getPanoramaColWidths(): [number, number, number] {
-  return getItem<[number, number, number]>(STORAGE_KEYS.PANORAMA_COL_WIDTHS, DEFAULT_COL_WIDTHS)
+export function getPanoramaColWidths(): PanoramaColWidths {
+  return normalizeColWidths(getItem<number[]>(STORAGE_KEYS.PANORAMA_COL_WIDTHS, DEFAULT_COL_WIDTHS))
 }
 
 /**
  * 保存全景大屏列宽
  */
-export function savePanoramaColWidths(widths: [number, number, number]): void {
-  setItem(STORAGE_KEYS.PANORAMA_COL_WIDTHS, widths)
+export function savePanoramaColWidths(widths: PanoramaColWidths): void {
+  setItem(STORAGE_KEYS.PANORAMA_COL_WIDTHS, normalizeColWidths(widths))
+}
+
+// ========== 全景大屏持仓列：账户区块顺序 + 高度 ==========
+
+/**
+ * [WHAT] 持仓列（第一列）里的账户区块 key
+ * [WHY] 区块顺序和每个区块的高度都能拖拽调整，需要一套稳定的 key 做持久化
+ */
+export const PANORAMA_ACCOUNT_KEYS = ['ali', 'TX', 'JD', 'other'] as const
+
+/** [WHAT] 每个账户区块内基金网格的默认最大高度（px） */
+export const DEFAULT_ACCOUNT_HEIGHTS: Record<string, number> = {
+  ali: 220,
+  TX: 300,
+  JD: 130,
+  other: 160
+}
+
+/** [WHAT] 区块最小高度，防止拖拽时被拖没 */
+export const MIN_ACCOUNT_HEIGHT = 80
+
+/**
+ * [WHAT] 顺序归一化：过滤非法 key、去重，并把缺失的 key 补到末尾
+ * [WHY] 以后新增账户时旧数据里没有它，不补齐会导致这个账户永远不渲染
+ */
+function normalizeAccountOrder(raw: unknown): string[] {
+  const known = PANORAMA_ACCOUNT_KEYS as readonly string[]
+  const out: string[] = []
+  if (Array.isArray(raw)) {
+    for (const k of raw) {
+      if (typeof k === 'string' && known.includes(k) && !out.includes(k)) out.push(k)
+    }
+  }
+  for (const k of known) {
+    if (!out.includes(k)) out.push(k)
+  }
+  return out
+}
+
+/** 获取持仓列账户区块顺序 */
+export function getPanoramaAccountOrder(): string[] {
+  const fallback = [...PANORAMA_ACCOUNT_KEYS] as string[]
+  return normalizeAccountOrder(getItem<string[]>(STORAGE_KEYS.PANORAMA_ACCOUNT_ORDER, fallback))
+}
+
+/** 保存持仓列账户区块顺序 */
+export function savePanoramaAccountOrder(order: string[]): void {
+  setItem(STORAGE_KEYS.PANORAMA_ACCOUNT_ORDER, normalizeAccountOrder(order))
+}
+
+function normalizeAccountHeights(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = { ...DEFAULT_ACCOUNT_HEIGHTS }
+  if (raw && typeof raw === 'object') {
+    const src = raw as Record<string, unknown>
+    for (const k of PANORAMA_ACCOUNT_KEYS) {
+      const v = src[k]
+      if (typeof v === 'number' && isFinite(v)) {
+        out[k] = Math.max(MIN_ACCOUNT_HEIGHT, Math.round(v))
+      }
+    }
+  }
+  return out
+}
+
+/** 获取持仓列各账户区块的网格最大高度 */
+export function getPanoramaAccountHeights(): Record<string, number> {
+  return normalizeAccountHeights(
+    getItem<Record<string, number>>(STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS, DEFAULT_ACCOUNT_HEIGHTS)
+  )
+}
+
+/** 保存持仓列各账户区块的网格最大高度 */
+export function savePanoramaAccountHeights(heights: Record<string, number>): void {
+  setItem(STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS, normalizeAccountHeights(heights))
 }

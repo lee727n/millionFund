@@ -11,26 +11,19 @@ import { useThemeStore } from '@/stores/theme'
 import { useAppUpdateStore } from '@/stores/appUpdate'
 import { APP_VERSION } from '@/config/version'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
-import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
+import { fetchFundAccurateData } from '@/api/fundFast'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
-import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getFundNetValues, saveFundNetValues, getTTrades, saveTTrades } from '@/utils/storage'
-import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
+import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getTTrades, saveTTrades } from '@/utils/storage'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
 import AppUpdateDialog from '@/components/AppUpdateDialog.vue'
+// [WHAT] 备份/恢复（本地 + 云端）已抽成组件，与全景大屏共用同一套逻辑
+import BackupActions from '@/components/BackupActions.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
-import { 
-  saveToGist, 
-  restoreFromGist, 
-  validateGitHubToken,
-  getGitHubToken,
-  saveGitHubToken,
-  hasGitHubToken 
-} from '@/api/gist'
 
 const router = useRouter()
 const holdingStore = useHoldingStore()
@@ -412,417 +405,6 @@ function onImported(_count: number) {
   holdingStore.refreshEstimates()
 }
 
-// [WHAT] 备份持仓数据
-async function backupHoldings() {
-  if (holdingStore.holdings.length === 0 && aiTrackingStore.records.length === 0) {
-    showToast('暂无数据可备份')
-    return
-  }
-  
-  // 过滤掉运行时字段，只保留恢复数据所需的关键字段
-  const holdingsForBackup = holdingStore.holdings.map(holding => {
-    const { 
-      // 运行时字段（不备份）
-      loading, 
-      currentValue, 
-      marketValue, 
-      profit, 
-      profitRate, 
-      todayChange, 
-      todayProfit,
-      trendPrediction,
-      dataSource,
-      isNav,
-      valueDate,
-      isUpdated,
-      // 保留的字段
-      ...rest 
-    } = holding
-    return rest
-  })
-  
-  // AI追踪数据备份（只保留基金代码和调仓净值）
-  const aiTrackingForBackup = aiTrackingStore.records.map(record => ({
-    sellCode: record.sellCode,
-    sellName: record.sellName,
-    sellNav: record.sellNav,
-    buyCode: record.buyCode,
-    buyName: record.buyName,
-    buyNav: record.buyNav,
-    date: record.date,
-    createdAt: record.createdAt
-  }))
-  
-  const backupData = {
-    version: '1.1',
-    exportDate: new Date().toISOString(),
-    holdings: holdingsForBackup,
-    summary: holdingStore.summary,
-    aiTracking: aiTrackingForBackup,
-    baiduOcrConfig: getBaiduOcrConfig(),
-    trades: getTrades(),
-    tTrades: getTTrades()
-  }
-  
-  // 转换为 JSON 字符串
-  const jsonData = JSON.stringify(backupData, null, 2)
-  const fileName = `fund-holdings-backup-${new Date().toISOString().split('T')[0]}.json`
-  
-  // 创建下载链接
-  const blob = new Blob([jsonData], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-  
-  showToast('备份成功！')
-}
-
-// [WHAT] 恢复持仓数据
-function restoreHoldings() {
-  // 创建文件输入元素
-  const fileInput = document.createElement('input')
-  fileInput.type = 'file'
-  fileInput.accept = '.json'
-  
-  // 监听文件选择
-  fileInput.onchange = async (event) => {
-    const target = event.target as HTMLInputElement
-    const file = target.files?.[0]
-    
-    if (!file) {
-      return
-    }
-    
-    try {
-      // 读取文件内容
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        try {
-          const jsonData = JSON.parse(e.target?.result as string)
-          
-          // 验证备份数据格式
-          if (!jsonData.holdings || !Array.isArray(jsonData.holdings)) {
-            showToast('备份文件格式错误')
-            return
-          }
-          
-          // 处理持仓数据，移除运行时字段
-          const processedHoldings = jsonData.holdings.map((holding: any) => {
-            const { 
-              marketValue, 
-              profit, 
-              originProfit, 
-              lastUpdateDate, 
-              todayProfit, 
-              lastTodayProfit, 
-              profitRate,
-              loading,
-              currentValue,
-              todayChange,
-              shareClass,
-              manualProfitRate,
-              serviceFeeRate,
-              serviceFeeDeducted,
-              lastFeeDate,
-              ...rest 
-            } = holding
-            
-            const industrySectors = Array.isArray(rest.industrySectors) 
-              ? rest.industrySectors.join(', ') 
-              : rest.industrySectors
-            
-            return {
-              ...rest,
-              industrySectors
-            }
-          })
-          
-          // 保存处理后的持仓数据到本地存储
-          saveHoldings(processedHoldings)
-
-          // [FIX] 清除所有基金的净值/估值缓存，防止恢复后使用旧缓存
-          processedHoldings.forEach((h: any) => {
-            if (h.code) clearFundCache(h.code)
-          })
-
-          // 刷新持仓状态
-          holdingStore.initHoldings()
-          
-          // 恢复AI追踪数据
-          if (jsonData.aiTracking && Array.isArray(jsonData.aiTracking)) {
-            aiTrackingStore.importRecords(jsonData.aiTracking)
-          }
-          
-          // 恢复交易记录
-          if (jsonData.trades && Array.isArray(jsonData.trades)) {
-            saveTrades(jsonData.trades)
-          }
-          
-          // 恢复T交易归档
-          if (jsonData.tTrades && Array.isArray(jsonData.tTrades)) {
-            saveTTrades(jsonData.tTrades)
-          }
-          
-          // 恢复百度 OCR 配置
-          if (jsonData.baiduOcrConfig && jsonData.baiduOcrConfig.apiKey && jsonData.baiduOcrConfig.secretKey) {
-            setBaiduOcrConfig(jsonData.baiduOcrConfig)
-          }
-          
-          showToast('恢复成功')
-        } catch (error) {
-          showToast('解析备份文件失败')
-        }
-      }
-      reader.onerror = () => {
-        showToast('读取文件失败')
-      }
-      reader.readAsText(file)
-    } catch (error) {
-      showToast('恢复失败')
-    }
-  }
-  
-  // 触发文件选择
-  fileInput.click()
-}
-
-// ========== 云端备份相关 ==========
-const showGitHubConfigDialog = ref(false)
-const githubToken = ref('')
-const isTokenValidating = ref(false)
-
-// [WHAT] 保存并验证 GitHub Token
-async function saveGitHubConfig() {
-  const token = githubToken.value.trim()
-  
-  if (!token) {
-    showToast('请输入 GitHub Token')
-    return
-  }
-  
-  isTokenValidating.value = true
-  
-  try {
-    const isValid = await validateGitHubToken(token)
-    
-    if (isValid) {
-      saveGitHubToken(token)
-      showToast('配置成功！')
-      showGitHubConfigDialog.value = false
-      githubToken.value = ''
-    } else {
-      showToast('Token 无效，请检查权限设置')
-    }
-  } catch (error) {
-    showToast('验证失败，请检查网络')
-  } finally {
-    isTokenValidating.value = false
-  }
-}
-
-// [WHAT] 云端备份持仓数据
-async function cloudBackupHoldings() {
-  if (holdingStore.holdings.length === 0 && aiTrackingStore.records.length === 0) {
-    showToast('暂无数据可备份')
-    return
-  }
-  
-  if (!hasGitHubToken()) {
-    showGitHubConfigDialog.value = true
-    return
-  }
-  
-  // [FIX] 确认弹窗，避免误操作覆盖云端数据
-  try {
-    await showConfirmDialog({
-      title: '确认云备份',
-      message: '备份将覆盖云端已有的数据，确认要备份吗？',
-    })
-  } catch {
-    return
-  }
-  
-  const loading = showLoadingToast({ message: '备份中...' })
-  
-  try {
-    // 过滤掉运行时字段，只保留恢复数据所需的关键字段
-    const holdingsForBackup = holdingStore.holdings.map(holding => {
-      const { 
-        loading, 
-        currentValue, 
-        marketValue, 
-        profit, 
-        profitRate, 
-        todayChange, 
-        todayProfit,
-        trendPrediction,
-        dataSource,
-        isNav,
-        valueDate,
-        isUpdated,
-        ...rest 
-      } = holding
-      return rest
-    })
-    
-    const aiTrackingForBackup = aiTrackingStore.records.map(record => ({
-      id: record.id,
-      sellCode: record.sellCode,
-      sellName: record.sellName,
-      sellNav: record.sellNav,
-      sellNavEstimated: record.sellNavEstimated,
-      buyCode: record.buyCode,
-      buyName: record.buyName,
-      buyNav: record.buyNav,
-      buyNavEstimated: record.buyNavEstimated,
-      date: record.date,
-      createdAt: record.createdAt
-    }))
-    
-    const backupData = {
-      version: '1.1',
-      exportDate: new Date().toISOString(),
-      holdings: holdingsForBackup,
-      summary: holdingStore.summary,
-      aiTracking: aiTrackingForBackup,
-      baiduOcrConfig: getBaiduOcrConfig(),
-      trades: getTrades(),
-      tTrades: getTTrades(),
-      // [FIX] 保存净值映射，用于跨设备恢复时保持数据一致
-      fundNetValues: getFundNetValues()
-    }
-    
-    const jsonData = JSON.stringify(backupData, null, 2)
-    const token = getGitHubToken()
-    
-    const result = await saveToGist(jsonData, token)
-    
-    closeToast()
-    showToast(result.message)
-  } catch (error) {
-    closeToast()
-    showToast('云端备份失败')
-  }
-}
-
-// [WHAT] 云端恢复持仓数据
-async function cloudRestoreHoldings() {
-  if (!hasGitHubToken()) {
-    showGitHubConfigDialog.value = true
-    return
-  }
-  
-  const loading = showLoadingToast({ message: '恢复中...' })
-  
-  try {
-    const token = getGitHubToken()
-    const result = await restoreFromGist(token)
-    
-    closeToast()
-    
-    if (!result.success) {
-      showToast(result.message)
-      return
-    }
-    
-    if (!result.content) {
-      showToast('备份数据为空')
-      return
-    }
-    
-    try {
-      const jsonData = JSON.parse(result.content)
-      
-      // 验证备份数据格式
-      if (!jsonData.holdings || !Array.isArray(jsonData.holdings)) {
-        showToast('备份文件格式错误')
-        return
-      }
-      
-      // 处理持仓数据，移除运行时字段
-      const processedHoldings = jsonData.holdings.map((holding: any) => {
-        const { 
-          marketValue, 
-          profit, 
-          originProfit, 
-          lastUpdateDate, 
-          todayProfit, 
-          lastTodayProfit, 
-          profitRate,
-          loading,
-          currentValue,
-          todayChange,
-          shareClass,
-          manualProfitRate,
-          serviceFeeRate,
-          serviceFeeDeducted,
-          lastFeeDate,
-          ...rest 
-        } = holding
-        
-        const industrySectors = Array.isArray(rest.industrySectors) 
-          ? rest.industrySectors.join(', ') 
-          : rest.industrySectors
-        
-        return {
-          ...rest,
-          industrySectors
-        }
-      })
-      
-      // 保存处理后的持仓数据到本地存储
-      saveHoldings(processedHoldings)
-
-      // [FIX] 清除所有基金的净值/估值缓存，防止跨设备恢复后使用旧缓存
-      // [WHY] 云恢复只更新持仓数据，但 persistCache 中仍残留旧设备的净值历史
-      //       导致 refreshEstimates 计算市值时使用过期的 currentValue
-      processedHoldings.forEach((h: any) => {
-        if (h.code) clearFundCache(h.code)
-      })
-
-      // 刷新持仓状态
-      holdingStore.initHoldings()
-      
-      // 恢复AI追踪数据
-      if (jsonData.aiTracking && Array.isArray(jsonData.aiTracking)) {
-        aiTrackingStore.importRecords(jsonData.aiTracking)
-      }
-      
-      // 恢复交易记录
-      if (jsonData.trades && Array.isArray(jsonData.trades)) {
-        saveTrades(jsonData.trades)
-      }
-      
-      // 恢复T交易归档
-      if (jsonData.tTrades && Array.isArray(jsonData.tTrades)) {
-        saveTTrades(jsonData.tTrades)
-      }
-      
-      // [FIX] 恢复净值映射
-      if (jsonData.fundNetValues && typeof jsonData.fundNetValues === 'object') {
-        saveFundNetValues(jsonData.fundNetValues)
-      }
-      
-      // 恢复百度 OCR 配置
-      if (jsonData.baiduOcrConfig && jsonData.baiduOcrConfig.apiKey && jsonData.baiduOcrConfig.secretKey) {
-        setBaiduOcrConfig(jsonData.baiduOcrConfig)
-      }
-      
-      showToast('云端恢复成功')
-    } catch (error) {
-      showToast('解析备份数据失败')
-    }
-  } catch (error) {
-    closeToast()
-    showToast('云端恢复失败')
-  }
-}
-
 // [WHAT] 清空所有持仓数据（含交易记录与做T记录）
 async function clearAllHoldings() {
   try {
@@ -1126,12 +708,13 @@ async function refreshHoldingsCache() {
           <span v-else-if="appUpdateStore.checkResult?.hasUpdate" class="update-dot">●</span>
         </div>
         <div class="nav-title">我的持仓</div>
-        <!-- 移动端操作按钮 -->
-        <div class="nav-cloud-actions mobile-only">
-          <van-button size="small" @click="cloudBackupHoldings" class="nav-btn cloud-btn">云备份</van-button>
-          <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn cloud-btn">云恢复</van-button>
-        </div>
-
+        <!-- 移动端操作按钮（云备份 / 云恢复） -->
+        <BackupActions
+          class="nav-cloud-actions mobile-only"
+          :show-local-backup="false"
+          :show-local-restore="false"
+          button-class="nav-btn cloud-btn"
+        />
       </div>
       <!-- 第二行：按钮 -->
       <div class="nav-actions-row">
@@ -1169,7 +752,12 @@ async function refreshHoldingsCache() {
         <div class="mobile-right-actions mobile-only">
           <van-button size="small" @click="showImportDialog = true">截图</van-button>
           <van-button size="small" @click="openBatchDialog">批量</van-button>
-          <van-button size="small" @click="restoreHoldings">恢复</van-button>
+          <BackupActions
+            :show-local-backup="false"
+            :show-cloud-backup="false"
+            :show-cloud-restore="false"
+            button-class="nav-btn"
+          />
           <van-button size="small" @click="clearAllHoldings" type="danger" class="mobile-hide">清空</van-button>
         </div>
       </div>
@@ -1192,10 +780,8 @@ async function refreshHoldingsCache() {
         <van-icon name="replay" size="20" @click="refreshHoldings" class="refresh-icon" />
         <van-button size="small" @click="showImportDialog = true" class="nav-btn">截图</van-button>
         <van-button size="small" @click="openBatchDialog" class="nav-btn">批量</van-button>
-        <van-button size="small" @click="backupHoldings" class="nav-btn">备份</van-button>
-        <van-button size="small" @click="cloudBackupHoldings" class="nav-btn">云备份</van-button>
-        <van-button size="small" @click="restoreHoldings" class="nav-btn">恢复</van-button>
-        <van-button size="small" @click="cloudRestoreHoldings" class="nav-btn">云恢复</van-button>
+        <!-- 备份 / 云备份 / 恢复 / 云恢复（组件化，全景大屏复用同一份） -->
+        <BackupActions button-class="nav-btn" />
         <van-button size="small" @click="clearAllHoldings" class="nav-btn" type="danger">清空</van-button>
       </div>
     </div>
@@ -1619,56 +1205,6 @@ async function refreshHoldingsCache() {
       </div>
     </van-popup>
 
-    <!-- GitHub Token 配置对话框 -->
-    <van-popup 
-      v-model:show="showGitHubConfigDialog" 
-      position="center" 
-      round 
-      :style="{ width: '85%', maxWidth: '400px', background: 'var(--bg-secondary)' }"
-    >
-      <div class="github-config-popup">
-        <div class="github-config-header">
-          <span class="github-config-icon">☁️</span>
-          <span class="github-config-title">云端备份配置</span>
-        </div>
-        <div class="github-config-desc">
-          <p>请配置 GitHub Token 以使用云端备份功能：</p>
-          <p class="github-config-tip">
-            Token 获取方式：登录 GitHub → Settings → Developer settings → Personal access tokens → Generate new token<br/>
-            勾选权限：gist
-          </p>
-        </div>
-        <div class="github-config-form">
-          <van-field
-            v-model="githubToken"
-            type="text"
-            label="GitHub Token"
-            placeholder="请输入 GitHub Personal Access Token"
-            :disabled="isTokenValidating"
-            clearable
-          />
-        </div>
-        <div class="github-config-actions">
-          <van-button 
-            size="small" 
-            @click="showGitHubConfigDialog = false"
-            class="github-config-btn-cancel"
-          >
-            取消
-          </van-button>
-          <van-button 
-            size="small" 
-            type="primary" 
-            @click="saveGitHubConfig"
-            :loading="isTokenValidating"
-            class="github-config-btn-save"
-          >
-            {{ isTokenValidating ? '验证中...' : '保存并验证' }}
-          </van-button>
-        </div>
-      </div>
-    </van-popup>
-
     <!-- [WHAT] 应用更新弹窗 -->
     <AppUpdateDialog />
   </div>
@@ -1856,7 +1392,8 @@ async function refreshHoldingsCache() {
   50% { opacity: 0.3; }
 }
 
-.nav-btn {
+/* [WHY] .nav-btn 现在渲染在 BackupActions 子组件内部，scoped 样式必须用 :deep 才够得着 */
+:deep(.nav-btn) {
   font-size: 13px !important;
   padding: 6px 12px !important;
   min-width: auto !important;
@@ -1867,7 +1404,7 @@ async function refreshHoldingsCache() {
   justify-content: center !important;
 }
 
-.nav-btn .van-button__content {
+:deep(.nav-btn .van-button__content) {
   padding: 0 !important;
   min-width: auto !important;
   width: auto !important;
@@ -1910,13 +1447,14 @@ async function refreshHoldingsCache() {
     gap: 8px;
   }
   
-  .cloud-btn {
+  /* [WHY] 云备份按钮也在 BackupActions 内部，同样要 :deep */
+  :deep(.cloud-btn) {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-color: transparent;
     color: #fff;
   }
   
-  .cloud-btn:active {
+  :deep(.cloud-btn:active) {
     background: linear-gradient(135deg, #5a6fd6 0%, #6a418f 100%);
   }
   
@@ -2837,95 +2375,4 @@ async function refreshHoldingsCache() {
   border-top: 1px solid var(--border-color);
 }
 
-/* GitHub 配置弹窗样式 */
-.github-config-popup {
-  padding: 20px;
-}
-
-.github-config-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.github-config-icon {
-  font-size: 28px;
-}
-
-.github-config-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.github-config-desc {
-  margin-bottom: 16px;
-}
-
-.github-config-desc p {
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin: 0 0 8px 0;
-}
-
-.github-config-tip {
-  font-size: 12px !important;
-  color: var(--text-tertiary) !important;
-  background: var(--bg-tertiary);
-  padding: 10px 12px;
-  border-radius: 8px;
-  margin-top: 8px !important;
-  word-break: break-all;
-}
-
-.github-config-form {
-  margin-bottom: 20px;
-}
-
-.github-config-form :deep(.van-field__label) {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.github-config-form :deep(.van-field__control) {
-  font-size: 13px;
-}
-
-.github-config-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.github-config-btn-cancel {
-  flex: 1;
-}
-
-.github-config-btn-save {
-  flex: 1;
-}
-
-@media (max-width: 767px) {
-  .github-config-popup {
-    padding: 16px;
-  }
-  
-  .github-config-header {
-    margin-bottom: 12px;
-  }
-  
-  .github-config-title {
-    font-size: 16px;
-  }
-  
-  .github-config-desc p {
-    font-size: 13px;
-  }
-  
-  .github-config-tip {
-    font-size: 11px !important;
-    padding: 8px 10px;
-  }
-}
 </style>

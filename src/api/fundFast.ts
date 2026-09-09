@@ -1358,11 +1358,32 @@ async function fetchUSQuotesViaEastmoney(holdings: HoldingStock[]) {
  * [WHAT] 沪深300指数基金代码 000300，使用与普通基金相同的接口
  * @param days 获取天数，默认90天
  */
+/**
+ * [WHAT] 同一份 HS300 历史的「在途请求」，按 cacheKey 去重
+ * [WHY] 全景大屏一列十几个 MiniKLineChart 同时挂载，会并发请求同一份数据；
+ *       每次都新建 script 标签既浪费又被串行队列拖慢，先到的请求还没回来时
+ *       后到的应该复用同一个 Promise，而不是各拉一遍
+ */
+const hs300Inflight = new Map<string, Promise<NetValueRecord[]>>()
+
 export async function fetchHS300History(days = 90): Promise<NetValueRecord[]> {
   const cacheKey = `hs300_history_${days}`
   const cached = cache.get<NetValueRecord[]>(cacheKey)
   if (cached) return cached
 
+  const inflight = hs300Inflight.get(cacheKey)
+  if (inflight) return inflight
+
+  const task = loadHS300History(days, cacheKey)
+  hs300Inflight.set(cacheKey, task)
+  try {
+    return await task
+  } finally {
+    hs300Inflight.delete(cacheKey)
+  }
+}
+
+async function loadHS300History(days: number, cacheKey: string): Promise<NetValueRecord[]> {
   // [WHY] 使用沪深300ETF基金代码 510300（华泰柏瑞沪深300ETF）
   // 指数代码 000300 在 pingzhongdata API 上不支持，会读到上一个基金的全局变量
   const hs300Code = '510300'
