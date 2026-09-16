@@ -272,40 +272,46 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
 
   const persisted = persistCache.get<FundEstimate>(cacheKey)
 
+  // [FIX] 时间判定提到最外层，供「是否复用持久化估值」与「拉取失败回退」统一使用
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  const today = getCalendarDateStr(now)
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !isHolidaySync(today)
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  const isBeforeTrading = currentHour < 9 || (currentHour === 9 && currentMinute < 30)
+  const isAfterTrading = currentHour >= 15
+  const isNonTradingTime = !isWeekday || isBeforeTrading || isAfterTrading
+
+  // [FIX] 只有「当天」的持久化估值才允许在非交易时间直接复用：
+  // 盘前/周末估值本就不会被 fetchFundAccurateData 选用（走净值分支），直接复用省钱且无副作用；
+  // 盘后（>=15:00）净值未公布前估值仍会被选用——若持久化估值是旧日期（如手机当天没打开过，
+  // 落的是上一次打开时的旧估值），不能拿旧估值当今天涨跌，必须落到下方正常拉取流程重算当天估值。
+  // 盘后还要求快照时间已到收盘(>=15:00)，否则（盘中快照）也要重抓，确保各端收敛到同一最终估值。
+  const persistedIsToday = !!persisted && persisted.estimateDate === today
+  const persistedHour = persisted?.gztime ? parseInt(persisted.gztime, 10) : NaN
+  const persistedIsFinal = persistedIsToday && (!isAfterTrading || persistedHour >= 15)
+  const canReusePersisted = persistedIsFinal || isBeforeTrading || !isWeekday
+
   try {
-    // 如果强制刷新，先清除缓存
+    // [FIX] 强制刷新先清除缓存；非交易时间且可复用持久化估值（当天收盘/盘前/周末）直接返回，省网络
     if (forceRefresh) {
       cache.delete(cacheKey)
       persistCache.delete(cacheKey)
-    } else {
-      // [FIX] 非交易时间直接返回持久化缓存的估值（3点收盘时最后一次计算结果）
-      // 不再拉重仓股价 + 重新计算估值，节省大量网络请求
-      const now = new Date()
-      const dayOfWeek = now.getDay()
-      const today = getCalendarDateStr(now)
-      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !isHolidaySync(today)
-      const currentHour = now.getHours()
-      const isBeforeTrading = currentHour < 9 || (currentHour === 9 && now.getMinutes() < 30)
-      const isAfterTrading = currentHour >= 15
-      const isNonTradingTime = !isWeekday || isBeforeTrading || isAfterTrading
-
-      if (isNonTradingTime) {
-        if (persisted) {
-          console.log(`[fetchFundEstimateFast] ${code} 非交易时间，返回持久化缓存估值`)
-          return persisted
-        }
-        // 没有持久化缓存也不重仓拉股价，让上层 fallback 处理
-        throw new Error('Non-trading hours, no persisted estimate cache')
-      }
+    } else if (isNonTradingTime && persisted && canReusePersisted) {
+      // console.log(`[fetchFundEstimateFast] ${code} 非交易时间，返回持久化缓存估值（${persisted?.estimateDate} ${persisted?.gztime}）`)
+      return persisted
     }
 
     const holdings = await fetchTopHoldings(code, forceRefresh)
 
     if (holdings.length === 0) {
-      if (persisted) {
+      // [FIX] 仅在持久化估值是「当天」时才回退到它；否则抛错让上层走净值 fallback，
+      //       避免把旧日期的估值当今天涨跌返回（手机隔天未打开的典型事故）
+      if (persistedIsToday) {
         return persisted
       }
-      throw new Error('No holdings data')
+      throw new Error('No holdings data and no valid today estimate')
     }
 
     const isQDII = await checkIsQDII(code)
@@ -355,7 +361,7 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
     //       之后刷新时 fetchFundAccurateData 拿到 estimate=0，回退到旧净值，市值计算错误
     //       应该返回旧的 persisted 估值（如果有）或抛出错误，避免污染缓存
     if (prevNav <= 0) {
-      console.log(`[fetchFundEstimateFast] ${code} prevNav=0（JSONP失败），返回持久化缓存或抛错`)
+      // console.log(`[fetchFundEstimateFast] ${code} prevNav=0（JSONP失败），返回持久化缓存或抛错`)
       if (persisted) {
         return persisted
       }
@@ -385,8 +391,8 @@ export async function fetchFundEstimateFast(code: string, forceRefresh: boolean 
       forceRefresh
     })
 
-    const now = new Date()
-    const estimateTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    const estimateNow = new Date()
+    const estimateTime = estimateNow.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
     const result: FundEstimate = {
       fundcode: code,
@@ -1663,6 +1669,13 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     (currentHour >= 13 && currentHour < 15)
   const inTradingTime = isWeekday && isTradingHours
 
+  // [WHAT] 估值可用窗口：交易日且已过开盘（>= 9:30）
+  // [WHY] 估值（fundgz）从开盘起就代表「当天」净值：盘中、午休、盘后净值公布前都属于当天，都应取估值；
+  //       只有盘前（< 9:30，含凌晨/清晨）还没有「当天」估值，此时缓存里的 estimate 是上一交易日的盘中快照，
+  //       必须回退上一期净值（否则复现 Request 7 凌晨 -0.08% 盖掉 -3.77% 真净值的事故）。
+  //       净值公布后由上面 isNavUpdated 分支优先用净值，本窗口只在「净值未更新」时生效。
+  const estimateWindow = isWeekday && (currentHour > 9 || (currentHour === 9 && currentMinute >= 30))
+
   // console.log(`[交易时间判断] ${code}: dayOfWeek=${dayOfWeek}, isWeekday=${isWeekday}, currentHour=${currentHour}, currentMinute=${currentMinute}, isTradingHours=${isTradingHours}, inTradingTime=${inTradingTime}`)
 
   // [WHAT] 从历史净值中提取最新净值（第一个点是最新的）
@@ -1728,8 +1741,13 @@ export async function fetchFundAccurateData(code: string, isQDII: boolean = fals
     result.dayChange = result.navChange
     result.isNav = true
     result.dataSource = 'nav'
-  } else if (isWeekday && result.estimate > 0) {
-    // [WHAT] 交易日 + 净值未更新，使用估值
+  } else if (isWeekday && estimateWindow && result.estimate > 0) {
+    // [WHAT] 交易日 + 已过开盘（>= 9:30，含午休/盘后净值公布前）+ 净值未更新，使用实时估值
+    // [FIX] 估值窗口 = 交易日且 >= 9:30（市场开盘），覆盖盘中、午休、盘后净值公布前；
+    //       只有盘前（< 9:30，含凌晨/清晨）才回退上一期净值——因为那时还没有「当天」估值，
+    //       缓存里的 estimate 是上一交易日的盘中快照，拿它当今日涨跌幅会盖掉最新公布的净值。
+    //       典型事故：2026-09-16 凌晨 024239 最新真净值 -3.77%（QDII 延迟发布、9/14 那期），
+    //       曾被上一交易日盘中估算 -0.08% 覆盖，全景持仓错显。净值一旦公布，上面 isNavUpdated 分支优先用净值。
     result.currentValue = result.estimate
     // [FIX] 使用最新净值作为基准计算涨跌幅，而不是依赖API的estimateChange
     if (result.nav > 0) {

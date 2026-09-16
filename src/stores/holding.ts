@@ -46,6 +46,37 @@ export interface HoldingWithProfit extends HoldingRecord {
   fundScore?: FundScore
 }
 
+/**
+ * [FIX] 判断「持仓手上这期净值是不是当前该有的那一期」
+ * [WHY] 不能再用持久化的 h.isUpdated 布尔直接当跳过条件：
+ *       isUpdated 一旦被置 true 就再也不会因为日历日推进而复位，
+ *       导致隔了几天再打开 App 时，持仓还停在「上次更新那天的净值 / 涨幅」，
+ *       和账户实际更新后的净值对不上（全景左侧持仓、持仓页都会错显）。
+ *       改用持仓自己持有的净值日期 valueDate 重新跑 isNavUpToDate。
+ *
+ *       ⚠️ **必须用自然日口径（不传 today → 默认 getCalendarDateStr()）**：
+ *       进度条口径（getProgressDateStr）在 09:00 前会归属上一工作日，对 QDII 来说
+ *       `prevWorkdaySync(昨日) === valueDate` 会恒为 true，导致「早上一开 App
+ *       仍然停在更早的旧净值」不重拉。
+ *       真实案例：2026-09-16 0:50 QDII 基金 024239，valueDate=2026-09-14、
+ *       stored todayChange=-3.24% 是 9/15 盘中的估值进度条口径，9/15 收盘后已发布
+ *       的真净值 -3.77% 永远进不来 —— 自然日 (2026-09-16) + QDII 判定
+ *       `prevWorkday = 2026-09-15`，所以 9/14 既不是 9/16 也不是 9/15 → 不 current → 重拉。
+ * @returns true = 这期净值就是当前该拿到的那一期（可安全复用，无需重拉）
+ */
+// [市值排查] 调成本份额追踪日志开关。如需启用，把 COST_ADJUST_TRACE 改为 true（或让 WorkBuddy 打开"市值排查log"）
+const COST_ADJUST_TRACE = false
+const COST_ADJUST_TRACE_CODE = '017811'
+function holdingNavIsCurrent(h: any): boolean {
+  if (!h || !(h.currentValue > 0)) return false
+  return isNavUpToDate({
+    nav: h.currentValue,
+    navDate: h.valueDate || '',
+    isQDII: h.isQDII === true
+    // today 不传 → 默认 getCalendarDateStr()（自然日口径，与 MEMORY.md "两个今天"一致）
+  })
+}
+
 export const useHoldingStore = defineStore('holding', () => {
   // ========== State ==========
 
@@ -62,6 +93,7 @@ export const useHoldingStore = defineStore('holding', () => {
     let totalValue = 0
     let totalProfit = 0
     let todayProfit = 0
+    let totalCost = 0
 
     holdings.value.forEach((h) => {
       if (h.marketValue !== undefined) {
@@ -71,13 +103,17 @@ export const useHoldingStore = defineStore('holding', () => {
       if (h.todayProfit !== undefined) {
         todayProfit += h.todayProfit
       }
+      // [WHAT] 总成本 = 买入净值 × 份额 累加；用于真组合 ROI（总收益÷总成本，等同单基金 addedGain 口径）
+      totalCost += (h.shares || 0) * (h.buyNetValue || 0)
     })
 
-    const totalProfitRate = totalValue > 0 ? (totalProfit / totalValue) * 100 : 0
+    // [FIX] 真组合 ROI = 总收益 ÷ 总成本；禁止用 ÷总市值（profit/marketValue 下跌时偏激，非真 ROI）
+    const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0
 
     return {
       totalValue,
       totalProfit,
+      totalCost,
       totalProfitRate,
       todayProfit
     }
@@ -158,6 +194,11 @@ export const useHoldingStore = defineStore('holding', () => {
       ...r,
       loading: true
     }))
+    // [市值排查] 仅当开关打开时才追踪
+    if (COST_ADJUST_TRACE) {
+      const traced = cleanedRecords.filter((r: any) => r.code === COST_ADJUST_TRACE_CODE)
+      if (traced.length) console.log('[COST-ADJUST][initHoldings] 从存储读取:', traced.map((r: any) => ({ code: r.code, shares: r.shares, marketValue: r.marketValue, valueDate: r.valueDate, isNav: r.isNav, isUpdated: r.isUpdated })))
+    }
 
     if (cleanedRecords.length > 0) {
       if (needsCleanup) {
@@ -185,13 +226,13 @@ export const useHoldingStore = defineStore('holding', () => {
     const holdingsList = [...holdings.value]
 
     try {
-      // [FIX] 只刷新未更新的基金（净值未发布，需要估值）
-      // 已更新的基金直接用当前 holding 数据，无需重复拉取
-      const staleHoldings = holdingsList.filter(h => !h.isUpdated)
+      // [FIX] 只刷新「手上净值日期不是当前这一期」的基金（净值未发布 / 跨天未更新，需要重拉）
+      // 已更新（valueDate 已是今天或盘前归上一工作日）的基金直接复用 holding 数据，无需重复拉取
+      const staleHoldings = holdingsList.filter(h => !holdingNavIsCurrent(h))
 
       // 先处理已更新的基金：直接复用 holding 数据，不调 API
       holdingsList.forEach(holding => {
-        if (holding.isUpdated && holding.currentValue > 0) {
+        if (holdingNavIsCurrent(holding)) {
           const data = {
             code: holding.code,
             name: holding.name || '',
@@ -261,6 +302,8 @@ export const useHoldingStore = defineStore('holding', () => {
 
     // 基于最新 holding 算 marketValue / profit
     const shares = h.shares || 0
+    // [市值排查] 仅当开关打开时才追踪
+    if (COST_ADJUST_TRACE && code === COST_ADJUST_TRACE_CODE) console.log('[COST-ADJUST][updateHolding]', code, 'inputShares=', shares, 'buyNetValue=', h.buyNetValue, 'currentValue=', currentValue, '=> marketValue=', (shares * currentValue).toFixed(2), 'profit=', ((currentValue - (h.buyNetValue || currentValue)) * shares).toFixed(2))
     const buyNav = h.buyNetValue || currentValue
     const marketValue = shares * currentValue
     const profit = (currentValue - buyNav) * shares

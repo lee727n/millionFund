@@ -153,7 +153,14 @@ export function getHoldings(): HoldingRecord[] {
 /**
  * 保存持仓列表
  */
+// [市值排查] 调成本份额追踪日志开关。如需启用，把 COST_ADJUST_TRACE 改为 true（或让 WorkBuddy 打开"市值排查log"）
+const COST_ADJUST_TRACE = false
+const COST_ADJUST_TRACE_CODE = '017811'
 export function saveHoldings(holdings: HoldingRecord[]): void {
+  if (COST_ADJUST_TRACE) {
+    const rec = (holdings as any[]).find((h) => h.code === COST_ADJUST_TRACE_CODE)
+    if (rec) console.log('[COST-ADJUST][saveHoldings]', { code: rec.code, shares: rec.shares, marketValue: rec.marketValue, valueDate: rec.valueDate, isNav: rec.isNav, isUpdated: rec.isUpdated })
+  }
   setItem(STORAGE_KEYS.HOLDINGS, holdings)
 }
 
@@ -312,12 +319,18 @@ export function updateTradeNetValue(id: string, netValue: number): void {
  *       而今天的交易记录日期 > navDate，但依然需要用最新净值更新）
  *   2. t.date === navDate：今天的交易，净值刚更新，可能之前用了错误的值（修复 bug 遗留）
  */
-export function updateTradesByCode(code: string, netValue: number, navDate?: string): void {
+export function updateTradesByCode(code: string, netValue: number, navDate?: string, navIsCurrent: boolean = false): void {
   const trades = getTrades()
   let changed = false
   trades.forEach(t => {
     if (t.code === code && netValue > 0) {
-      const shouldUpdate = t.estimated || (navDate && t.date === navDate)
+      // [FIX] 只有「这期净值是今天该拿到的那一期（navIsCurrent）」才把估值交易确认成净值。
+      // [WHY] 盘中/净值未更新时，fetchFundAccurateData 拿回来的是「上一期」净值（navDate 不是今天）。
+      //       原逻辑 t.estimated || ... 会把今天用估值建的单误判成「净」并覆盖掉估值口径的净值，
+      //       导致全景大屏交易记录标签错显为「净」、份额算错（fundFast.ts:1713 已记载此坑）。
+      // [NOTE] navIsCurrent 由 isNavUpToDate 按自然日 + isQDII 判定，QDII 净值滞后也认；
+      //       原 t.date === navDate 分支保留：按净值日期精确匹配当天的交易做兜底修复。
+      const shouldUpdate = (navIsCurrent && t.estimated) || (navDate && t.date === navDate)
 
       if (shouldUpdate) {
         // 避免重复更新相同的值

@@ -18,6 +18,8 @@ export interface FundEstimate {
   gszzl: string
   /** 估值时间（格式：2024-01-01 15:00） */
   gztime: string
+  /** 估值所属日期（YYYY-MM-DD，自然日）。用于判断持久化估值是否为「当天」，避免跨设备/隔天误用旧估值 */
+  estimateDate?: string
 }
 
 /**
@@ -68,6 +70,12 @@ export interface HoldingRecord {
   marketValue?: number
   /** 持仓收益（用户调整时保存） */
   profit?: number
+  /** 当前净值/估值的日期（YYYY-MM-DD），用于判定手上这期净值是否已更新 */
+  valueDate?: string
+  /** currentValue 用的是净值还是估值（等价 resolveFundValue().isNav） */
+  isNav?: boolean
+  /** 是否已更新到当前这一期净值（UI 进度条/徽标用） */
+  isUpdated?: boolean
 }
 
 /**
@@ -132,7 +140,9 @@ export interface HoldingSummary {
   totalValue: number
   /** 总盈亏金额 */
   totalProfit: number
-  /** 总收益率 */
+  /** 总成本（买入净值 × 份额 之和，用于真组合 ROI） */
+  totalCost: number
+  /** 总收益率（真 ROI = 总收益÷总成本，非 ÷总市值） */
   totalProfitRate: number
   /** 当日总收益 */
   todayProfit: number

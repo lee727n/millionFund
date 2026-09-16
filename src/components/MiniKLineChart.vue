@@ -276,7 +276,7 @@ async function loadRealtime() {
   try {
     const data = await fetchFundAccurateData(props.fundCode)
     // [DEBUG] 调试日志
-    console.log('[MiniKLineChart] 实时数据加载完成:', props.fundCode, data)
+    // console.log('[MiniKLineChart] 实时数据加载完成:', props.fundCode, data)
     if (data && data.currentValue > 0) {
       realtimeData.value = {
         currentValue: data.currentValue,
@@ -287,10 +287,10 @@ async function loadRealtime() {
       await nextTick()
       drawChart()
     } else {
-      console.warn('[MiniKLineChart] 实时数据无效:', props.fundCode, data)
+      // console.warn('[MiniKLineChart] 实时数据无效:', props.fundCode, data)
     }
   } catch (err) {
-    console.warn('[MiniKLineChart] 实时数据加载失败:', props.fundCode, err)
+    // console.warn('[MiniKLineChart] 实时数据加载失败:', props.fundCode, err)
   }
 }
 
@@ -673,13 +673,13 @@ function drawChart() {
   const hasExtension = extendedPerfData.length > perfData.length
 
   // [DEBUG] 调试日志
-  if (trades.length > 0) {
-    console.log('[MiniKLineChart] 交易记录:', trades)
-    console.log('[MiniKLineChart] 今天日期:', todayStr)
-    console.log('[MiniKLineChart] hasExtension:', hasExtension)
-    console.log('[MiniKLineChart] filtered 最后日期:', filtered[filtered.length - 1]?.time)
-    console.log('[MiniKLineChart] extendedPerfData 长度:', extendedPerfData.length)
-  }
+  // if (trades.length > 0) {
+  //   console.log('[MiniKLineChart] 交易记录:', trades)
+  //   console.log('[MiniKLineChart] 今天日期:', todayStr)
+  //   console.log('[MiniKLineChart] hasExtension:', hasExtension)
+  //   console.log('[MiniKLineChart] filtered 最后日期:', filtered[filtered.length - 1]?.time)
+  //   console.log('[MiniKLineChart] extendedPerfData 长度:', extendedPerfData.length)
+  // }
 
   for (const trade of trades) {
     // [FIX] 不能用 findDateIndex（有7天兜底），今天的交易日期不在 filtered 里会错误匹配到最近日期
@@ -691,7 +691,7 @@ function drawChart() {
     })
 
     // [DEBUG] 调试日志
-    console.log('[MiniKLineChart] 交易日期:', trade.date, '→ 提取:', tradeDateOnly, '→ strictIdx:', strictIdx)
+    // console.log('[MiniKLineChart] 交易日期:', trade.date, '→ 提取:', tradeDateOnly, '→ strictIdx:', strictIdx)
 
     let perfIdx: number
     let fundReturn: number
@@ -706,7 +706,7 @@ function drawChart() {
       fundReturn = extendedPerfData[perfIdx].fundReturn
     } else {
       // [DEBUG] 调试日志
-      console.log('[MiniKLineChart] 跳过交易点:', trade.date, '原因: strictIdx=-1 且 (hasExtension=', hasExtension, '或 tradeDateOnly !== todayStr)')
+      // console.log('[MiniKLineChart] 跳过交易点:', trade.date, '原因: strictIdx=-1 且 (hasExtension=', hasExtension, '或 tradeDateOnly !== todayStr)')
       continue
     }
 
@@ -795,11 +795,21 @@ function drawChart() {
       const trade = data.trade
       const isBuy = trade.type === 'buy'
       borderColor = isBuy ? colors.upColor : colors.downColor
+      // [WHAT] 涨幅 = 该交易点当天的净值(基准) → 最新估值/净值的涨跌
+      // [WHY] 基准必须是「这笔交易当天那一根的净值」，而不是区间首根净值 —— 否则点不同的交易点
+      //       算出来是同一个数（区间累计），与用户预期「每个点位到现在最新的涨幅都不一样」相悖。
+      //       最新值优先取实时估值 rt.value.currentValue（含今日分时估值），盘后用最后一根已发布净值兜底。
+      const perfSeries = getFilteredData()
+      const base = trade.netValue || 0
+      const latestValue = (rt.value?.currentValue && rt.value.currentValue > 0)
+        ? rt.value.currentValue
+        : (perfSeries[perfSeries.length - 1]?.value ?? 0)
+      const gainPct = base > 0 ? ((latestValue - base) / base) * 100 : 0
       lines = [
         `${isBuy ? '加仓' : '减仓'} ${trade.date}`,
         `金额: ${trade.amount.toFixed(2)} 元`,
         `净值: ${trade.netValue.toFixed(4)}`,
-        `份额: ${trade.shares.toFixed(2)}`
+        `涨幅: ${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%`
       ]
     } else if (data.type === 'ttrade') {
       const t = data.ttrade
@@ -844,12 +854,16 @@ function drawChart() {
     ctx.textAlign = 'left'
     ctx.font = '10px Arial'
     lines.forEach((line, i) => {
+      let lineColor = '#ffffff'
       if (data.type === 'ttrade' && (line.startsWith('做T收益') || line.startsWith('收益率'))) {
-        const isProfit = data.ttrade.profit >= 0
-        ctx.fillStyle = isProfit ? colors.upColor : colors.downColor
-      } else {
-        ctx.fillStyle = '#ffffff'
+        lineColor = data.ttrade.profit >= 0 ? colors.upColor : colors.downColor
+      } else if (data.type === 'trade' && line.startsWith('涨幅')) {
+        // [WHAT] 涨幅按涨跌染色，和 累计收益率线 / 当日涨跌幅 一致
+        const m = line.match(/-?\d+(?:\.\d+)?/)
+        const v = m ? parseFloat(m[0]) : 0
+        lineColor = v >= 0 ? colors.upColor : colors.downColor
       }
+      ctx.fillStyle = lineColor
       ctx.fillText(line, boxX + 6, boxY + 14 + i * lineHeight)
     })
   }

@@ -11,6 +11,8 @@ import { getStarredFunds, removeStarredFund } from '@/utils/storage'
 import { showToast, showConfirmDialog } from 'vant'
 import { useHoldingStore } from '@/stores/holding'
 import { useFundValuation, type FundValuationData } from '@/composables/useFundValuation'
+import { getCalendarDateStr } from '@/utils/navDate'
+import { isHolidaySync } from '@/utils/holiday'
 
 type Period = '1m' | '3m' | '6m' | '1y'
 
@@ -129,7 +131,7 @@ const fundInfoMap = computed(() => {
       ? {
           name: h.name || h.code,
           marketValue: h.marketValue,
-          returnRate: h.profitRate,
+          returnRate: h.addedGain,
           costNavValue: h.buyNetValue,
         }
       : { name: '' })
@@ -238,10 +240,27 @@ function setPeriod(p: Period) {
 // [WHAT] 暴露给父层：全景大屏刷新时调用 refresh() 即可
 defineExpose({ refresh: reloadCharts })
 
+// [WHAT] 是否处于交易时间（工作日 9:30–11:30 / 13:00–15:00，跳过节假日）
+// [WHY] 自动刷新只在交易时间强制拉估值；盘后净值已定，force=true 会穿透缓存 +
+//       打掉 HTTP 缓存（fundFast.ts:434 的 ?v=Date.now()），把每只基金完整净值历史
+//       每 60s 重下一遍，纯浪费。逻辑与 fetchFundAccurateData 内的判定保持一致。
+function isTradingTimeNow(): boolean {
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  const today = getCalendarDateStr(now)
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !isHolidaySync(today)
+  if (!isWeekday) return false
+  const h = now.getHours()
+  const m = now.getMinutes()
+  return (h === 9 && m >= 30) || (h > 9 && h < 11) || (h === 11 && m <= 30) || (h >= 13 && h < 15)
+}
+
 function startAutoRefresh() {
   stopAutoRefresh()
   if (props.liveData) return  // 父层有自己的刷新周期
-  timer = setInterval(() => { loadRealtime(true) }, 60000)
+  // [WHAT] 每个周期重新判定：交易时间才 force 拉估值，盘后走缓存（零网络，傍晚新净值仍会被拉到）
+  // [WHY] 盘后 force=true 是纯浪费（净值不会变，却每 60s 重下完整历史）。
+  timer = setInterval(() => { loadRealtime(isTradingTimeNow()) }, 60000)
 }
 function stopAutoRefresh() {
   if (timer) { clearInterval(timer); timer = null }

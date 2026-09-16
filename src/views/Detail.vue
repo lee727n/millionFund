@@ -109,8 +109,9 @@ async function checkAndUpdateTradeCalculations(today: string) {
     
     // [FIX] 关键逻辑：有正式净值就直接更新该基金所有 estimated 交易记录
     // updateTradesByCode 内部已正确处理所有 estimated 记录，不再需要提前过滤日期
+    // [FIX] 透传 navIsCurrent：盘中/未更新净值时不再把今天的估值单误标成「净」
     if (data.nav > 0 && data.navDate) {
-      updateTradesByCode(fundCode.value, data.nav, data.navDate)
+      updateTradesByCode(fundCode.value, data.nav, data.navDate, data.navIsCurrent)
     }
     
     // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
@@ -580,6 +581,15 @@ const holdingDetails = computed(() => {
 })
 
 onMounted(async () => {
+  // [FIX] 详情页必须自行确保持仓已加载：
+  // 从全景大屏 window.open 新标签页、或直接深链/刷新进入 /detail 时，
+  // 没有任何会调用 initHoldings 的页面先挂载，holdingStore.holdings 仍是初始空数组，
+  // 导致 holdingInfo 为 null → 点「来源/行业板块/修改持仓/删除持仓」误报「暂未持有该基金」，
+  // 且 loadFundData 的快路径（复用持仓已落地净值）也会失效。
+  // 仅当持仓尚未加载时才初始化，避免 in-app 从持仓页进入（已初始化）时重复拉取全部基金。
+  if (holdingStore.holdings.length === 0) {
+    await holdingStore.initHoldings()
+  }
   await loadFundData()
 })
 
@@ -623,9 +633,9 @@ async function loadFundData() {
         isNav: true,
         navDate: holding.valueDate || ''
       }
-      // 同步更新交易记录
+      // 同步更新交易记录（holding 已确认本期净值落地，navIsCurrent 取 holding.isUpdated）
       if (holding.valueDate) {
-        updateTradesByCode(holding.code, holding.currentValue, holding.valueDate)
+        updateTradesByCode(holding.code, holding.currentValue, holding.valueDate, !!holding.isUpdated)
       }
       // 仍然异步刷新一次（非阻塞），确保数据最新
       // [FIX] 保护：holding.isUpdated === true 时，不允许 API 把 dataSource 从 'nav' 降级为 'estimate'
@@ -648,7 +658,7 @@ async function loadFundData() {
             navDate: accurateData.navDate
           }
           if (accurateData.nav > 0 && accurateData.navDate) {
-            updateTradesByCode(fundCode.value, accurateData.nav, accurateData.navDate)
+            updateTradesByCode(fundCode.value, accurateData.nav, accurateData.navDate, accurateData.navIsCurrent)
           }
         }
       }).catch(() => {})

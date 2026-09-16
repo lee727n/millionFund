@@ -30,6 +30,10 @@ const holdingStore = useHoldingStore()
 const aiTrackingStore = useAITrackingStore()
 const themeStore = useThemeStore()
 
+// [市值排查] 调成本份额追踪日志开关。如需启用，把 COST_ADJUST_TRACE 改为 true（或让 WorkBuddy 打开"市值排查log"）
+const COST_ADJUST_TRACE = false
+const COST_ADJUST_TRACE_CODE = '017811'
+
 // [WHAT] 底部导航开关：全景页默认隐藏，这里给用户一个手动调出来的入口
 const { tabbarForceShow, toggleTabbar } = useTabbar()
 
@@ -883,6 +887,9 @@ async function submitTrade() {
 // ============ 调成本弹窗 ============
 const showCostDialog = ref(false)
 const costFormData = ref({ amount: '', profit: '' })
+// [FIX] 弹窗打开时预取最新净值，用于「预计份额」实时预览，避免用户把「新增金额」误当成「调后总市值」录入
+const costBasisNetValue = ref(0)
+const costBasisLoading = ref(false)
 function openCostDialog() {
   closeActionBar()
   const holding = selectedFundForAction.value
@@ -891,8 +898,21 @@ function openCostDialog() {
     amount: (holding.marketValue || holding.shares * holding.currentValue || 0).toString(),
     profit: (holding.profit !== undefined ? holding.profit : (holding.currentValue && holding.buyNetValue ? (holding.currentValue - holding.buyNetValue) * holding.shares : 0)).toString()
   }
+  // 预取最新净值（nav 口径）供预览；失败不影响提交（提交时再拉一次）
+  costBasisLoading.value = true
+  costBasisNetValue.value = 0
+  fetchFundAccurateData(holding.code, holding.isQDII, true)
+    .then((acc: any) => { if (acc && acc.nav > 0) costBasisNetValue.value = acc.nav })
+    .catch(() => {})
+    .finally(() => { costBasisLoading.value = false })
   showCostDialog.value = true
 }
+// [FIX] 实时预览：调后总市值 ÷ 最新净值 = 预计份额。让用户录入前就能核对份额是否对得上
+const costPreviewShares = computed(() => {
+  const mv = parseFloat(costFormData.value.amount)
+  if (!mv || mv <= 0 || costBasisNetValue.value <= 0) return null
+  return mv / costBasisNetValue.value
+})
 async function submitCostAdjust() {
   const holding = selectedFundForAction.value
   if (!holding) return
@@ -908,9 +928,17 @@ async function submitCostAdjust() {
     let latestNetValue: number | null = null
     let latestDate = ''
     const accurate = await fetchFundAccurateData(base.code, base.isQDII, true)
+    // [FIX] 份额换算用「最新公布的净值（nav）」，与 Home / Detail 两个入口保持一致。
+    // [WHY] 支付宝等平台展示的持仓市值 / 持仓收益都基于「昨日净值」，用户手动录入的市值、收益
+    //       也是按昨日净值口径来的；用 nav 反推份额，才能和支付宝手里实际持有的份额对上。
+    //       用 currentValue（今天估值 / 今天净值）算出的份额会和支付宝对不上（用户明确：用今天的值换算「和支付宝不一样」）。
     if (accurate && accurate.nav > 0) {
       latestNetValue = accurate.nav
-      latestDate = accurate.navDate
+      latestDate = accurate.navDate || ''
+    } else if (accurate && accurate.currentValue > 0) {
+      // 兜底：极少数 nav 取不到时退化为用 currentValue
+      latestNetValue = accurate.currentValue
+      latestDate = accurate.navDate || accurate.estimateTime || ''
     }
     if (!latestNetValue) {
       const r = await fetchLatestNetValue(base.code)
@@ -918,6 +946,8 @@ async function submitCostAdjust() {
     }
     if (!latestNetValue) { closeToast(); return showToast('获取最新净值失败') }
     const newShares = marketValue / latestNetValue
+    // [市值排查] 仅当开关打开时才追踪
+    if (COST_ADJUST_TRACE && base.code === COST_ADJUST_TRACE_CODE) console.log('[COST-ADJUST][submit]', base.code, 'marketValue=', marketValue, 'profit=', profit, 'latestNetValue=', latestNetValue, 'newShares=', newShares.toFixed(2))
     const costNetValue = newShares > 0 ? (marketValue - profit) / newShares : latestNetValue
     const addedGain = ((latestNetValue - costNetValue) / costNetValue) * 100
     holdingStore.addOrUpdateHolding({
@@ -925,8 +955,18 @@ async function submitCostAdjust() {
       buyDate: base.buyDate, holdingDays: base.holdingDays,
       industrySectors: base.industrySectors, source: base.source,
       isQDII: base.isQDII, createdAt: base.createdAt,
-      currentValue: latestNetValue, addedGain, marketValue, profit
+      currentValue: latestNetValue, addedGain, marketValue, profit,
+      // [FIX] 把这次编辑用的净值日期 / 是否净值 / 是否已更新一并落盘。
+      //       否则 valueDate 停留在旧值 → 下次刷新判定「手上净值不是当前这期」→ 走慢路径
+      //       用今天实时值重算 marketValue/profit，把刚录入的市值/收益覆盖掉，看起来像「没保存 / 份额没加上」。
+      //       落盘最新 navDate 后，净值已公布的常见场景 valueDate=今天 → 快路径直接复用、原样保留本次编辑。
+      valueDate: latestDate,
+      isNav: true,
+      isUpdated: true
     })
+    const saved = holdingStore.holdings.find((h: any) => h.code === base.code)
+    // [市值排查] 仅当开关打开时才追踪
+    if (COST_ADJUST_TRACE && base.code === COST_ADJUST_TRACE_CODE) console.log('[COST-ADJUST][after-save]', base.code, 'shares=', saved?.shares, 'marketValue=', saved?.marketValue, 'valueDate=', saved?.valueDate, 'isNav=', saved?.isNav, 'isUpdated=', saved?.isUpdated)
     closeToast()
     showToast({ message: `成本已更新，份额 ${newShares.toFixed(2)}，成本净值 ${costNetValue.toFixed(4)}`, duration: 2500 })
     showCostDialog.value = false
@@ -1277,7 +1317,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                           v-if="fund.addedGain !== undefined"
                           :class="fund.addedGain >= 0 ? 'up' : 'down'"
                         >
-                          累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                          累计 {{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%
                         </span>
                       </div>
                     </div>
@@ -1381,7 +1421,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 v-if="fund.addedGain !== undefined" 
                 :class="fund.addedGain >= 0 ? 'up' : 'down'"
               >
-                累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(1) }}%
+                累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%
               </span>
               <div class="observe-bar">
                 <div 
@@ -1662,7 +1702,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
       <div class="pa-dialog-body">
         <div class="pa-fund-info">{{ selectedFundForAction?.name }} ({{ selectedFundForAction?.code }})</div>
         <div class="pa-field">
-          <label>当前持仓市值 (元)</label>
+          <label>调后持仓市值 (元)<span class="pa-sub">＝请输入支付宝上的最新总市值</span></label>
           <input v-model="costFormData.amount" type="number" step="0.01" />
         </div>
         <div class="pa-field">
@@ -1672,6 +1712,11 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         <div class="pa-hint">
           系统将自动获取最新净值，重新计算份额和成本净值。
         </div>
+        <div class="pa-preview" v-if="costPreviewShares !== null">
+          预计份额：<b>{{ costPreviewShares.toFixed(2) }}</b> 份
+          <span class="pa-preview-sub">（调后市值 ÷ 最新净值 {{ costBasisNetValue.toFixed(4) }}）</span>
+        </div>
+        <div class="pa-preview pa-preview-loading" v-else-if="costBasisLoading">正在获取最新净值…</div>
       </div>
       <div class="pa-dialog-footer">
         <button class="pa-btn cancel" @click="showCostDialog = false">取消</button>
@@ -3512,6 +3557,26 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   color: #64748b;
   margin-top: 4px;
 }
+
+.pa-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 6px;
+}
+
+.pa-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #065f46;
+}
+.pa-preview b { font-size: 15px; color: #047857; }
+.pa-preview-sub { font-size: 10px; color: #6b7280; }
+.pa-preview-loading { background: #f1f5f9; border-color: #e2e8f0; color: #64748b; }
 
 .pa-fund-name-preview {
   font-size: 12px;

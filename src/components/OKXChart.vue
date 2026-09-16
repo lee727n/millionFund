@@ -1361,12 +1361,22 @@ function drawTradeMarkers(
     const y = toY(valueGetter(data[pointIndex]!))
     const isBuy = trade.type === 'buy'
 
+    // [WHAT] 涨幅 = 该交易点净值(基准) → 最新估值/净值的涨跌，与星标K线(MiniKLineChart)口径一致
+    // [WHY] 基准必须是「这笔交易当天那个净值 trade.netValue」，而不是区间首根净值 —— 否则点不同交易算出来同一个数。
+    //       最新值优先取 props.realtimeValue（含今日分时估值，等价于 star 的 rt.value.currentValue），
+    //       盘后无实时数据时用图表最后一点的净值兜底（等价于 star 的 perfSeries[last].value）。
+    const base = trade.netValue || 0
+    const latestValue = (props.realtimeValue && props.realtimeValue > 0)
+      ? props.realtimeValue
+      : (filteredData.value[filteredData.value.length - 1]?.value ?? 0)
+    const gainPct = base > 0 ? ((latestValue - base) / base) * 100 : 0
+
     // 提示框内容
     const lines = [
       `${isBuy ? '📈 加仓' : '📉 减仓'} ${trade.date}`,
       `金额: ${trade.amount.toFixed(2)} 元`,
       `净值: ${trade.netValue.toFixed(4)}`,
-      `份额: ${trade.shares.toFixed(2)}`
+      `涨幅: ${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%`
     ]
 
     // 测量提示框尺寸
@@ -1394,10 +1404,17 @@ function drawTradeMarkers(
     ctx.stroke()
 
     // 绘制提示文字
-    ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'left'
     ctx.font = '12px Arial'
     lines.forEach((line, i) => {
+      // [WHAT] 涨幅按涨跌染色，与星标K线(MiniKLineChart)及累计收益率线一致
+      if (line.startsWith('涨幅')) {
+        const m = line.match(/-?\d+(?:\.\d+)?/)
+        const v = m ? parseFloat(m[0]) : 0
+        ctx.fillStyle = v >= 0 ? colors.upColor : colors.downColor
+      } else {
+        ctx.fillStyle = '#ffffff'
+      }
       ctx.fillText(line, boxX + 8, boxY + 20 + i * lineHeight)
     })
   }

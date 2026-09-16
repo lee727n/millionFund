@@ -118,8 +118,9 @@ async function loadTradeCalculations(trades: TradeRecord[]) {
       console.log('[TradeCenter.loadCalculations] 基金', code, 'nav:', data.nav, 'navDate:', data.navDate, 'dataSource:', data.dataSource)
       
       // [FIX] 关键逻辑：有正式净值就直接更新该基金所有 estimated 交易记录
+      // [FIX] 透传 navIsCurrent：盘中/未更新净值时不再把今天的估值单误标成「净」
       if (data.nav > 0 && data.navDate) {
-        updateTradesByCode(code, data.nav, data.navDate)
+        updateTradesByCode(code, data.nav, data.navDate, data.navIsCurrent)
       }
       
       // 如果今天净值还没更新，恢复今天添加的记录为 estimated: true
