@@ -16,7 +16,8 @@ import { useAITrackingStore } from '@/stores/aiTracking'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
-import { addTrade, addStarredFund, removeStarredFund, isStarredFund, getStarredFunds } from '@/utils/storage'
+import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund } from '@/utils/storage'
+import { createTrade } from '@/composables/useFundTrade'
 import type { TradeType } from '@/types/fund'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
@@ -460,7 +461,7 @@ function handleActionStar() {
       removeStarredFund(code)
       showToast('已取消星标')
     } else {
-      addStarredFund(code)
+      addStarredFund(code, starMetaFromFund(selectedFundForAction.value))
       showToast('已加入星标K线')
     }
   }
@@ -634,8 +635,8 @@ async function submitTrade() {
 
   const loadingToast = showLoadingToast('提交中...')
   try {
-    addTrade({
-      id: '',
+    // [WHAT] 统一走 useFundTrade.createTrade（买入/卖出共用出口，避免漏 estimated/source）
+    createTrade({
       code: holding.code,
       name: holding.name,
       type,
@@ -645,10 +646,7 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
-      // [FIX] 保存交易时的估值快照，用于后续涨跌幅计算
-      estimateAtTrade: isEstimate ? netValue : undefined,
-      source: holding.source,
-      createdAt: Date.now()
+      source: holding.source
     })
 
     const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)

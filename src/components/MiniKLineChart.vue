@@ -31,6 +31,20 @@ const props = withDefaults(defineProps<{
   returnRate?: number
   costNavValue?: number
   /**
+   * [WHAT] 是否在信息条右对齐显示持仓市值（¥xxx）
+   * [WHY] 独立星标页用；全景大屏关掉（列窄且左列已有市值），改走 showNameMarketValue 内联
+   * [EDGE] 与 showNameMarketValue 互斥：两者都开时以内联为准，右对齐让位（见 rightItems 守卫）
+   */
+  showMarketValue?: boolean
+  /**
+   * [WHAT] 把持仓市值（或无持仓时的「未出仓」）画在基金名后面、同一行内联显示
+   * [WHY] 全景大屏星标K线要在基金名后直接关联持仓市值；默认 false 不打开，
+   *       避免影响独立星标页原有的「右对齐市值」布局
+   * [EDGE] marketValue == null 时显示「未出仓」（持仓已删 / 从未建仓）—— 由父层保证
+   *       无持仓时不传 marketValue 即可；开启本开关时右对齐市值自动让位（见 rightItems 守卫）
+   */
+  showNameMarketValue?: boolean
+  /**
    * [WHAT] 父层（如全景大屏）已经拉好的实时数据，传进来就不再自己请求
    * [WHY] 全景大屏一页十几个图，各自 fetchFundAccurateData 会把请求放大 N 倍，
    *       而且可能与页面其它模块拿到的估值/净值口径不一致
@@ -49,6 +63,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   showHS300: true,
   topRightReserve: 0,
+  showMarketValue: true,
+  showNameMarketValue: false,
 })
 
 // ========== 常量 ==========
@@ -124,6 +140,16 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 const RESERVE_BOTTOM = 26
 /** [WHAT] 单行排版时给基金名留的最小宽度；右侧值排完还不够就整段不画，绝不压字 */
 const MIN_NAME_WIDTH = 34
+
+/**
+ * [WHAT] 金额按「万」单位显示，与全景大屏持仓列 / 持仓页口径一致
+ * [WHY] 用户要求星标K线金额同持仓一样用「20.23万」这种，免得数位数
+ * [HOW] ≥1万 显示 x.xx万（2 位小数），否则显示四舍五入整数（如 123）
+ */
+function fmtWan(v: number): string {
+  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(2) + '万'
+  return Math.round(v).toString()
+}
 
 /**
  * [WHAT] 顶部信息条的排版：单行还是两行、信息条多高、画布 padding
@@ -464,9 +490,12 @@ function drawChart() {
         font: 'bold 9px Arial',
       })
     }
-    if (props.marketValue !== undefined && props.marketValue !== null) {
+    // [FIX] 右对齐市值：仅当 showMarketValue 开启、且非内联模式（showNameMarketValue）时绘制，
+    //       避免与「基金名后内联市值」重复显示；关闭 showMarketValue 时（移动端 / 全景大屏）完全不画
+    // [WHAT] 金额走 fmtWan（≥1万→x.xx万），与持仓列口径一致
+    if (props.marketValue !== undefined && props.marketValue !== null && props.showMarketValue && !props.showNameMarketValue) {
       rightItems.push({
-        text: `¥${props.marketValue.toFixed(0)}`,
+        text: fmtWan(props.marketValue),
         color: colors.textSecondary,
         font: '9px Arial',
       })
@@ -492,19 +521,43 @@ function drawChart() {
       placed.push({ ...it, x: cursor })
       cursor = cursor - w - GAP
     }
+    // [WHAT] 名称后附加值（持仓市值 / 未出仓）：仅当 showNameMarketValue 开启时
+    // [WHY] 全景大屏星标K线要在基金名后面直接关联持仓市值，没有持仓显示「未出仓」
+    // [HOW] 先量出后缀宽度，从 nameMax 里扣掉，保证「名称…后缀」整体不压到右侧的涨跌幅
+    let nameSuffix = ''
+    let suffixColor = colors.textSecondary
+    if (props.showNameMarketValue) {
+      if (props.marketValue !== undefined && props.marketValue !== null) {
+        nameSuffix = ` ${fmtWan(props.marketValue)}`
+      } else {
+        nameSuffix = ' 未持仓'
+      }
+    }
+    ctx.font = '9px Arial'
+    const suffixWidth = nameSuffix ? ctx.measureText(nameSuffix).width : 0
+    const SUFFIX_GAP = 4
+
     const nameMax = twoLineHeader
-      ? rightLimit - padding.left - 2
-      : Math.max(0, cursor - padding.left - 2)
+      ? rightLimit - padding.left - 2 - suffixWidth - SUFFIX_GAP
+      : Math.max(0, cursor - padding.left - 2 - suffixWidth - SUFFIX_GAP)
 
     // 基金名称（代码兜底）
+    const nameY = twoLineHeader ? 11 : infoBarHeight - 3
     ctx.fillStyle = colors.textPrimary
     ctx.font = 'bold 10px Arial'
     ctx.textAlign = 'left'
-    ctx.fillText(
-      ellipsize(ctx, props.fundName || props.fundCode, nameMax),
-      padding.left,
-      twoLineHeader ? 11 : infoBarHeight - 3
-    )
+    const drawnName = ellipsize(ctx, props.fundName || props.fundCode, nameMax)
+    ctx.fillText(drawnName, padding.left, nameY)
+    // [FIX] 必须在「还是 10px 粗体」时量名称真实宽度，再切到 9px 画后缀；
+    //       若在 9px 下量 10px 粗体名称，量出的宽度偏小 → 后缀被左移压到名称上（用户反馈「叠加」）
+    const nameDrawnWidth = ctx.measureText(drawnName).width
+
+    // 名称后附加值（紧挨名称右侧）
+    if (nameSuffix) {
+      ctx.font = '9px Arial'
+      ctx.fillStyle = suffixColor
+      ctx.fillText(nameSuffix, padding.left + nameDrawnWidth + SUFFIX_GAP, nameY + 1)
+    }
 
     // 右侧的量
     ctx.textAlign = 'right'
@@ -833,11 +886,23 @@ function drawChart() {
     const lineHeight = 14
     const boxHeight = lines.length * lineHeight + 8
 
-    // 确定提示框位置（避免超出边界）
-    let boxX = cp.x + 8
-    let boxY = cp.y - boxHeight - 8
-    if (boxX + boxWidth > width - padding.right) boxX = cp.x - boxWidth - 8
-    if (boxY < padding.top) boxY = cp.y + 8
+    // 确定提示框位置（自动适应边界，四点都不溢出）
+    // [FIX] 之前只夹了 顶/右，基金「买入后下跌」时买点位置偏高，提示框翻到点下方会溢出底边被裁切。
+    //       这里先按「点在上方区域→放上方、点在下方区域→放下方」「点在左/右区域→放右/左」选主方向，
+    //       再用四边界兜底夹紧，保证任何角落点击都能完整看到。
+    const boxXRight = cp.x + 8
+    const boxXLeft = cp.x - boxWidth - 8
+    const boxYAbove = cp.y - boxHeight - 8
+    const boxYBelow = cp.y + 8
+    // 主方向：上方有空间放上方，否则放下方
+    let boxY = (cp.y > padding.top + boxHeight + 8) ? boxYAbove : boxYBelow
+    // 主方向：右侧有空间放右侧，否则放左侧
+    let boxX = (cp.x < width - padding.right - boxWidth - 8) ? boxXRight : boxXLeft
+    // 四边界兜底夹紧
+    if (boxY < padding.top) boxY = padding.top
+    if (boxY + boxHeight > height - padding.bottom) boxY = height - padding.bottom - boxHeight
+    if (boxX < padding.left) boxX = padding.left
+    if (boxX + boxWidth > width - padding.right) boxX = width - padding.right - boxWidth
 
     // 绘制提示框背景
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'

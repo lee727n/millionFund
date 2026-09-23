@@ -4,7 +4,7 @@
 import { APP_VERSION } from '@/config/version'
 import { cache } from '@/api/cache'
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   WATCHLIST: 'fund_watchlist',
   HOLDINGS: 'fund_holdings',
   APP_VERSION: 'app_version',
@@ -501,20 +501,124 @@ export function removeTTrade(tTradeId: string): void {
 }
 
 // ========== 星标K线列表 ==========
+// [WHAT] 星标记录从「纯代码数组」升级为对象，额外冗余一份「展示用快照」
+// [WHY] 用户清仓并删除持仓后，星标K线仍想继续看这只基金（名称 / 累计涨跌幅 / 成本线）。
+//       这些字段原本只从 holdingStore 推导，持仓一删就全空。把持仓派生的最关键展示字段
+//       冗余进星标记录，删除持仓后还能靠快照继续显示；只有「在星标里删除」才真正不显示。
+// [MIGRATION] 旧数据是直接 string[]，读取时自动迁移成 { code }，对外 getStarredFunds() 仍返回 string[]
+export interface StarredFundMeta {
+  code: string
+  /** 基金名称（冗余，删除持仓后仍能显示） */
+  name?: string
+  /** 账户来源 ali/TX/JD/observe，用于分组排序 */
+  source?: string
+  /** 是否 QDII（冗余，独立拉估值时口径正确） */
+  isQDII?: boolean
+  /** 累计涨跌幅（买入至今真 ROI = addedGain），删除持仓后仍能显示 */
+  addedGain?: number
+  /** 成本净值（画成本线用），删除持仓后仍能显示 */
+  buyNetValue?: number
+  /** 当前净值日期（冗余） */
+  valueDate?: string
+  /** 当前净值/估值（冗余） */
+  currentValue?: number
+  /** 当日涨跌幅（字符串，排序用） */
+  todayChange?: string
+}
 
-/**
- * 获取星标K线的基金代码列表
- */
-export function getStarredFunds(): string[] {
-  return getItem<string[]>(STORAGE_KEYS.STARRED_FUNDS, [])
+type StarredRaw = string | StarredFundMeta
+
+/** [WHAT] 读取原始星标记录并迁移旧 string[] 格式 */
+function readStarredRaw(): StarredFundMeta[] {
+  const raw = getItem<StarredRaw[]>(STORAGE_KEYS.STARRED_FUNDS, [])
+  if (!Array.isArray(raw)) return []
+  return raw.map(x => (typeof x === 'string' ? { code: x } : { ...x }))
+}
+
+/** 读取单只星标基金的展示快照（含 name / 累计涨跌幅 等） */
+export function getStarredFundMeta(code: string): StarredFundMeta | undefined {
+  return readStarredRaw().find(m => m.code === code)
+}
+
+/** 读取全部星标快照（含 name/累计涨跌幅 等展示字段），用于备份 */
+export function getAllStarredFundMeta(): StarredFundMeta[] {
+  return readStarredRaw()
 }
 
 /**
- * 保存星标K线列表
+ * [WHAT] 从持仓/基金对象里抽出「星标快照」字段
+ * [WHY] 点星标时顺手把持仓派生字段写进快照，删除持仓后立刻有数据可显示
  */
-export function saveStarredFunds(codes: string[]): void {
-  setItem(STORAGE_KEYS.STARRED_FUNDS, codes)
+export function starMetaFromFund(fund: any): Partial<StarredFundMeta> {
+  if (!fund) return {}
+  return {
+    name: fund.name || fund.code,
+    source: fund.source,
+    isQDII: fund.isQDII === true,
+    addedGain: typeof fund.addedGain === 'number' ? fund.addedGain : undefined,
+    buyNetValue: typeof fund.buyNetValue === 'number' ? fund.buyNetValue : undefined,
+    valueDate: fund.valueDate,
+    currentValue: typeof fund.currentValue === 'number' ? fund.currentValue : undefined,
+    todayChange: fund.todayChange != null ? String(fund.todayChange) : undefined,
+  } as Partial<StarredFundMeta>
+}
+
+/**
+ * 获取星标K线的基金代码列表
+ * [WHAT] 对外仍返回 string[]，保持与历史调用方（备份 / 首页计数 / 排序）兼容
+ */
+export function getStarredFunds(): string[] {
+  return readStarredRaw().map(m => m.code)
+}
+
+/** [WHAT] 写回原始星标记录并广播变更 */
+function writeStarredRaw(list: StarredFundMeta[]): void {
+  setItem(STORAGE_KEYS.STARRED_FUNDS, list)
   notifyStarredFundsChanged()
+}
+
+/**
+ * 保存星标K线列表（备份恢复 / 外部写入）
+ * [WHAT] 入参是「代码或带快照的对象」数组；直接以备份内容为准写入（authoritative），
+ *       不跟本地已有快照合并——恢复本就该用备份的数据覆盖当前设备。
+ * [WHY] 这样跨设备恢复「已删持仓但仍星标」的基金时，名称/累计涨跌幅/成本线快照能跟着备份走，
+ *       不会在目标设备上变空白。老备份里是纯 string[] 也没问题（归一化成 { code }）。
+ */
+export function saveStarredFunds(entries: Array<string | StarredFundMeta>): void {
+  const list = entries.map(e => (typeof e === 'string' ? { code: e } : { ...e }))
+  writeStarredRaw(list)
+}
+
+/**
+ * 添加基金到星标K线列表（可附带展示快照）
+ */
+export function addStarredFund(code: string, meta?: Partial<StarredFundMeta>): void {
+  const list = readStarredRaw()
+  const idx = list.findIndex(m => m.code === code)
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...meta }
+  } else {
+    list.unshift({ code, ...meta })
+  }
+  writeStarredRaw(list)
+}
+
+/**
+ * [WHAT] 合并更新某只星标基金的展示快照（不触发 starred-funds-changed 广播）
+ * [WHY] 只在持仓数据变化时静默刷新快照，避免触发面板 onStarredChanged → 再写快照 的死循环
+ */
+export function updateStarredFundMeta(code: string, patch: Partial<StarredFundMeta>): void {
+  const list = readStarredRaw()
+  const idx = list.findIndex(m => m.code === code)
+  if (idx >= 0) list[idx] = { ...list[idx], ...patch }
+  else list.unshift({ code, ...patch })
+  setItem(STORAGE_KEYS.STARRED_FUNDS, list) // [NOTE] 静默：不广播
+}
+
+/** 从星标K线列表移除基金（连带快照一起删，真正不再显示） */
+export function removeStarredFund(code: string): void {
+  const list = readStarredRaw().filter(m => m.code !== code)
+  writeStarredRaw(list)
 }
 
 /**
@@ -525,29 +629,6 @@ export function saveStarredFunds(codes: string[]): void {
 function notifyStarredFundsChanged(): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('starred-funds-changed'))
-}
-
-/**
- * 添加基金到星标K线列表
- */
-export function addStarredFund(code: string): void {
-  const list = getStarredFunds()
-  if (!list.includes(code)) {
-    list.unshift(code)
-    saveStarredFunds(list)
-  }
-}
-
-/**
- * 从星标K线列表移除基金
- */
-export function removeStarredFund(code: string): void {
-  const list = getStarredFunds()
-  const index = list.indexOf(code)
-  if (index > -1) {
-    list.splice(index, 1)
-    saveStarredFunds(list)
-  }
 }
 
 /**

@@ -5,6 +5,7 @@
 import { ref, computed } from 'vue'
 import { fetchFundAccurateData, type FundAccurateData } from '@/api/fundFast'
 import { updateTradesByCode, getTrades, saveTrades } from '@/utils/storage'
+import { getTodayFirstBuyCorrection } from '@/composables/useFundTrade'
 import { getCalendarDateStr, getProgressDateStr, isNavUpToDate } from '@/utils/navDate'
 import { useHoldingStore } from '@/stores/holding'
 
@@ -55,17 +56,38 @@ export function useFundValuation() {
   }
 
   /**
+   * [WHAT] 净值公布后，把「今天首次添加（单笔买入、无减仓）」的持仓份额用正式净值重算
+   * [WHY] 交易时间内添加用的是盘中估值算份额；晚上净值公布后，交易记录已被 updateTradesByCode
+   *       改成净值，但持仓的 shares/buyNetValue 还是估值口径 → 若不改，市值会凭空差一个估值误差
+   *       （例如 10000 元仓位显示成 9930，像亏了 0.7%）。这里用正式净值把持仓份额纠正回来。
+   * [SCOPE] 只动「今天买入 + 仅一笔买入 + 无减仓」的持仓（历史/加仓/减仓持仓一律不动）。
+   */
+  function reconcileHoldingFromTodayBuy(code: string, nav: number): void {
+    if (!(nav > 0)) return
+    const holding = holdingStore.getHoldingByCode(code)
+    if (!holding) return
+    const c = getTodayFirstBuyCorrection(code, nav, holding.buyDate, getCalendarDateStr())
+    if (!c) return
+    holding.shares = c.shares
+    holding.buyNetValue = c.buyNetValue
+    holdingStore.addOrUpdateHolding(holding)
+  }
+
+  /**
    * 批量加载基金数据
    * [OPTIMIZATION] 非交易时间 + 净值已更新的基金，直接使用 holdingStore 数据，避免不必要的API调用
    */
-  async function loadFundData(fundCodes: string[], forceRefresh: boolean = false) {
+  async function loadFundData(fundCodes: string[], forceRefresh: boolean = false, isQDIIMap?: Record<string, boolean>) {
     const uniqueCodes = [...new Set(fundCodes)]
     const holdingsMap = new Map<string, any>(holdingStore.holdings.map((h: any) => [h.code, h]))
 
     await Promise.all(uniqueCodes.map(async (code) => {
       try {
         const holding = holdingsMap.get(code)
-        const isQDII = holding?.isQDII || false
+        // [FIX] 星标里已删持仓的基金没有 holding，用外部传入的 isQDIIMap 兜底（快照里的 isQDII），
+        //       否则 QDII 基金会被当成普通基金、估值口径出错
+        const fromMap = isQDIIMap && (code in isQDIIMap)
+        const isQDII = fromMap ? !!isQDIIMap[code] : (holding?.isQDII || false)
 
         // [OPTIMIZATION] 如果手上这期净值已是当前的（valueDate 已是今天 / 盘前归上一工作日），
         // 直接复用 holdingStore 数据，不再调用 API
@@ -98,6 +120,7 @@ export function useFundValuation() {
         // 净值已更新，同步更新交易记录（快路径：holding 已是今日落地净值，恒为 current）
         if (holding.currentValue > 0 && holding.valueDate) {
           updateTradesByCode(code, holding.currentValue, holding.valueDate, !!holding.isUpdated)
+          if (holding.isUpdated) reconcileHoldingFromTodayBuy(code, holding.currentValue)
         }
         return
         }
@@ -120,6 +143,7 @@ export function useFundValuation() {
         //       否则盘中/未更新时传入的上一期净值会把今天的估值单误标成「净」
         if (info.nav > 0 && info.navDate) {
           updateTradesByCode(code, info.nav, info.navDate, info.navIsCurrent)
+          if (info.navIsCurrent) reconcileHoldingFromTodayBuy(code, info.nav)
         }
 
         // [FIX] 净值未更新时，把今天用估值建、但被旧逻辑误标成「净」的交易恢复为 estimated: true

@@ -13,6 +13,7 @@ import {
   removeFromWatchlist as removeFromStorage,
   isInWatchlist
 } from '@/utils/storage'
+import { useHoldingStore } from './holding'
 
 export const useFundStore = defineStore('fund', () => {
   // ========== State ==========
@@ -197,6 +198,10 @@ export const useFundStore = defineStore('fund', () => {
 
   /**
    * 从自选中移除基金
+   * [FIX] 删除自选也一并把该基金从持仓(账户，含量化观察)里移除。
+   * [WHY] 用户心智中「删除这个基金」应当是全渠道一致的：量化观察只是 source==='observe' 的账户，
+   *       若只在自选里删掉，持仓里的 observe 记录会残留 → 全景/首页「量化观察」还显示。
+   * [NOTE] holdingStore.removeHolding 内部也会再清一次自选，二者互调幂等，不会死循环。
    */
   function removeFund(code: string) {
     removeFromStorage(code)
@@ -204,6 +209,7 @@ export const useFundStore = defineStore('fund', () => {
     if (index > -1) {
       watchlist.value.splice(index, 1)
     }
+    useHoldingStore().removeHolding(code)
   }
 
   /**

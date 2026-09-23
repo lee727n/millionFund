@@ -16,7 +16,7 @@ import {
   saveTTrades,
   getFundNetValues,
   saveFundNetValues,
-  getStarredFunds,
+  getAllStarredFundMeta,
   saveStarredFunds,
   getWatchlist,
   saveWatchlist,
@@ -148,7 +148,9 @@ function buildBackupPayload(withNetValues: boolean) {
     trades: getTrades(),
     tTrades: getTTrades(),
     // [WHAT] 星标K线列表 + 自选列表：和持仓同级的「用户圈选数据」，丢了就得一只只重新加回去
-    starredFunds: getStarredFunds(),
+    // [FIX] 星标带完整快照（name/累计涨跌幅/成本线）一起备份，
+    //       否则「已删持仓但仍星标」的基金跨设备恢复后会变空白（只备份了代码，快照没跟着走）
+    starredFunds: getAllStarredFundMeta(),
     watchlist: getWatchlist(),
   }
 
@@ -198,8 +200,10 @@ function applyBackupData(jsonData: any): boolean {
   // [WHY] 老版本备份文件里没有这两个字段，此时必须「跳过」而不是写空数组——
   //       否则用户恢复一次旧备份，当前手机上已经星标/自选的基金会被无声清空。
   //       saveStarredFunds 内部会广播 starred-funds-changed，已挂载的星标K线面板会立刻跟着刷新。
+  // [FIX] 直接把备份里的星标条目（可能含快照对象）原样写回；不再按 string 过滤，
+  //       否则新备份里的快照对象会被丢掉、跨设备恢复后变空白。纯 string[] 老备份也能正常归一化。
   if (Array.isArray(jsonData.starredFunds)) {
-    saveStarredFunds(jsonData.starredFunds.filter((c: unknown) => typeof c === 'string'))
+    saveStarredFunds(jsonData.starredFunds)
   }
   if (Array.isArray(jsonData.watchlist)) {
     saveWatchlist(jsonData.watchlist.filter((c: unknown) => typeof c === 'string'))

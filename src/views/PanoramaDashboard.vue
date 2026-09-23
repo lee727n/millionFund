@@ -8,17 +8,17 @@ import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
 import {
-  getTrades, addTrade, addStarredFund, removeStarredFund, isStarredFund,
+  getTrades, addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, getStarredFundMeta, starMetaFromFund,
   getPanoramaColWidths, savePanoramaColWidths,
   getPanoramaAccountOrder, savePanoramaAccountOrder,
-  getPanoramaAccountHeights, savePanoramaAccountHeights,
-  MIN_ACCOUNT_HEIGHT, PANORAMA_ACCOUNT_KEYS, DEFAULT_ACCOUNT_HEIGHTS
+  PANORAMA_ACCOUNT_KEYS
 } from '@/utils/storage'
 import StarKLinePanel from '@/components/StarKLinePanel.vue'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
 import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { useFundValuation } from '@/composables/useFundValuation'
+import { createTrade } from '@/composables/useFundTrade'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
@@ -41,6 +41,33 @@ const { tabbarForceShow, toggleTabbar } = useTabbar()
 const indices = ref<MarketIndexSimple[]>([])
 const refreshing = ref(false)
 let refreshTimer: number | undefined
+
+// [WHAT] 自动刷新倒计时 + 开关
+// [WHY] 用户想在刷新按钮旁看到「还有多少秒刷新」，并希望手动开关自动刷新
+const AUTO_REFRESH_SECONDS = 60
+const autoRefreshEnabled = ref(true)
+const countdown = ref(AUTO_REFRESH_SECONDS)
+
+// 1 秒级倒计时：自动刷新开着时每秒递减，归零触发一次非强制刷新并复位
+function tickCountdown() {
+  if (!autoRefreshEnabled.value) return
+  countdown.value--
+  if (countdown.value <= 0) {
+    countdown.value = AUTO_REFRESH_SECONDS
+    refreshAll(false)
+  }
+}
+
+// 手动开关自动刷新
+function toggleAutoRefresh() {
+  autoRefreshEnabled.value = !autoRefreshEnabled.value
+  if (autoRefreshEnabled.value) {
+    countdown.value = AUTO_REFRESH_SECONDS
+    showToast('自动刷新已开启')
+  } else {
+    showToast('自动刷新已关闭')
+  }
+}
 
 // 刷新闪动标记：每次刷新后递增，触发 fm-today 动画
 const flashTick = ref(0)
@@ -285,12 +312,6 @@ const otherStats = computed(() => calcAccountStats(otherHoldings.value))
 //       抽成 accountSections 后：顺序就是数组顺序，高度就是每段的内联 max-height，
 //       两种拖拽都只是改这两个响应式数据，模板零改动。
 const accountOrder = ref<string[]>(getPanoramaAccountOrder())
-const accountHeights = ref<Record<string, number>>(getPanoramaAccountHeights())
-
-/** [WHAT] 取某个账户区块的网格最大高度（px） */
-function accHeight(key: string): number {
-  return accountHeights.value[key] ?? 200
-}
 
 const accountSections = computed(() => {
   // [NOTE] 图标走文件里已有的 accountIcons / getSourceIconSrc（在下方定义，computed 是惰性求值所以没问题）
@@ -316,8 +337,7 @@ const accountSections = computed(() => {
       fallback: meta[key].fallback || '',
       cls: meta[key].cls,
       funds: fundsOf[key],
-      stats: statsOf[key],
-      height: accHeight(key)
+      stats: statsOf[key]
     }))
 })
 
@@ -354,82 +374,32 @@ function onAccountPointerMove(e: PointerEvent) {
   accountOrder.value = arr
 }
 
-// ---- 拖拽 2：拖区块之间的分隔条，改上下两块的显示高度（两者之和守恒）----
-const draggingAccountResizer = ref<number | null>(null)
-let accResizerStartY = 0
-let accResizerStartHeights: Record<string, number> = {}
-
-function onAccountResizerDown(e: PointerEvent, index: number) {
-  e.preventDefault()
-  e.stopPropagation()
-  const list = accountSections.value
-  if (index < 0 || index >= list.length - 1) return
-  draggingAccountResizer.value = index
-  accResizerStartY = e.clientY
-  accResizerStartHeights = {
-    [list[index].key]: accHeight(list[index].key),
-    [list[index + 1].key]: accHeight(list[index + 1].key)
-  }
-  document.body.style.cursor = 'row-resize'
-  document.body.style.userSelect = 'none'
-}
-
-function onAccountResizerMove(e: PointerEvent) {
-  const idx = draggingAccountResizer.value
-  if (idx === null) return
-  const list = accountSections.value
-  const a = list[idx]
-  const b = list[idx + 1]
-  if (!a || !b) return
-
-  const ha = accResizerStartHeights[a.key] ?? 200
-  const hb = accResizerStartHeights[b.key] ?? 200
-  const sum = ha + hb
-  // [EDGE] 两块的初始和就已经小于 2*MIN 时取一半，避免上下界交叉
-  const lower = Math.min(MIN_ACCOUNT_HEIGHT, sum / 2)
-  const na = Math.max(lower, Math.min(ha + (e.clientY - accResizerStartY), sum - lower))
-
-  accountHeights.value = {
-    ...accountHeights.value,
-    [a.key]: Math.round(na),
-    [b.key]: Math.round(sum - na)
-  }
-}
-
-/** [WHAT] 两种拖拽统一的收尾：清状态 + 落盘 */
+/** [WHAT] 拖拽收尾：清状态 + 落盘 */
 function onAccountDragEnd() {
   if (draggingAccount.value) {
     draggingAccount.value = null
     savePanoramaAccountOrder(accountOrder.value)
   }
-  if (draggingAccountResizer.value !== null) {
-    draggingAccountResizer.value = null
-    savePanoramaAccountHeights(accountHeights.value)
-  }
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
 }
 
-/** [WHAT] 恢复默认顺序和高度 */
+/** [WHAT] 恢复默认账户顺序 */
 function resetAccountLayout() {
   accountOrder.value = [...PANORAMA_ACCOUNT_KEYS]
-  accountHeights.value = { ...DEFAULT_ACCOUNT_HEIGHTS }
   savePanoramaAccountOrder(accountOrder.value)
-  savePanoramaAccountHeights(accountHeights.value)
   showToast('已恢复默认布局')
 }
 
-// [WHY] 用 pointer 事件统一鼠标/触摸；两个 move 处理各自判断自己是否在拖拽，互不干扰
+// [WHY] 用 pointer 事件统一鼠标/触摸
 onMounted(() => {
   window.addEventListener('pointermove', onAccountPointerMove)
-  window.addEventListener('pointermove', onAccountResizerMove)
   window.addEventListener('pointerup', onAccountDragEnd)
   window.addEventListener('pointercancel', onAccountDragEnd)
 })
 
 onUnmounted(() => {
   window.removeEventListener('pointermove', onAccountPointerMove)
-  window.removeEventListener('pointermove', onAccountResizerMove)
   window.removeEventListener('pointerup', onAccountDragEnd)
   window.removeEventListener('pointercancel', onAccountDragEnd)
 })
@@ -652,6 +622,11 @@ async function loadIndices() {
 // ============ 核心刷新 ============
 async function refreshAll(forceRefresh: boolean = false) {
   refreshing.value = true
+  countdown.value = AUTO_REFRESH_SECONDS  // 手动或自动刷新都重置倒计时
+  // [FIX] 手动刷新时先把持仓从 localStorage 回读一次：全景用 window.open('_blank') 在新窗口打开详情，
+  //       在 Detail 改了来源/持仓后原全景标签页的内存 holdings 已过期；即便 storage 事件没触发，
+  //       这里手动兜底，保证「回全景点 ↻ 刷新」能立刻反映来源变更（不再卡在量化观察）。
+  if (forceRefresh) holdingStore.syncHoldingsFromStorage()
   try {
     // 1. 收集所有需要实时价格的基金代码
     const codes = new Set<string>()
@@ -664,10 +639,22 @@ async function refreshAll(forceRefresh: boolean = false) {
     })
     // 持仓里的
     holdingStore.holdings.forEach((h: any) => codes.add(h.code))
+    // 星标K线里的（即便已清仓删除，也要继续拉估值，让用户继续关注）
+    // [WHY] 星标记录里冗余了 isQDII 快照，删持仓后也能拿到正确估值口径
+    getStarredFunds().forEach(c => codes.add(c))
 
     // 2. 并发拉取所有基金实时数据（未更新的才拉，已更新的直接复用 holdingStore）
     // [FIX] 非强制刷新时复用缓存，避免 initHoldings 拉过之后重复拉
-    await loadFundData([...codes], forceRefresh)
+    // [WHY] 星标里已删除持仓的基金，用 star meta 里的 isQDII 兜底，保证 QDII 估值口径正确
+    const starQdii: Record<string, boolean> = {}
+    holdingStore.holdings.forEach((h: any) => { starQdii[h.code] = !!h.isQDII })
+    getStarredFunds().forEach(c => {
+      if (!(c in starQdii)) {
+        const m = getStarredFundMeta(c)
+        if (m?.isQDII) starQdii[c] = true
+      }
+    })
+    await loadFundData([...codes], forceRefresh, starQdii)
 
     // 3. 刷新指数
     await loadIndices()
@@ -706,8 +693,9 @@ onMounted(async () => {
   // 完整刷新（拉取所有基金实时数据）
   await refreshAll()
 
-  // 60秒自动刷新
-  refreshTimer = window.setInterval(refreshAll, 60000)
+  // 1 秒级倒计时：归零时自动触发一次非强制刷新（复用缓存），并复位到 60s
+  // [WHAT] 用 1s ticker 取代原来的 60s 固定 interval，这样能显示「还有多少秒刷新」且开关可控
+  refreshTimer = window.setInterval(tickCountdown, 1000)
 })
 
 onUnmounted(() => {
@@ -804,7 +792,7 @@ function handleActionStar() {
       removeStarredFund(code)
       showToast('已取消星标')
     } else {
-      addStarredFund(code)
+      addStarredFund(code, starMetaFromFund(selectedFundForAction.value))
       showToast('已加入星标K线')
     }
   }
@@ -856,11 +844,11 @@ async function submitTrade() {
   const shares = amount / netValue
   showLoadingToast({ message: '提交中...', forbidClick: true })
   try {
-    addTrade({
-      id: '', code: holding.code, name: holding.name, type, date, amount,
+    // [WHAT] 统一走 useFundTrade.createTrade（加仓/减仓共用出口，避免漏 estimated/source/estimateAtTrade）
+    createTrade({
+      code: holding.code, name: holding.name, type, date, amount,
       netValue, shares, fee: 0, estimated: tradeFormData.value.isEstimate,
-      estimateAtTrade: tradeFormData.value.isEstimate ? netValue : undefined,
-      source: holding.source, createdAt: Date.now()
+      source: holding.source
     })
     const cur = holdingStore.holdings.find(h => h.code === holding.code)
     if (cur) {
@@ -1208,6 +1196,20 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             <path d="M3 15h18"/>
           </svg>
         </button>
+        <button
+          class="top-icon-btn auto-refresh-toggle"
+          :class="{ 'is-on': autoRefreshEnabled }"
+          @click="toggleAutoRefresh"
+          :title="autoRefreshEnabled ? '关闭自动刷新' : '开启自动刷新'"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+            <polyline points="21 3 21 9 15 9"/>
+          </svg>
+        </button>
+        <span class="refresh-countdown" :class="{ off: !autoRefreshEnabled }">
+          {{ autoRefreshEnabled ? countdown + 's' : '已停' }}
+        </span>
         <button class="refresh-btn" :class="{ spinning: refreshing }" @click="() => refreshAll(true)" :disabled="refreshing" title="手动刷新">↻</button>
       </div>
     </header>
@@ -1239,7 +1241,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
         </div>
 
         <div class="col-scroll">
-          <!-- [WHAT] 账户区块：① 按住标题左侧 ⋮⋮ 手柄上下拖 → 换顺序  ② 拖区块之间的分隔条 → 改高度 -->
+          <!-- [WHAT] 账户区块：按住标题左侧 ⋮⋮ 手柄上下拖 → 换顺序（高度不再单独限制，区块按内容自适应、整列滚动） -->
           <template v-for="(acc, accIdx) in accountSections" :key="acc.key">
             <div
               class="account-block"
@@ -1271,7 +1273,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </span>
               </div>
               <div class="fund-mini-grid">
-                <div class="fund-grid-scroll" :style="{ maxHeight: acc.height + 'px' }">
+                <div class="fund-grid-scroll">
                   <div
                     v-for="fund in acc.funds"
                     :key="fund.code"
@@ -1289,19 +1291,13 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                       <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
                       {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
                     </span>
-                    <!-- 第一行：QD + 名称 + 评级 + AI信号图标 -->
+                    <!-- 第一行：QD + 名称 + 行业备注 -->
                     <div class="fm-row fm-row-top">
                       <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
                       <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
-                      <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-                      <span
-                        v-if="getFundSignal(fund.code)"
-                        class="fm-ai-signal"
-                        :class="'signal-' + getFundSignal(fund.code).signal"
-                        :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
-                      >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
+                      <span v-if="fund.industrySectors" class="fm-industry" :title="'行业：' + fund.industrySectors">{{ fund.industrySectors?.replace(/\n+/g, '·').trim() }}</span>
                     </div>
-                    <!-- 第二行：code+估/净+估值 靠左，市值+累计 靠右 -->
+                    <!-- 第二行：code+估/净+估值(+评级+信号) 靠左，市值+累计 靠右 -->
                     <div class="fm-row fm-row-bottom">
                       <div class="fm-row-bottom-left">
                         <span class="fm-code">{{ fund.code }}</span>
@@ -1309,6 +1305,13 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                           {{ liveFundData.get(fund.code)?.isNav ? '净' : '估' }}
                         </span>
                         <span class="fm-value">{{ (fund.currentValue ?? 0).toFixed(3) }}</span>
+                        <span v-if="fund.fundScore" class="fm-score" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
+                        <span
+                          v-if="getFundSignal(fund.code)"
+                          class="fm-ai-signal"
+                          :class="'signal-' + getFundSignal(fund.code).signal"
+                          :title="'AI建议：' + getSignalLabel(getFundSignal(fund.code).signal)"
+                        >{{ getSignalIcon(getFundSignal(fund.code).signal) }}</span>
                       </div>
                       <div class="fm-row-bottom-right">
                         <span class="fm-market">{{ fmtMoney((fund.currentValue ?? 0) * (fund.shares ?? 0)) }}</span>
@@ -1325,14 +1328,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 </div>
               </div>
             </div>
-
-            <!-- 高度分隔条：上下拖，调整相邻两个账户区块的显示高度 -->
-            <div
-              v-if="accIdx < accountSections.length - 1"
-              class="account-resizer"
-              :class="{ active: draggingAccountResizer === accIdx }"
-              @pointerdown="onAccountResizerDown($event, accIdx)"
-            ><div class="account-resizer-handle"></div></div>
           </template>
 
           <div v-if="totalStats.count === 0" class="empty-hint">暂无持仓数据</div>
@@ -1363,6 +1358,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             :live-data="liveFundData"
             :show-refresh="false"
             :show-market-value="false"
+            :show-name-market-value="true"
             open-in-new-tab
           >
             <template #toolbar="{ period, setPeriod, count, valueBasis }">
@@ -1409,7 +1405,11 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               class="observe-row"
               @click="goDetail(fund.code)"
             >
-              <span class="observe-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
+              <!-- 名称 + 行业备注：包一层 flex:1 容器，保证行业紧跟名称，同时把右侧指标整体顶到右端 -->
+              <div class="observe-name-wrap">
+                <span class="observe-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
+                <span v-if="fund.industrySectors" class="fm-industry observe-industry" :title="'行业：' + fund.industrySectors">{{ fund.industrySectors?.replace(/\n+/g, '·').trim() }}</span>
+              </div>
               <span 
                 class="observe-today"
                 :class="fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down'"
@@ -1423,13 +1423,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               >
                 累{{ fund.addedGain >= 0 ? '+' : '' }}{{ fund.addedGain.toFixed(2) }}%
               </span>
-              <div class="observe-bar">
-                <div 
-                  class="observe-bar-inner" 
-                  :class="fund.addedGain !== undefined ? (fund.addedGain >= 0 ? 'up' : 'down') : (fund.todayChange && parseFloat(fund.todayChange) >= 0 ? 'up' : 'down')"
-                  :style="{ width: Math.min(Math.abs((fund.addedGain !== undefined ? fund.addedGain : parseFloat(fund.todayChange || '0'))) * 5, 100) + '%' }"
-                ></div>
-              </div>
             </div>
           </div>
           <div v-else class="empty-hint">暂无观察标的</div>
@@ -2080,6 +2073,21 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .refresh-btn.spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* [WHAT] 刷新按钮旁的「距下次自动刷新」倒计时 + 自动刷新开关 */
+.refresh-countdown {
+  font-size: 12px;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: center;
+  user-select: none;
+}
+.refresh-countdown.off { opacity: 0.5; }
+.auto-refresh-toggle.is-on {
+  /* 复用 .top-icon-btn.is-on 的蓝色高亮（已开启） */
+  color: #fff;
+}
+
 .top-icon-btn {
   width: 30px;
   height: 30px;
@@ -2368,31 +2376,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   border-radius: 4px;
 }
 
-/* ② 高度分隔条（与列宽 col-resizer 同款手感） */
-.account-resizer {
-  height: 8px;
-  flex-shrink: 0;
-  cursor: row-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-}
-
-.account-resizer-handle {
-  width: 46px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--border-light);
-  transition: background 0.2s, width 0.2s;
-}
-
-.account-resizer:hover .account-resizer-handle,
-.account-resizer.active .account-resizer-handle {
-  background: var(--primary-color);
-  width: 78px;
-}
-
 .account-icon {
   width: 20px;
   height: 20px;
@@ -2451,21 +2434,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
-  max-height: 220px;
-  overflow-y: auto;
   padding-right: 3px;
 }
-.fund-grid-scroll::-webkit-scrollbar { width: 4px; }
-.fund-grid-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 2px;
-}
-.fund-grid-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-
-/* 各账户区块分配不同空间 */
-.block-ali .fund-grid-scroll { max-height: 220px; }
-.block-tx .fund-grid-scroll  { max-height: 300px; }
-.block-jd .fund-grid-scroll  { max-height: 130px; }
 
 .fund-mini-card {
   padding: 8px 8px 6px;
@@ -2544,7 +2514,25 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 90px;
+  min-width: 0;
   transition: color 0.3s;
+}
+
+/* [WHAT] 基金名后紧跟的「行业板块」备注标签（持仓列 + 量化观察共用） */
+.fm-industry {
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 0 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 64px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* 交易时间内：已更新=橙色，未更新=绿色 */
@@ -2765,9 +2753,17 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 .observe-row:hover { background: var(--bg-tertiary); }
 .observe-row:last-child { border-bottom: none; }
 
+.observe-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .observe-name {
   font-size: 12px;
-  flex: 1;
+  flex: 0 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2793,24 +2789,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 .observe-added.up { background: rgba(255,107,107,0.12); color: var(--color-up); }
 .observe-added.down { background: rgba(81,207,102,0.12); color: var(--color-down); }
-
-.observe-bar {
-  width: 40px;
-  height: 4px;
-  background: var(--bg-tertiary);
-  border-radius: 2px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.observe-bar-inner {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-
-.observe-bar-inner.up { background: var(--color-up); }
-.observe-bar-inner.down { background: var(--color-down); }
 
 /* AI 追踪 */
 .panel-block-tracking { flex: 1; min-height: 0; display: flex; flex-direction: column; }

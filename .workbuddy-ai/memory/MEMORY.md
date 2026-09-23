@@ -86,6 +86,17 @@ Holding 顶部「收益率」汇总 = 真组合 ROI（`HoldingSummary.totalCost`
 - 星标排序 `sortStarredByAccount()`：权重 ali=0/TX=1/JD=2/observe=4/其他3；组内按 `todayChange` 降序，相同保添加顺序。
 - 交易 tooltip「涨幅」=`(latestValue-区间首根净值)/区间首根净值*100`，latest=rt.currentValue??末根净值，与累计收益率线同口径；
   **注意**：`props.returnRate`（面板传 `h.addedGain`）是买入至今成本收益率，和「区间累计涨幅」是两指标，标签别混。
+- **星标快照（2026-09-17 修复「删持仓后星标K线变空白」）**：`STARRED_FUNDS` 已由 `string[]` 升级为 `StarredFundMeta[]`（对象），
+  每只星标冗余一份展示快照 `name/addedGain/buyNetValue/source/isQDII`；删除持仓后 `fundInfoMap` 用快照兜底，星标K线仍显示
+  **名称/累计涨跌幅/成本线**，只「在星标里删除」才真正不显示。`getStarredFunds()` 对外仍返回 `string[]`（兼容首页计数/排序）。
+  **静默写回铁律**：`updateStarredFundMeta()` **不广播** `starred-funds-changed`，否则触发面板 `onStarredChanged`→再写快照 死循环；
+  快照刷新只在持仓存在时（`syncStarMeta` 跳过无持仓星标）→ 删持仓即保留删除前最后一次快照。
+  **估值口径**：`loadFundData` 新增 `isQDIIMap` 形参给已删持仓的星标基金补 QDII；全景 `refreshAll` 已把星标代码纳入估值拉取集合
+  （否则全景第二列靠 `liveData` 只含持仓，删持仓的星标会丢 估值涨幅）。
+  **⚠️ 备份必须带快照（同次补充修复）**：`BackupActions.buildBackupPayload` 的 `starredFunds` 改走 `getAllStarredFundMeta()`（全量对象），
+  `applyBackupData` 的 `saveStarredFunds` 改 authoritative 原样写回（`Array<string|StarredFundMeta>`，不再按 string 过滤）。
+  否则「已删持仓但仍星标」的基金跨设备（如 PC 备份→手机恢复，手机无此持仓）恢复后会变空白。`saveStarredFunds` 仅恢复路径调用，无合并语义。
+  老备份（纯 string[]）仍正常归一化；但**新备份（带对象）恢复到旧版 App** 会被旧 `saveStarredFunds` 的 string 过滤丢掉快照——属版本耦合，需两端同版本。
 
 ## 备份与恢复（BackupActions.vue）
 
@@ -113,3 +124,19 @@ payload v1.2：`holdings/summary/aiTracking/baiduOcrConfig/trades/tTrades/starre
 - Playwright mock：`**/pingzhongdata/*.js` → `var fS_name=..;var Data_netWorthTrend=[...]`；`fundgz` 回调名运行时 `fundgz_<ts>` 需反向扫 window。
   `**/*.js` 匹配不到带 `?v=` 的 URL（写 `**/*.js*`）；`page.clock.install()` 必须在 `goto` 前。探针用临时改 60000→3000，完事 `grep PROBE-TEMP` 确认无残留。
 - MiniKLineChart 窄图信息条（`width<280 && height>=130` 两行）用 `computeLayout` 共用；`topRightReserve` prop 让开右上按钮。改按钮尺寸只动 `StarKLinePanel.controlReserve`。
+
+## 量化观察账户 & 删除语义铁律（2026-09-20 定）
+
+**设计意图（用户明确）**：量化观察**不是独立数据**，它就是 `holdingStore.holdings` 里 `source==='observe'` 的又一个账户，
+和 ali/TX/JD 平级（全景=3账户+量化观察，单独显示而已）。全景/首页「量化观察」块都读 `holdings.filter(source==='observe')`。
+**删除语义**：详情页 / 首页长按 / 自选列表 任意一处「删除这个基金」= 把它从账户（持仓）里移除，全渠道一致，不该删了还在别处残留。
+
+**两个真实坑（已修）**：
+1. `holdingStore.removeHolding(code)` 原实现 `findIndex+splice(1)` 只删第一条——同一 code 若有两条记录
+   （真实账户 + observe，或老数据/导入残留），删一次只删一条，剩下那条仍显示。**修法**：改成 `filter(h=>h.code!==code)` 全量删。
+2. 自选（watchlist, `fund_watchlist`）和持仓（`fund_holdings`）原是两份独立存储、删除互不级联——
+   从自选列表删掉，持仓里的 observe 记录残留 → 量化观察还显示。**修法（双向幂等）**：
+   - `removeHolding` 末尾顺手 `removeFromWatchlist(code)`；
+   - `fundStore.removeFund` 末尾 `useHoldingStore().removeHolding(code)`。
+   互调幂等无死循环。改删除逻辑时务必保持「删基金=持仓+自选一起清」。
+   ⚠️ 注意：星标K线（StarKLinePanel）是**故意**在删持仓后靠快照继续显示的，与本条删除语义无关，别误改。

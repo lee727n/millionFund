@@ -7,7 +7,7 @@
 import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import MiniKLineChart from './MiniKLineChart.vue'
-import { getStarredFunds, removeStarredFund } from '@/utils/storage'
+import { getStarredFunds, removeStarredFund, getStarredFundMeta, updateStarredFundMeta, starMetaFromFund, type StarredFundMeta } from '@/utils/storage'
 import { showToast, showConfirmDialog } from 'vant'
 import { useHoldingStore } from '@/stores/holding'
 import { useFundValuation, type FundValuationData } from '@/composables/useFundValuation'
@@ -38,6 +38,12 @@ const props = withDefaults(defineProps<{
   showRefresh?: boolean
   /** [WHAT] 图上是否画持仓市值；全景大屏列窄且左列已有市值，关掉 */
   showMarketValue?: boolean
+  /**
+   * [WHAT] 把持仓市值（无持仓显示「未出仓」）画在基金名后面内联显示
+   * [WHY] 全景大屏要在星标K线基金名后直接关联持仓市值；默认 false 不开启，
+   *       独立星标页仍走右对齐市值布局
+   */
+  showNameMarketValue?: boolean
   /** [WHAT] 点详情时新开窗口（全景大屏用，避免把大屏页面顶掉）；默认站内跳转 */
   openInNewTab?: boolean
   /** dark = 固定深色；auto = 跟随全局主题 */
@@ -62,6 +68,7 @@ const props = withDefaults(defineProps<{
   showDetail: true,
   showRefresh: true,
   showMarketValue: true,
+  showNameMarketValue: false,
   openInNewTab: false,
   colorScheme: 'dark',
   aspectRatio: '16 / 10',
@@ -122,19 +129,30 @@ const valueBasis = computed(() => {
 })
 
 // ========== 持仓信息（名称 / 市值 / 收益率 / 成本净值）==========
+// [FIX] 持仓被删后，从星标快照里兜底取 name / 累计涨跌幅 / 成本线，保证还能继续显示
+// [WHY] 用户清仓并删除持仓后，星标K线仍想继续关注这只基金。这些字段原本只从 holdingStore 推导，
+//       持仓一删就全空；现在删除持仓只清 holdingStore，星标快照保留，靠快照继续显示。
 const fundInfoMap = computed(() => {
   const m = new Map<string, { name: string; marketValue?: number; returnRate?: number; costNavValue?: number }>()
   const holdings = new Map<string, any>((holdingStore.holdings || []).map((h: any) => [h.code, h]))
   for (const code of starredList.value) {
     const h = holdings.get(code)
-    m.set(code, h
-      ? {
-          name: h.name || h.code,
-          marketValue: h.marketValue,
-          returnRate: h.addedGain,
-          costNavValue: h.buyNetValue,
-        }
-      : { name: '' })
+    const meta = getStarredFundMeta(code)
+    if (h) {
+      m.set(code, {
+        name: h.name || h.code,
+        marketValue: h.marketValue,
+        returnRate: h.addedGain,
+        costNavValue: h.buyNetValue,
+      })
+    } else {
+      // [FIX] 持仓删了也继续显示：用星标快照里的名称 / 累计涨跌幅 / 成本线
+      m.set(code, {
+        name: meta?.name || '',
+        returnRate: meta?.addedGain,
+        costNavValue: meta?.buyNetValue,
+      })
+    }
   }
   return m
 })
@@ -168,7 +186,11 @@ function sortStarredByAccount(codes: string[]): string[] {
     (holdingStore.holdings || []).map((h: any) => [h.code, h])
   )
   return codes
-    .map((code, i) => ({ code, i, h: holdings.get(code) }))
+    .map((code, i) => {
+      // [FIX] 已删持仓的星标基金，用星标快照兜底取 source / 当日涨幅，分组排序不塌成「其他」
+      const h = holdings.get(code) ?? getStarredFundMeta(code)
+      return { code, i, h }
+    })
     .sort((a, b) => {
       const ra = accountRank(a.h?.source)
       const rb = accountRank(b.h?.source)
@@ -184,10 +206,55 @@ function refreshList() {
   starredList.value = sortStarredByAccount([...getStarredFunds()])
 }
 
+/**
+ * [FIX] 把「持仓派生的展示字段」冗余进星标快照，删除持仓后星标K线仍能显示名称/累计涨跌幅/成本线
+ * [WHY] fundInfoMap 原本只从 holdingStore 推导这些字段，持仓一删就全空。这里在每次刷新/持仓变化时，
+ *       对「仍持仓且已星标」的基金静默写回快照（updateStarredFundMeta 不广播，避免 onStarredChanged 死循环）。
+ *       持仓被删后 h 取不到 → 跳过 → 快照保留删除前最后一次的值。
+ */
+function starMetaEquals(prev: StarredFundMeta, patch: Partial<StarredFundMeta>): boolean {
+  return (
+    prev.name === patch.name &&
+    prev.source === patch.source &&
+    !!prev.isQDII === !!patch.isQDII &&
+    prev.addedGain === patch.addedGain &&
+    prev.buyNetValue === patch.buyNetValue &&
+    prev.valueDate === patch.valueDate &&
+    prev.currentValue === patch.currentValue &&
+    prev.todayChange === patch.todayChange
+  )
+}
+
+function syncStarMeta() {
+  const holdings = new Map<string, any>((holdingStore.holdings || []).map((h: any) => [h.code, h]))
+  for (const code of starredList.value) {
+    const h = holdings.get(code)
+    if (!h) continue // 没持仓就不覆盖快照（保留删除前最后一次的快照）
+    const patch = starMetaFromFund(h)
+    const prev = getStarredFundMeta(code)
+    if (!prev || !starMetaEquals(prev, patch)) {
+      updateStarredFundMeta(code, patch)
+    }
+  }
+}
+
 async function ensureHoldings() {
   if (holdingStore.holdings.length === 0) {
     await holdingStore.initHoldings()
   }
+}
+
+/** [WHAT] 给估值层提供每只星标基金的 QDII 标记（持仓里取不到就退回星标快照） */
+function buildStarQdiiMap(): Record<string, boolean> {
+  const map: Record<string, boolean> = {}
+  for (const h of (holdingStore.holdings || [])) map[h.code] = !!h.isQDII
+  for (const code of starredList.value) {
+    if (!(code in map)) {
+      const m = getStarredFundMeta(code)
+      if (m?.isQDII) map[code] = true
+    }
+  }
+  return map
 }
 
 /** [WHAT] 拉取星标基金的实时数据；父层给了 liveData 就交给父层，不重复请求 */
@@ -195,7 +262,7 @@ async function loadRealtime(force = false) {
   if (props.liveData) return
   const codes = starredList.value
   if (codes.length === 0) return
-  await ownValuation.loadFundData(codes, force)
+  await ownValuation.loadFundData(codes, force, buildStarQdiiMap())
 }
 
 async function boot() {
@@ -204,6 +271,7 @@ async function boot() {
   // [FIX] 持仓是异步加载的：第一次 refreshList 时 holdings 还是空的，取不到 source，
   //       会全被当成「其他」组。加载完必须再排一次
   refreshList()
+  syncStarMeta()
   await loadRealtime()
   isReady.value = true
 }
@@ -223,6 +291,7 @@ async function handleRefresh() {
   refreshing.value = true
   try {
     refreshList()
+    syncStarMeta()
     await loadRealtime(true)
     reloadTick.value++
     showToast('已刷新')
@@ -269,6 +338,7 @@ function stopAutoRefresh() {
 // [WHAT] 星标在别处（首页 / 全景持仓卡片）被增删时，这里要跟着变
 function onStarredChanged() {
   refreshList()
+  syncStarMeta()
   loadRealtime()
 }
 
@@ -281,7 +351,7 @@ const orderSignature = computed(() =>
     .map(h => `${h.code}:${h.source || ''}:${todayChangeOf(h)}`)
     .join('|')
 )
-watch(orderSignature, () => { refreshList() })
+watch(orderSignature, () => { refreshList(); syncStarMeta() })
 
 // ========== 操作 ==========
 async function handleRemove(code: string) {
@@ -317,6 +387,7 @@ onActivated(async () => {
   refreshList()
   await ensureHoldings()
   refreshList() // 同上：持仓加载完按账户重排
+  syncStarMeta()
   isReady.value = true
   startAutoRefresh()
 })
@@ -422,7 +493,9 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
             :fund-code="code"
             :period="activePeriod"
             :fund-name="fundInfoMap.get(code)?.name || ''"
-            :market-value="showMarketValue ? fundInfoMap.get(code)?.marketValue : undefined"
+            :market-value="fundInfoMap.get(code)?.marketValue"
+            :show-market-value="showMarketValue"
+            :show-name-market-value="showNameMarketValue"
             :return-rate="fundInfoMap.get(code)?.returnRate"
             :cost-nav-value="fundInfoMap.get(code)?.costNavValue"
             :realtime="realtimeFor(code)"

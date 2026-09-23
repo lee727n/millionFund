@@ -21,7 +21,8 @@ import {
   predictTrend, calculateReturnAnalysis, calculateFundScore,
   type TrendPrediction, type ReturnAnalysis, type FundScore
 } from '@/utils/statistics'
-import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, addTrade, getTrades, saveTrades, getTTradesByCode, archiveTTrade, removeTTrade } from '@/utils/storage'
+import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, getTrades, saveTrades, getTTradesByCode, archiveTTrade, removeTTrade } from '@/utils/storage'
+import { createTrade } from '@/composables/useFundTrade'
 import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import type { TradeRecord, TradeType, TTradeRecord } from '@/types/fund'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
@@ -428,8 +429,8 @@ async function submitTrade() {
 
   const loadingToast = showLoadingToast('提交中...')
   try {
-    addTrade({
-      id: '',
+    // [WHAT] 统一走 useFundTrade.createTrade（买入/卖出共用出口，避免漏 estimated/source）
+    createTrade({
       code: holding.code,
       name: holding.name,
       type,
@@ -439,10 +440,7 @@ async function submitTrade() {
       shares,
       fee: 0,
       estimated: isEstimate,
-      // [FIX] 保存交易时的估值快照，用于后续涨跌幅计算
-      estimateAtTrade: isEstimate ? netValue : undefined,
-      source: holding.source,
-      createdAt: Date.now()
+      source: holding.source
     })
 
     const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)

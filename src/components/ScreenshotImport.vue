@@ -10,7 +10,7 @@ import { searchFund, fetchFundEstimate, fetchFundList } from '@/api/fund'
 import { fetchLatestNetValue, fetchFundAccurateData } from '@/api/fundFast'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { useHoldingStore } from '@/stores/holding'
-import { addTrade } from '@/utils/storage'
+import { createBuyTrade } from '@/composables/useFundTrade'
 import type { HoldingRecord, FundInfo } from '@/types/fund'
 
 const props = defineProps<{
@@ -641,19 +641,15 @@ async function confirmImport() {
 
         await holdingStore.addOrUpdateHolding(record)
 
-        // [FIX] 创建交易记录，K线图上标记买入点
-        addTrade({
-          id: '',
+        // [FIX] 创建交易记录，K线图上标记买入点（统一走 useFundTrade.createBuyTrade）
+        createBuyTrade({
           code: h.code,
           name: record.name,
-          type: 'buy',
           date: navDate, // 标记在净值日期
           amount: cost,
           netValue: buyNetValue,
           shares: shares,
-          fee: 0,
-          estimated: false,
-          createdAt: Date.now()
+          estimated: false // 截图导入始终用净值，不用估值
         })
 
         imported++

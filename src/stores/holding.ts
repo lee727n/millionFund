@@ -6,9 +6,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { HoldingRecord, HoldingSummary } from '@/types/fund'
-import { getHoldings, saveHoldings } from '@/utils/storage'
+import { STORAGE_KEYS, getHoldings, saveHoldings, removeFromWatchlist, updateTradesByCode, getTrades, saveTrades, isStarredFund } from '@/utils/storage'
 // [REFACTOR] getProgressDateStr / isNavUpToDate 已抽到 utils/navDate.ts，与 fundFast.ts 共用同一份
-import { isNavUpToDate, getProgressDateStr } from '@/utils/navDate'
+import { isNavUpToDate, getProgressDateStr, getCalendarDateStr } from '@/utils/navDate'
+import { getTodayFirstBuyCorrection, createTrade } from '@/composables/useFundTrade'
 import { updateFundNetValue } from '@/utils/storage'
 import { fetchFundAccurateData, type FundAccurateData, clearHoldingsCache as clearFundHoldingsCache } from '@/api/fundFast'
 import { fetchNetValueHistoryFast } from '@/api/fundFast'
@@ -82,6 +83,30 @@ export const useHoldingStore = defineStore('holding', () => {
 
   /** 持仓列表（包含收益计算） */
   const holdings = ref<HoldingWithProfit[]>([])
+
+  // [FIX] 跨标签页同步：全景大屏用 window.open('_blank') 在新窗口打开详情，
+  //       Detail 改了来源/持仓写回 localStorage 后，原全景标签页的 holdings 是内存态、不会自动更新，
+  //       导致「改了来源、回全景刷新还在量化观察」。监听 storage 事件：别的标签页改了 fund_holdings 就重新读回内存。
+  // [WHY] storage 事件只在【其它】标签页写入时触发（本标签页写不触发），正好覆盖「Detail 改、全景读」的跨窗口场景。
+  let storageSyncRegistered = false
+  function registerStorageSync() {
+    if (storageSyncRegistered || typeof window === 'undefined') return
+    storageSyncRegistered = true
+    window.addEventListener('storage', (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.HOLDINGS) {
+        syncHoldingsFromStorage()
+      }
+    })
+  }
+
+  /** 轻量回读：用 localStorage 当前值覆盖内存 holdings（跨标签页同步 / 手动刷新兜底），不重新拉估值 */
+  function syncHoldingsFromStorage() {
+    const stored = getHoldings()
+    holdings.value = stored.map((r: any) => ({ ...r, loading: false }))
+  }
+
+  // 注册跨标签页 storage 监听（只注册一次）
+  registerStorageSync()
 
   /** 是否正在刷新 */
   const isRefreshing = ref(false)
@@ -200,13 +225,15 @@ export const useHoldingStore = defineStore('holding', () => {
       if (traced.length) console.log('[COST-ADJUST][initHoldings] 从存储读取:', traced.map((r: any) => ({ code: r.code, shares: r.shares, marketValue: r.marketValue, valueDate: r.valueDate, isNav: r.isNav, isUpdated: r.isUpdated })))
     }
 
-    if (cleanedRecords.length > 0) {
+      if (cleanedRecords.length > 0) {
       if (needsCleanup) {
         saveHoldings(cleanedRecords)
         console.log('[数据迁移] 已清理旧字段并保存')
       }
       // [FIX] 等待 refreshEstimates() 完成，确保 isUpdated 字段被正确设置
       await refreshEstimates()
+      // [WHAT] 自愈：补齐「缺买入交易记录」的持仓（老代码单加路径从不 addTrade → K线无买点）
+      await backfillBuyTrades()
     }
   }
 
@@ -216,6 +243,51 @@ export const useHoldingStore = defineStore('holding', () => {
    * [FIX] 性能优化：已更新的基金（isUpdated === true）直接跳过，不需要再调 API
    *       净值已发布的基金没有估值变化，跳过可以节省大量重仓股价拉取开销
    */
+  /**
+   * [WHAT] 自愈：为「缺买入交易记录」的持仓补建 buy 交易（K线买点数据源）。
+   * [WHY] 修复前的单加路径从不 addTrade，导致部分存量持仓（如京东账户早期添加的基金）
+   *       在 K线图上没有买点。每个持仓都应有对应的 buy 交易（这是买点渲染的唯一数据源），
+   *       缺它的只可能是老代码创建的持仓，补建即恢复不变式。
+   * [SCOPE] 不限 buyDate：跨天重开 App 也要能修复（原 buyDate===今天 护栏会让「昨天添加、今天才重开」
+   *         的基金永久漏掉买点）。只补买点 + 保留现有成本基数（buyNetValue/shares 一律不改写），
+   *         不按今天价重算份额，避免破坏存量持仓的真实成本。已有 buy 交易的持仓（含加仓/减仓过的）跳过。
+   */
+  async function backfillBuyTrades(): Promise<void> {
+    const allTrades = getTrades()
+    let holdingsChanged = false
+
+    for (const h of holdings.value) {
+      if (!h) continue
+      // 已有 buy 交易 → 买点已在，跳过（加仓/减仓过的也在此跳过，绝不重复创建或覆盖）
+      if (allTrades.some(t => t.code === h.code && t.type === 'buy')) continue
+
+      // 买入净值：优先持仓记录的买入净值，兜底用当前净值（保证交易记录有合法价格）
+      const buyNet = h.buyNetValue > 0 ? h.buyNetValue : (h.currentValue || 0)
+      if (!(buyNet > 0) || !(h.shares > 0)) continue
+
+      // 投入本金 = 现有份额 × 买入净值（保留用户真实成本基数，不重新算份额）
+      const amount = h.shares * buyNet
+
+      // 用持仓记录的买入净值建一笔 buy 交易，仅补「买点标记」，成本基数沿用不变
+      createTrade({
+        code: h.code,
+        name: h.name,
+        type: 'buy',
+        date: h.buyDate,
+        amount,
+        netValue: buyNet,
+        shares: h.shares,
+        estimated: false, // 存量买入净值是真实净值，不参与晚上估值重算
+        source: h.source
+      })
+
+      holdingsChanged = true
+      console.log(`[backfillBuyTrades] 补齐买点: ${h.code} amount=${amount} buyNetValue=${buyNet}`)
+    }
+
+    if (holdingsChanged) saveHoldings(holdings.value as any[])
+  }
+
   async function refreshEstimates() {
     if (holdings.value.length === 0) {
       isRefreshing.value = false
@@ -270,6 +342,29 @@ export const useHoldingStore = defineStore('holding', () => {
           }
         })
       }
+
+      // [WHAT] 净值公布后：把「今天首次添加（单笔买入、无减仓）」的持仓份额用正式净值重算，
+      //        同时把估值交易记录转正。覆盖「持仓页刷新」场景（星标/详情之外最直接的入口）。
+      // [WHY] 交易时间内添加用盘中估值算份额，晚上净值公布后交易记录已被 updateTradesByCode 改净值，
+      //       但持仓 shares/buyNetValue 还是估值口径 → 不改会凭空差一个估值误差。
+      // [SCOPE] 只动「今天买入 + 仅一笔买入 + 无减仓」的持仓，历史/加仓/减仓持仓零误伤。
+      const today = getCalendarDateStr()
+      let holdingChanged = false
+      holdings.value.forEach(h => {
+        if (!holdingNavIsCurrent(h)) return
+        const nav = h.currentValue || 0
+        const navDate = h.valueDate || ''
+        if (!(nav > 0)) return
+        // 估值交易转正（无 estimated 交易时为 no-op）
+        updateTradesByCode(h.code, nav, navDate, true)
+        const c = getTodayFirstBuyCorrection(h.code, nav, h.buyDate, today)
+        if (c) {
+          h.shares = c.shares
+          h.buyNetValue = c.buyNetValue
+          holdingChanged = true
+        }
+      })
+      if (holdingChanged) saveHoldings(holdings.value as any[])
     } finally {
       isRefreshing.value = false
     }
@@ -390,17 +485,44 @@ export const useHoldingStore = defineStore('holding', () => {
    * @param record 持仓记录
    */
   function addOrUpdateHolding(record: HoldingRecord) {
-    const index = holdings.value.findIndex((h) => h.code === record.code)
+    // [FIX] 同 code 可能有多条持仓记录（老数据/导入残留/同 code 重复添加——详见 removeHolding 注释）。
+    //       旧逻辑用 findIndex 只更新【第一条】，导致「改来源」这种操作只动了其中一条：
+    //       剩下的 observe(量化观察) 记录仍挂在观察里 → 用户改完来源刷新后基金还在量化观察（008984 财通科技创新复现）。
+    //       这里的写回与 removeHolding 的 filter(h=>h.code!==code) 保持一致：code 维度全量更新，杜绝「改了但没完全改」。
+    const matched = holdings.value
+      .map((h, i) => (h.code === record.code ? i : -1))
+      .filter((i) => i > -1)
 
-    if (index > -1) {
-      const existingHolding = holdings.value[index]
+    if (matched.length > 0) {
+      // [FIX] 同一 code 只应有一条持仓记录（同 code 多条是老数据/导入残留/重复添加造成的脏数据）。
+      //       以第一条为基底合并 record，再把【所有】同 code 记录删掉、用这唯一一条回填——
+      //       既保证「改来源/加仓」对所有重复记录生效（根治「改了来源还在量化观察」），
+      //       又顺手把脏重复数据收敛成一条（避免全景/首页重复展示 + 市值被重复累加）。
+      //       [WHY] 不能像旧写法那样对 precomputed 索引逐个 splice——splice 会让后续索引错位，
+      //             第二次 splice 命中错误元素。这里用 filter+push 彻底避开索引位移。
+      const baseIndex = matched[0]
+      const base = holdings.value[baseIndex]
       const updatedHolding = {
-        ...existingHolding,
+        ...base,
         ...record,
         loading: false
       }
 
-      holdings.value.splice(index, 1, updatedHolding)
+      // [FIX] 市值恒等于「份额 × 当前净值/估值」。加仓/减仓改了 shares 后必须同步重算 marketValue，
+      //       否则持仓页/全景的总市值停留在旧值（002163 加仓 5w 后仍显示 12.11W）。
+      // [WHY] 旧逻辑只做字段合并、不重算市值——submitTrade 改 shares 后持久化的还是旧 marketValue。
+      //       所有调用方传入的 (shares, currentValue) 与 marketValue 本应一致，这里强制对齐不会误伤：
+      //       submitCostAdjust 落入的 marketValue = newShares × latestNetValue，重算完全等价。
+      const mvShares = (updatedHolding.shares as number) || 0
+      const mvCurrent = (updatedHolding.currentValue as number) || 0
+      if (mvShares > 0 && mvCurrent > 0) {
+        updatedHolding.marketValue = mvShares * mvCurrent
+      }
+
+      // 先移除全部同 code 记录（含重复），再在基底原位置回填唯一一条
+      holdings.value = holdings.value.filter((h) => h.code !== record.code)
+      const insertAt = Math.min(baseIndex, holdings.value.length)
+      holdings.value.splice(insertAt, 0, updatedHolding)
     } else {
       const newHolding = {
         ...record,
@@ -415,13 +537,28 @@ export const useHoldingStore = defineStore('holding', () => {
 
   /**
    * 删除持仓
+   * [FIX] 删除「这个基金」= 从账户中移除：
+   *   1. 移除该 code 的【全部】持仓记录（原实现 findIndex+splice 只删第一条，
+   *      若同一 code 存在两条记录——如真实账户 + 量化观察(observe) 或老数据/导入残留——
+   *      删一次只删一条，剩下那条仍会出现在量化观察里）。
+   *   2. 顺手把自选(观察)也清掉，保证「删除基金」在全渠道语义一致：
+   *      量化观察本身就是 source==='observe' 的账户，不是独立数据，不该删了持仓还在别处残留。
+   * [WHY] 用户心智：详情/首页长按/自选列表任意一处删除该基金，都应把它从账户里移走。
    */
   function removeHolding(code: string) {
-    const index = holdings.value.findIndex((h) => h.code === code)
-    if (index > -1) {
-      holdings.value.splice(index, 1)
+    const before = holdings.value.length
+    holdings.value = holdings.value.filter((h) => h.code !== code)
+    if (holdings.value.length !== before) {
+      saveHoldings(holdings.value as any[])
     }
-    saveHoldings(holdings.value as any[])
+    removeFromWatchlist(code)
+    // [FIX] 删持仓后级联交易记录：仍星标（在星标K线继续看）→ 保留买点（旧需求：删基金星标K线仍留点位）；
+    //       未星标 → 删掉该 code 全部交易，避免孤儿交易一直挂在 K线买点 / 交易记录上。
+    //       [WHY] 之前 removeHolding 完全不碰交易，导致「删了持仓的基金」买点永不消失、且与新版「买点=交易记录」口径打架。
+    if (!isStarredFund(code)) {
+      const remaining = getTrades().filter(t => t.code !== code)
+      if (remaining.length !== getTrades().length) saveTrades(remaining)
+    }
   }
 
   /**
@@ -481,6 +618,7 @@ export const useHoldingStore = defineStore('holding', () => {
     hasHolding,
     getHoldingByCode,
     updateHoldingDays,
-    clearHoldingsCache
+    clearHoldingsCache,
+    syncHoldingsFromStorage
   }
 })

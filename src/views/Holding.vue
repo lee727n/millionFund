@@ -10,12 +10,12 @@ import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
 import { useAppUpdateStore } from '@/stores/appUpdate'
 import { APP_VERSION } from '@/config/version'
-import { searchFund, fetchFundEstimate } from '@/api/fund'
+import { searchFund } from '@/api/fund'
 import { fetchFundAccurateData } from '@/api/fundFast'
-import { getCalendarDateStr } from '@/utils/navDate'
+import { resolveAddValue, createBuyTrade } from '@/composables/useFundTrade'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
-import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, addTrade, getTTrades, saveTTrades } from '@/utils/storage'
+import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, getTTrades, saveTTrades, getTradesByCode, removeTrade } from '@/utils/storage'
 import { isWeb, isMobile } from '@/utils/platform'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
@@ -49,7 +49,9 @@ const showImportDialog = ref(false)
 const formData = ref({
   code: '',
   name: '',
-  amount: ''
+  amount: '',
+  source: 'ali',
+  isQDII: false
 })
 
 // ========== 批量录入相关 ==========
@@ -67,6 +69,16 @@ const searchResults = ref<FundInfo[]>([])
 const isSearching = ref(false)
 const selectedFund = ref<FundInfo | null>(null)
 const currentNetValue = ref(0) // 当前基金净值
+// [WHAT] 本次添加是否用估值算份额（净值未更新时 true，晚上净值公布后自动重算）
+const addEstimated = ref(false)
+
+// [WHY] QDII 净值滞后一天，估值/是否当期口径依赖 isQDII 标志。
+//       用户选完基金后再切 QDII，需要按新标志重新拉一次净值，否则份额口径是错的。
+watch(() => formData.value.isQDII, () => {
+  if (selectedFund.value) {
+    selectFund(selectedFund.value)
+  }
+})
 
 // ========== 调整成本相关 ==========
 const showCostDialog = ref(false)
@@ -194,6 +206,11 @@ async function onRefresh() {
 function openAddDialog() {
   isEditing.value = false
   resetForm()
+  // [WHAT] 默认来源跟随当前筛选的账户：在「京东」筛选下点添加，新基金默认进京东
+  const f = currentSourceFilter.value
+  if (f === 'ali' || f === 'TX' || f === 'JD' || f === 'observe') {
+    formData.value.source = f
+  }
   showAddDialog.value = true
 }
 
@@ -215,11 +232,12 @@ async function handleDelete(code: string) {
 
 // [WHAT] 重置表单
 function resetForm() {
-  formData.value = { code: '', name: '', amount: '' }
+  formData.value = { code: '', name: '', amount: '', source: 'ali', isQDII: false }
   searchKeyword.value = ''
   searchResults.value = []
   selectedFund.value = null
   currentNetValue.value = 0
+  addEstimated.value = false
 }
 
 // [WHAT] 搜索基金
@@ -251,13 +269,15 @@ async function selectFund(fund: FundInfo) {
   searchKeyword.value = ''
   searchResults.value = []
   
-  // [WHY] 获取最新净值（使用公布净值，非估值）
+  // [WHY] 用 fetchFundAccurateData 拿统一的「净值/估值/是否当期」结论，
+  //       而不是自己拼 dwjz/gsz —— 否则会和加仓/刷新各自的口径漂移。
   showLoadingToast({ message: '获取净值...', forbidClick: true })
   try {
-    const estimate = await fetchFundEstimate(fund.code)
-    // [WHY] 优先使用 dwjz（最新公布净值），而非 gsz（实时估值）
-    // [WHY] 交易时间内账户显示的收益是基于昨日净值计算的，使用估值会导致成本净值和份额计算不准确
-    currentNetValue.value = parseFloat(estimate.dwjz) || parseFloat(estimate.gsz) || 1
+    const data = await fetchFundAccurateData(fund.code, formData.value.isQDII)
+    // [WHAT] 净值未更新时用实时估值算份额（加仓同款逻辑），晚上净值公布后自动重算
+    const { netValue, estimated } = resolveAddValue(data)
+    currentNetValue.value = netValue
+    addEstimated.value = estimated
     closeToast()
   } catch {
     closeToast()
@@ -268,6 +288,7 @@ async function selectFund(fund: FundInfo) {
       if (klineData && klineData.length > 0) {
         // [WHAT] 使用最新的历史净值
         currentNetValue.value = klineData[klineData.length - 1]!.value
+        addEstimated.value = false
         showToast('已获取历史净值')
         return
       }
@@ -275,6 +296,7 @@ async function selectFund(fund: FundInfo) {
       // 历史数据也失败
     }
     currentNetValue.value = 1
+    addEstimated.value = false
     showToast('请手动输入净值')
   }
 }
@@ -302,18 +324,59 @@ async function submitForm() {
   }
   // 持有收益为可选，若为空则视为 0
   
-  const record: HoldingRecord = {
+  const amount = parseFloat(formData.value.amount)
+  const addedShares = calculatedShares.value
+  const existing = holdingStore.getHoldingByCode(formData.value.code)
+
+  if (existing) {
+    // [FIX] 已存在持仓：按「加仓」语义累加份额，保留基础成本（buyNetValue/buyDate 不动）。
+    // [WHY] 之前这里对已有 code 也是直接 overwrite record（shares=buyNetValue=表单金额），
+    //       导致「删了加仓记录 → 重加」时把基础 7.11W 整个覆盖成 5W，总值对不上、买点也错。
+    //       现在重加 5W 会正确落在 7.11W 基础之上 → 12.11W，并额外建一笔今日买点（和加仓对话框一致）。
+    const src = formData.value.source || existing.source
+    const updated: HoldingRecord = {
+      ...existing,
+      shares: (existing.shares || 0) + addedShares,
+      source: src,
+      isQDII: formData.value.isQDII ?? existing.isQDII
+    }
+    await holdingStore.addOrUpdateHolding(updated)
+  } else {
+    const record: HoldingRecord = {
+      code: formData.value.code,
+      name: formData.value.name,
+      buyNetValue: currentNetValue.value,
+      shares: addedShares,
+      buyDate: new Date().toISOString().split('T')[0],
+      holdingDays: 0,
+      source: formData.value.source,
+      isQDII: formData.value.isQDII,
+      createdAt: Date.now()
+    }
+    await holdingStore.addOrUpdateHolding(record)
+
+    // [FIX] 全新添加（此前无持仓，常见于「删除持仓后又重加」）时，清掉上一轮删除持仓遗留的孤儿买入交易，
+    //       否则 removeHolding 不级联删交易 → 重加会出现重复买点（如 9.18 + 9.21 两个点都画在星标K线）。
+    getTradesByCode(formData.value.code)
+      .filter(t => t.type === 'buy')
+      .forEach(t => removeTrade(t.id))
+  }
+
+  // [FIX] 创建交易记录，K线图上标记买入点（首加 / 加仓都建一笔 buy 交易，已存在则额外加一笔，和加仓对话框一致）
+  // [WHAT] estimated 由 selectFund 按「净值是否已更新」决定：未更新用估值算份额，
+  //        晚上净值公布后由 updateTradesByCode 用正式净值重算份额。
+  createBuyTrade({
     code: formData.value.code,
     name: formData.value.name,
-    buyNetValue: currentNetValue.value,
-    shares: calculatedShares.value,
-    buyDate: new Date().toISOString().split('T')[0],
-    holdingDays: 0,
-    createdAt: Date.now()
-  }
-  
-  await holdingStore.addOrUpdateHolding(record)
-  console.log('[添加基金] 最新净值:', record.buyNetValue, '持有份额:', record.shares)
+    date: new Date().toISOString().split('T')[0],
+    amount,
+    netValue: currentNetValue.value,
+    shares: addedShares,
+    estimated: addEstimated.value,
+    source: formData.value.source
+  })
+
+  console.log('[添加基金] 最新净值:', currentNetValue.value, '本次新增份额:', addedShares, '估值单:', addEstimated.value)
   showToast(isEditing.value ? '修改成功' : '添加成功')
   showAddDialog.value = false
   resetForm()
@@ -550,33 +613,35 @@ async function batchImport() {
 
         console.log('找到基金:', fundName)
 
-        // [FIX] 批量导入时始终使用净值计算份额，不使用估值
-        let navValue = 1  // 最新净值（用于计算份额）
-        let navDate = ''
-
+        // [WHAT] 批量导入 = 导入「实盘账户已有持仓」（有市值、有盈亏），与单加/加仓不同：
+        //       用实际已公布的净值（accurateData.nav）算成本与份额，买点画在净值对应的交易日——
+        //       盘中导入（净值未更新）→ 用昨天净值、买点画上一交易日；净值更新后导入 → 用今天净值、买点画今天。
+        //       不标记 estimated（不是盘中估值下单），晚上也不会被 getTodayFirstBuyCorrection 重算，历史盈亏得以保留。
+        //       （这是与「今天新买」逻辑的本质区别：后者用盘中估值、买点画今天、晚上重算为净值。）
+        let accurateData: any = null
         try {
-          // [FIX] 使用 fetchFundAccurateData 获取净值，与刷新时保持一致
-          // 避免估值和净值日期不一致导致计算错误
-          const accurateData = await fetchFundAccurateData(fundCode, item.isQDII)
-          if (accurateData) {
-            navValue = accurateData.nav || 1  // 使用最新净值，不考虑是否有当天估值
-            navDate = accurateData.navDate
-            console.log(`[批量导入] ${fundCode}: 获取净值 ${navValue} (净值日期: ${navDate})`)
-          }
+          // [FIX] 使用 fetchFundAccurateData 获取净值/估值，与刷新时保持一致
+          accurateData = await fetchFundAccurateData(fundCode, item.isQDII)
         } catch (error) {
           console.error('获取净值失败，使用默认值:', error)
         }
 
-        const marketValue = parseFloat(item.amount)  // 截图中的持仓市值
-        const profit = parseFloat(item.profit) || 0   // 截图中的盈亏
+        // 买价 = 实际已公布净值（兜底 1 防除零）；buyDate = 该净值对应日期（上一交易日 / 今日）
+        const buyPrice = (accurateData && accurateData.nav > 0) ? accurateData.nav : 1
+        const navDate = accurateData?.navDate || ''
+        const estimated = false
+        if (accurateData) {
+          console.log(`[批量导入] ${fundCode}: 净值 ${buyPrice} (净值日期: ${navDate})`)
+        }
 
-        // 计算份额和买入净值
-        const shares = marketValue / navValue
+        const marketValue = parseFloat(item.amount)  // 持仓市值
+        const profit = parseFloat(item.profit) || 0   // 盈亏
 
-        // [FIX] 买入净值计算：(持仓市值 - 盈亏) / 份额
-        // 盈亏是持仓市值相对于成本的变化，所以成本 = 持仓市值 - 盈亏
-        // 买入净值 = 成本 / 份额
-        let buyNetValue = navValue
+        // 份额 = 持仓市值 / 净值（实际已公布净值）
+        const shares = marketValue / buyPrice
+
+        // 买入净值（成本基数）：成本 = 持仓市值 - 盈亏；成本基数 = 成本 / 份额
+        let buyNetValue = buyPrice
         if (profit !== 0 && shares > 0) {
           buyNetValue = (marketValue - profit) / shares
         }
@@ -585,9 +650,9 @@ async function batchImport() {
         console.log(`========== [批量导入-计算过程] ${fundCode} ==========`)
         console.log(`持仓金额 (marketValue): ${marketValue}`)
         console.log(`持仓收益 (profit): ${profit}`)
-        console.log(`最新净值 (navValue): ${navValue} (净值日期: ${navDate})`)
+        console.log(`净值 (buyPrice): ${buyPrice} (净值日期: ${navDate})`)
         console.log(`--- 份额计算 ---`)
-        console.log(`  份额 (shares) = 持仓市值 / 最新净值 = ${marketValue} / ${navValue} = ${shares}`)
+        console.log(`  份额 (shares) = 持仓市值 / 净值 = ${marketValue} / ${buyPrice} = ${shares}`)
         console.log(`--- 买入净值计算 ---`)
         console.log(`  成本 = 持仓市值 - 持仓收益 = ${marketValue} - ${profit} = ${marketValue - profit}`)
         console.log(`  买入净值 (buyNetValue) = 成本 / 份额 = (${marketValue} - ${profit}) / ${shares} = ${buyNetValue}`)
@@ -599,13 +664,13 @@ async function batchImport() {
 
         const industrySectors = item.sectors?.trim() || undefined
 
-        // [FIX] buyDate 用净值日期，因为份额是用这天的净值算的
+        // 批量导入：买点画在净值对应交易日（navDate），保留历史盈亏
         const record: HoldingRecord = {
           code: fundCode,
           name: fundName,
           buyNetValue: buyNetValue,
           shares: shares,
-          buyDate: navDate || getCalendarDateStr(),
+          buyDate: navDate,
           holdingDays: 0,
           industrySectors: industrySectors,
           source: item.source,
@@ -616,24 +681,20 @@ async function batchImport() {
         console.log('构建记录:', record)
         await holdingStore.addOrUpdateHolding(record)
 
-        // [FIX] 创建交易记录，K线图上标记买入点
+        // 创建交易记录，K线图上标记买入点（统一走 useFundTrade.createBuyTrade）
         const cost = marketValue - profit
-        addTrade({
-          id: '',
+        createBuyTrade({
           code: fundCode,
           name: fundName,
-          type: 'buy',
-          date: navDate || getCalendarDateStr(), // 标记在净值日期
+          date: navDate, // 买点画在净值对应交易日
           amount: cost,
           netValue: buyNetValue,
           shares: shares,
-          fee: 0,
-          estimated: false,
-          source: item.source,
-          createdAt: Date.now()
+          estimated, // 批量导入用实际净值，不标 estimated
+          source: item.source
         })
 
-        console.log('[批量导入] 添加成功:', fundCode, '净值:', navValue, '份额:', shares.toFixed(4))
+        console.log('[批量导入] 添加成功:', fundCode, '净值:', buyPrice, '份额:', shares.toFixed(4))
         results.push(fundCode)
       } catch (error) {
         batchItems.value[index].error = '导入失败'
@@ -984,13 +1045,41 @@ async function refreshHoldingsCache() {
             readonly
           />
 
+          <!-- 账户来源（决定基金进哪个账户：支付宝/腾讯/京东/观察） -->
+          <div class="form-item">
+            <label class="form-label">账户来源</label>
+            <van-radio-group v-model="formData.source" class="source-radio-group">
+              <van-radio
+                v-for="option in sourceOptions"
+                :key="option.value"
+                :name="option.value"
+                class="source-radio"
+              >
+                {{ option.text }}
+              </van-radio>
+            </van-radio-group>
+          </div>
+
+          <!-- 是否为 QDII（影响净值滞后口径） -->
+          <div class="form-item">
+            <div class="qdii-toggle">
+              <span class="qdii-label">是否为QDII</span>
+              <van-switch v-model="formData.isQDII" size="24" />
+            </div>
+          </div>
+
           <!-- 当前净值显示 -->
           <van-field
             v-if="currentNetValue > 0"
             :model-value="currentNetValue.toFixed(4)"
             label="当前净值"
             readonly
-          />
+          >
+            <template #left-icon>
+              <span v-if="addEstimated" class="net-value-tag estimate-tag">估值</span>
+              <span v-else class="net-value-tag nav-tag">净值</span>
+            </template>
+          </van-field>
 
           <!-- 持仓金额 -->
           <van-field
@@ -1007,6 +1096,11 @@ async function refreshHoldingsCache() {
               <span class="calc-label">预估份额</span>
               <span class="calc-value">{{ calculatedShares.toFixed(2) }} 份</span>
             </div>
+          </div>
+
+          <!-- 净值未更新时用估值算份额的提示（与加仓弹窗一致） -->
+          <div class="net-value-info" v-if="addEstimated && calculatedShares > 0">
+            <span>使用实时估值，晚上净值更新后自动重算份额</span>
           </div>
         </div>
 
@@ -2067,6 +2161,37 @@ async function refreshHoldingsCache() {
 .qdii-label {
   font-size: 14px;
   color: var(--text-primary);
+}
+
+/* 净值/估值角标（与详情页加仓弹窗一致） */
+.net-value-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+.estimate-tag {
+  background: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+  border: 1px solid rgba(246, 70, 93, 0.3);
+}
+
+.nav-tag {
+  background: rgba(14, 203, 129, 0.15);
+  color: #0ecb81;
+  border: 1px solid rgba(14, 203, 129, 0.3);
+}
+
+.net-value-info {
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #f0b90b;
+  font-style: italic;
 }
 
 /* 批量录入弹窗样式 */
