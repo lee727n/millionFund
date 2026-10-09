@@ -343,8 +343,36 @@ function handleCanvasClick(e: MouseEvent) {
   const mainHeight = height - padding.top - padding.bottom
   const chartWidth = width - padding.left - padding.right
 
-  // 计算收益率范围（和 drawChart 保持一致）
-  const allReturns = [...perfData.map(d => d.fundReturn)]
+  // [FIX] 和 drawChart 完全一致：先算「今天延伸点」（估值点），命中判定必须用同一套坐标，
+  //       否则延伸点的 x 坐标算错，点不中今天的交易（如 9.30 加仓点）
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  let extendedPerfData = perfData
+  if (rt.value && rt.value.currentValue > 0) {
+    const lastDate = filtered[filtered.length - 1]?.time?.split(' ')[0] || ''
+    if (lastDate !== todayStr) {
+      const fundFirstValue = filtered[0]?.value || 1
+      const fundReturn = ((rt.value.currentValue - fundFirstValue) / fundFirstValue) * 100
+      extendedPerfData = [...perfData, {
+        time: todayStr,
+        fundReturn,
+        hs300Return: perfData[perfData.length - 1]?.hs300Return ?? 0
+      }]
+    }
+  }
+  const hasExtension = extendedPerfData.length > perfData.length
+
+  // 计算收益率范围（和 drawChart 保持一致，必须包含延伸点 + HS300 + 成本线，
+  // 否则 toY 映射和画出来的位置不一致，高亮红点会跑到下方很远的地方）
+  const showHS300Line = props.showHS300 !== false && hs300Data.value.length > 0
+  const allReturns = [
+    ...extendedPerfData.map(d => d.fundReturn),
+    ...(showHS300Line ? extendedPerfData.map(d => d.hs300Return) : []),
+  ]
+  if ((props.costNavValue ?? 0) > 0) {
+    const firstVal = filtered[0]?.value || 1
+    allReturns.push((((props.costNavValue ?? 0) - firstVal) / firstVal) * 100)
+  }
   let minR = Math.min(...allReturns, 0)
   let maxR = Math.max(...allReturns, 0)
   const margin = ((maxR - minR) || 2) * 0.1
@@ -352,7 +380,8 @@ function handleCanvasClick(e: MouseEvent) {
   const range = maxR - minR || 1
 
   const toY = (r: number) => padding.top + mainHeight * (1 - (r - minR) / range)
-  const toX = (i: number) => padding.left + (chartWidth / Math.max(perfData.length - 1, 1)) * i
+  // [FIX] toX 必须用 extendedPerfData.length，否则最后一个延伸点会超出画布、点不中
+  const toX = (i: number) => padding.left + (chartWidth / Math.max(extendedPerfData.length - 1, 1)) * i
 
   // 获取交易记录
   const trades = getTradesByCode(props.fundCode)
@@ -363,46 +392,64 @@ function handleCanvasClick(e: MouseEvent) {
   let clickedTTrade: any = null
   let clickedTTradeType: 'buy' | 'sell' | null = null
 
-  // 检测普通交易点
+  // [FIX] 严格匹配日期，匹配不到再检查是否是今天的交易（延伸点），与 drawChart 的画法一致；
+  //       不再用 findDateIndex（有 7 天兜底会把 9.30 误匹配到 9.29），并且取「最近命中」而非第一个命中，
+  //       避免相邻日期的交易点互相遮挡（例如 9.29 加仓点挡住 9.30 加仓点）
+  let bestTradeDist = 10
   for (const trade of trades) {
-    const idx = findDateIndex(filtered, trade.date)
-    if (idx === -1) continue
-    const px = toX(idx)
-    const py = toY(perfData[idx]?.fundReturn ?? 0)
+    const tradeDateOnly = (trade.date.split(' ')[0] || trade.date).slice(0, 10)
+    const strictIdx = filtered.findIndex(d => {
+      const dDateOnly = (d.time.split(' ')[0] || d.time).slice(0, 10)
+      return dDateOnly === tradeDateOnly
+    })
+
+    let perfIdx = -1
+    let fundReturn = 0
+    if (strictIdx !== -1) {
+      perfIdx = strictIdx
+      fundReturn = perfData[strictIdx]?.fundReturn ?? 0
+    } else if (hasExtension && tradeDateOnly === todayStr) {
+      perfIdx = extendedPerfData.length - 1
+      fundReturn = extendedPerfData[perfIdx].fundReturn
+    } else {
+      continue
+    }
+
+    const px = toX(perfIdx)
+    const py = toY(fundReturn)
     const dist = Math.sqrt((px - x) ** 2 + (py - y) ** 2)
-    if (dist < 10) {
+    if (dist < bestTradeDist) {
+      bestTradeDist = dist
       clickedTrade = { ...trade, x: px, y: py }
-      break
     }
   }
 
-  // 检测T交易点
+  // 检测T交易点（同样严格匹配 + 延伸点逻辑 + 最近命中）
   if (!clickedTrade) {
+    let bestTDist = 10
     for (const t of tTrades) {
-      const buyIdx = findDateIndex(filtered, t.buyDate)
-      const sellIdx = findDateIndex(filtered, t.sellDate)
-      
-      if (buyIdx !== -1) {
-        const bx = toX(buyIdx)
-        const by = toY(perfData[buyIdx]?.fundReturn ?? 0)
-        const dist = Math.sqrt((bx - x) ** 2 + (by - y) ** 2)
-        if (dist < 10) {
-          clickedTTrade = { ...t, x: bx, y: by }
-          clickedTTradeType = 'buy'
-          break
-        }
-      }
-      
-      if (sellIdx !== -1) {
-        const sx = toX(sellIdx)
-        const sy = toY(perfData[sellIdx]?.fundReturn ?? 0)
-        const dist = Math.sqrt((sx - x) ** 2 + (sy - y) ** 2)
-        if (dist < 10) {
-          clickedTTrade = { ...t, x: sx, y: sy }
-          clickedTTradeType = 'sell'
-          break
-        }
-      }
+      const buyDateOnly = (t.buyDate.split(' ')[0] || t.buyDate).slice(0, 10)
+      const sellDateOnly = (t.sellDate.split(' ')[0] || t.sellDate).slice(0, 10)
+
+      const buyIdx = filtered.findIndex(d => ((d.time.split(' ')[0] || d.time).slice(0, 10)) === buyDateOnly)
+      const sellIdx = filtered.findIndex(d => ((d.time.split(' ')[0] || d.time).slice(0, 10)) === sellDateOnly)
+
+      let buyPerfIdx = -1, sellPerfIdx = -1, buyReturn = 0, sellReturn = 0
+      if (buyIdx !== -1) { buyPerfIdx = buyIdx; buyReturn = perfData[buyIdx]?.fundReturn ?? 0 }
+      else if (hasExtension && buyDateOnly === todayStr) { buyPerfIdx = extendedPerfData.length - 1; buyReturn = extendedPerfData[buyPerfIdx].fundReturn }
+      else continue
+
+      if (sellIdx !== -1) { sellPerfIdx = sellIdx; sellReturn = perfData[sellIdx]?.fundReturn ?? 0 }
+      else if (hasExtension && sellDateOnly === todayStr) { sellPerfIdx = extendedPerfData.length - 1; sellReturn = extendedPerfData[sellPerfIdx].fundReturn }
+      else continue
+
+      const bx = toX(buyPerfIdx), by = toY(buyReturn)
+      const sx = toX(sellPerfIdx), sy = toY(sellReturn)
+
+      const distB = Math.sqrt((bx - x) ** 2 + (by - y) ** 2)
+      if (distB < bestTDist) { bestTDist = distB; clickedTTrade = { ...t, x: bx, y: by }; clickedTTradeType = 'buy' }
+      const distS = Math.sqrt((sx - x) ** 2 + (sy - y) ** 2)
+      if (distS < bestTDist) { bestTDist = distS; clickedTTrade = { ...t, x: sx, y: sy }; clickedTTradeType = 'sell' }
     }
   }
 

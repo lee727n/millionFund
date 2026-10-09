@@ -108,7 +108,11 @@ const liveMap = computed(() => props.liveData ?? ownValuation.liveFundData.value
 function realtimeFor(code: string): { currentValue: number; dayChange: number; isNav: boolean } | null {
   const d = liveMap.value.get(code)
   if (!d || !(d.currentValue > 0)) return null
-  return { currentValue: d.currentValue, dayChange: d.dayChange ?? 0, isNav: d.isNav }
+  return {
+    currentValue: d.currentValue,
+    dayChange: d.dayChange ?? 0,
+    isNav: d.isNav,
+  }
 }
 
 /**
