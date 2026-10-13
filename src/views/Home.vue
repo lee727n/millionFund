@@ -1212,6 +1212,33 @@ onUnmounted(() => {
   window.removeEventListener('starred-funds-changed', onStarredFundsChanged)
 })
 
+// [WHAT] 手机版 vConsole 调试开关：默认关闭，需要看日志时再点开
+// [WHY] 项目已在 index.html 通过 CDN 引入全局 VConsole（挂到 window.VConsole），这里只控制它的显隐，
+//       不再自己 new 第二个实例——VConsole 是单例，重复 new 会抛 "already exists"，
+//       表现为「显示面板加载失败」但原来的面板还在（之前就是这么翻车的）。
+// [HOW] 关闭 = destroy() 移除面板；打开 = new window.VConsole() 显示面板。默认 index.html 不自动实例化，所以初始隐藏。
+let vConsoleInstance: any = null
+const vConsoleEnabled = ref(false)
+function toggleVConsole() {
+  const VC = (window as any).VConsole
+  if (!VC) {
+    showToast('调试面板加载失败')
+    return
+  }
+  if (vConsoleEnabled.value) {
+    vConsoleInstance?.destroy()
+    vConsoleInstance = null
+    vConsoleEnabled.value = false
+  } else {
+    vConsoleInstance = new VC()
+    vConsoleEnabled.value = true
+  }
+}
+onUnmounted(() => {
+  vConsoleInstance?.destroy()
+  vConsoleInstance = null
+})
+
 // [WHAT] 公告列表（默认 + 远程）
 const defaultNotices = [
   '基金投资有风险，入市需谨慎',
@@ -1509,6 +1536,17 @@ function handleNameClick(code: string, name: string) {
                 <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
               </svg>
               <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
+            </span>
+            <!-- [WHAT] 手机版 vConsole 调试开关：紧跟星标，默认关，占位和星星差不多小；右侧加「调试」两字说明用途 -->
+            <span
+              class="vconsole-toggle mobile-only"
+              :class="{ on: vConsoleEnabled }"
+              role="switch"
+              :aria-checked="vConsoleEnabled"
+              @click="toggleVConsole"
+            >
+              <span class="vconsole-switch"><span class="vconsole-knob"></span></span>
+              <span class="vconsole-label">调试</span>
             </span>
             <!-- 网页端：按钮在第一行 -->
             <div class="sort-buttons web-only">
@@ -2568,6 +2606,62 @@ function handleNameClick(code: string, name: string) {
   font-style: normal;
   text-align: center;
   box-sizing: border-box;
+}
+
+/* [WHAT] 手机版 vConsole 调试开关：开关本体尽量小（和星标占位差不多大），右侧加「调试」两字说明用途 */
+.vconsole-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  margin-right: 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+/* 扩大点击热区，避免太小点不中 */
+.vconsole-toggle::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+/* 开关本体：小药丸 */
+.vconsole-switch {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(140, 140, 140, 0.45);
+  flex: 0 0 auto;
+  transition: background 0.18s;
+}
+.vconsole-toggle.on .vconsole-switch {
+  background: #07c160;
+}
+.vconsole-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s;
+}
+.vconsole-toggle.on .vconsole-knob {
+  transform: translateX(10px);
+}
+/* 右侧「调试」两字 */
+.vconsole-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.vconsole-toggle.on .vconsole-label {
+  color: #07c160;
 }
 
 .update-status {

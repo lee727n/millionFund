@@ -1161,6 +1161,16 @@ function findDateIndex(data: { time: string }[], targetDate: string): number {
 }
 
 // ========== 交易标记绘制 ==========
+// [WHAT] 买入点按金额深浅着色：金额越小越浅、越大越深，均为红色。
+// [WHY] 一眼区分不同买入金额——固定红相(hsl 351°)，仅亮度从 70%(浅) 到 40%(深) 渐变。
+function getBuyAmountColor(amount: number, min: number, max: number): string {
+  if (!isFinite(amount)) return '#f6465d'
+  if (max <= min) return 'hsl(351, 88%, 56%)'
+  const t = (amount - min) / (max - min) // 0=最小, 1=最大
+  const light = 70 - t * 30 // 70%(浅=少) → 40%(深=多)
+  return `hsl(351, 88%, ${light.toFixed(1)}%)`
+}
+
 function drawTradeMarkers(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -1173,6 +1183,11 @@ function drawTradeMarkers(
 ) {
   const trades = props.trades || []
   const tTrades = props.tTrades || []
+
+  // [WHAT] 买入金额区间，用于把买入点按金额深浅着色（浅=少，深=多）
+  const buyAmounts = trades.filter(t => t.type === 'buy' && isFinite(t.amount)).map(t => t.amount)
+  const buyMin = buyAmounts.length ? Math.min(...buyAmounts) : 0
+  const buyMax = buyAmounts.length ? Math.max(...buyAmounts) : 0
 
   // [FIX] trades 为空但 tTrades 不为空时仍需继续，否则 T 交易的 hover 检测和 tooltip 不执行
   if (trades.length === 0 && tTrades.length === 0) return
@@ -1316,7 +1331,8 @@ function drawTradeMarkers(
     const x = toX(pointIndex)
     const y = toY(valueGetter(data[pointIndex]!))
     const isBuy = trade.type === 'buy'
-    const markerColor = isBuy ? '#f6465d' : '#0ecb81'
+    // [WHAT] 买入点按金额深浅着色（浅=少，深=多）；卖出保持绿
+    const markerColor = isBuy ? getBuyAmountColor(trade.amount, buyMin, buyMax) : '#0ecb81'
 
     // 绘制圆点标记
     ctx.beginPath()
@@ -1349,6 +1365,28 @@ function drawTradeMarkers(
     ctx.closePath()
     ctx.fillStyle = markerColor
     ctx.fill()
+  }
+
+  // ========== 买入金额深浅图例 ==========
+  // [WHAT] 仅当存在 ≥2 个不同买入金额时画：浅(左)=少 → 深(右)=多，一眼看懂点色含义
+  if (buyMax > buyMin) {
+    const lw = 64, lh = 7
+    const lx = (width - lw) / 2
+    const ly = height - padding.bottom - lh - 6
+    const grad = ctx.createLinearGradient(lx, 0, lx + lw, 0)
+    grad.addColorStop(0, getBuyAmountColor(buyMin, buyMin, buyMax))
+    grad.addColorStop(1, getBuyAmountColor(buyMax, buyMin, buyMax))
+    ctx.fillStyle = grad
+    ctx.fillRect(lx, ly, lw, lh)
+    ctx.strokeStyle = colors.borderColor || '#2b3139'
+    ctx.lineWidth = 0.5
+    ctx.strokeRect(lx, ly, lw, lh)
+    ctx.fillStyle = colors.textSecondary || '#848e9c'
+    ctx.font = '9px Arial'
+    ctx.textAlign = 'left'
+    ctx.fillText('少', lx, ly - 3)
+    ctx.textAlign = 'right'
+    ctx.fillText('多', lx + lw, ly - 3)
   }
 
   // 绘制悬停提示
@@ -1399,7 +1437,7 @@ function drawTradeMarkers(
     ctx.fill()
 
     // 绘制提示框边框
-    ctx.strokeStyle = isBuy ? '#f6465d' : '#0ecb81'
+    ctx.strokeStyle = isBuy ? getBuyAmountColor(trade.amount, buyMin, buyMax) : '#0ecb81'
     ctx.lineWidth = 1
     ctx.stroke()
 

@@ -27,6 +27,12 @@ const props = withDefaults(defineProps<{
   /** 是否绘制沪深300 对比线；默认 true，传 false 关闭 */
   showHS300?: boolean
   fundName?: string
+  /**
+   * [WHAT] 单只基金的「净值是否已更新」状态，用于给基金名称上色（与 .home 持仓趋势 FundGridItem 同口径）
+   * [WHY] 用户要求星标K线页用「基金名称颜色」表达估值/净值状态，而不是独立圆点；颜色与 FundGridItem 一致：
+   *       交易中(pending)=灰 / 已更新(updated)=黄 / 未更新(not-updated)=绿。不传则名称用默认主色。
+   */
+  updateStatus?: 'pending' | 'updated' | 'not-updated'
   marketValue?: number
   returnRate?: number
   costNavValue?: number
@@ -101,6 +107,17 @@ function getColors() {
     downColor: '#0ecb81',
     hs300Color: '#f0b90b',
   }
+}
+
+// [WHAT] 买入点按金额深浅着色：金额越小越浅、越大越深，均为红色。
+// [WHY] 一眼区分不同买入金额——固定红相(hsl 351°)，仅亮度从 70%(浅) 到 40%(深) 渐变。
+//       仅一个买入点时取中间档；非有限金额回退主题红。
+function getBuyAmountColor(amount: number, min: number, max: number): string {
+  if (!isFinite(amount)) return '#f6465d'
+  if (max <= min) return 'hsl(351, 88%, 56%)'
+  const t = (amount - min) / (max - min) // 0=最小, 1=最大
+  const light = 70 - t * 30 // 70%(浅=少) → 40%(深=多)
+  return `hsl(351, 88%, ${light.toFixed(1)}%)`
 }
 
 // ========== 状态 ==========
@@ -590,7 +607,15 @@ function drawChart() {
 
     // 基金名称（代码兜底）
     const nameY = twoLineHeader ? 11 : infoBarHeight - 3
-    ctx.fillStyle = colors.textPrimary
+    // [WHAT] 名称颜色跟随「净值是否已更新」状态，与 .home 持仓趋势 FundGridItem 同口径
+    //        交易中=灰 / 已更新=黄(#ff9800) / 未更新=绿(#4caf50)；无状态则用默认主色（全景大屏等未传时）
+    ctx.fillStyle = props.updateStatus === 'updated'
+      ? '#ff9800'
+      : props.updateStatus === 'not-updated'
+        ? '#4caf50'
+        : props.updateStatus === 'pending'
+          ? colors.textSecondary
+          : colors.textPrimary
     ctx.font = 'bold 10px Arial'
     ctx.textAlign = 'left'
     const drawnName = ellipsize(ctx, props.fundName || props.fundCode, nameMax)
@@ -767,6 +792,11 @@ function drawChart() {
   const trades = getTradesByCode(props.fundCode)
   const tTrades = getTTradesByCode(props.fundCode)
 
+  // [WHAT] 买入金额区间，用于把买入点按金额深浅着色（浅=少，深=多）
+  const buyAmounts = trades.filter(t => t.type === 'buy' && isFinite(t.amount)).map(t => t.amount)
+  const buyMin = buyAmounts.length ? Math.min(...buyAmounts) : 0
+  const buyMax = buyAmounts.length ? Math.max(...buyAmounts) : 0
+
   // 获取今天的日期字符串
   const today = new Date()
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -815,7 +845,8 @@ function drawChart() {
     const isBuy = trade.type === 'buy'
     ctx.beginPath()
     ctx.arc(x, y, 2.5, 0, Math.PI * 2)
-    ctx.fillStyle = isBuy ? colors.upColor : colors.downColor
+    // [WHAT] 买入点按金额深浅着色（浅=少，深=多）；卖出保持绿
+    ctx.fillStyle = isBuy ? getBuyAmountColor(trade.amount, buyMin, buyMax) : colors.downColor
     ctx.fill()
   }
 
@@ -863,6 +894,28 @@ function drawChart() {
     }
   }
 
+  // ========== 买入金额深浅图例 ==========
+  // [WHAT] 仅当存在 ≥2 个不同买入金额时画：浅(左)=少 → 深(右)=多，一眼看懂点色含义
+  if (buyMax > buyMin) {
+    const lw = 56, lh = 6
+    const lx = (width - lw) / 2
+    const ly = height - padding.bottom - lh - 4
+    const grad = ctx.createLinearGradient(lx, 0, lx + lw, 0)
+    grad.addColorStop(0, getBuyAmountColor(buyMin, buyMin, buyMax))
+    grad.addColorStop(1, getBuyAmountColor(buyMax, buyMin, buyMax))
+    ctx.fillStyle = grad
+    ctx.fillRect(lx, ly, lw, lh)
+    ctx.strokeStyle = colors.borderColor
+    ctx.lineWidth = 0.5
+    ctx.strokeRect(lx, ly, lw, lh)
+    ctx.fillStyle = colors.textSecondary
+    ctx.font = '8px Arial'
+    ctx.textAlign = 'left'
+    ctx.fillText('少', lx, ly - 2)
+    ctx.textAlign = 'right'
+    ctx.fillText('多', lx + lw, ly - 2)
+  }
+
   // ========== 点击提示框 ==========
   if (clickedPoint.value) {
     const cp = clickedPoint.value
@@ -881,7 +934,13 @@ function drawChart() {
     // 高亮点
     ctx.beginPath()
     ctx.arc(cp.x, cp.y, 4, 0, Math.PI * 2)
-    ctx.fillStyle = data.type === 'ttrade' ? '#a855f7' : colors.upColor
+    // [WHAT] 买入点高亮也用金额深浅色，与图上一致；T交易保持紫
+    const hiColor = data.type === 'ttrade'
+      ? '#a855f7'
+      : (data.type === 'trade' && data.trade.type === 'buy'
+        ? getBuyAmountColor(data.trade.amount, buyMin, buyMax)
+        : colors.upColor)
+    ctx.fillStyle = hiColor
     ctx.fill()
     ctx.strokeStyle = '#fff'
     ctx.lineWidth = 1.5

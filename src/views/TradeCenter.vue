@@ -226,7 +226,7 @@ const accountFilteredTrades = computed(() => {
 // [WHY] 交易只发生在交易日，用「近N个自然日」过滤会踩坑：
 //       周一选「近3天」= 09-07/09-06/09-05，上周五 09-04 反而被排除，而周末根本没交易。
 //       所以区间一律按「有交易的日期」倒序取前 N 个，周末/节假日自动对齐。
-const tradeFilter = ref<string>('all')   // 'all' | 'recent3' | 'recent5' | 'prev' | 'YYYY-MM-DD'
+const tradeFilter = ref<string>('all')   // 'all' | 'today' | 'recent3' | 'prev' | 'YYYY-MM-DD'
 const showTradeFilterMenu = ref(false)
 
 const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -257,8 +257,8 @@ const prevTradeDate = computed(() => {
 const tradeFilterLabel = computed(() => {
   const f = tradeFilter.value
   if (f === 'all') return '全部'
-  if (f === 'recent3') return '近3个交易日'
-  if (f === 'recent5') return '近一周'
+  if (f === 'today') return '今日'
+  if (f === 'recent3') return '近3日'
   if (f === 'prev') return prevTradeDate.value ? `上一交易日 ${prevTradeDate.value.date.slice(5)}` : '上一交易日'
   return f
 })
@@ -268,9 +268,12 @@ const filteredTrades = computed(() => {
   const f = tradeFilter.value
   const list = accountFilteredTrades.value
   if (f === 'all') return list
-  if (f === 'recent3' || f === 'recent5') {
-    const n = f === 'recent3' ? 3 : 5
-    const dates = new Set(tradeDateStats.value.slice(0, n).map(d => d.date))
+  if (f === 'today') {
+    const today = getCalendarDateStr()
+    return list.filter(t => t.date === today)
+  }
+  if (f === 'recent3') {
+    const dates = new Set(tradeDateStats.value.slice(0, 3).map(d => d.date))
     return list.filter(t => dates.has(t.date))
   }
   if (f === 'prev') {
@@ -565,8 +568,7 @@ onMounted(() => {
           </div>
           <div class="trade-filter-menu" v-if="showTradeFilterMenu" @click.stop>
             <div class="tf-item" :class="{ active: tradeFilter === 'all' }" @click="selectTradeFilter('all')">全部</div>
-            <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3个交易日</div>
-            <div class="tf-item" :class="{ active: tradeFilter === 'recent5' }" @click="selectTradeFilter('recent5')">近一周</div>
+            <div class="tf-item" :class="{ active: tradeFilter === 'today' }" @click="selectTradeFilter('today')">今日</div>
             <div
               class="tf-item tf-prev"
               :class="{ active: tradeFilter === 'prev', disabled: !prevTradeDate }"
@@ -575,6 +577,7 @@ onMounted(() => {
               上一交易日
               <span class="tf-hint" v-if="prevTradeDate">{{ prevTradeDate.date.slice(5) }} {{ prevTradeDate.weekday }}</span>
             </div>
+            <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3日</div>
             <div class="tf-divider" v-if="tradeDateStats.length > 0"></div>
             <div class="tf-scroll">
               <div

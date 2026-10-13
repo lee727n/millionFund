@@ -13,6 +13,7 @@ import { useHoldingStore } from '@/stores/holding'
 import { useFundValuation, type FundValuationData } from '@/composables/useFundValuation'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { isHolidaySync } from '@/utils/holiday'
+import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 
 type Period = '1m' | '3m' | '6m' | '1y'
 
@@ -60,6 +61,19 @@ const props = withDefaults(defineProps<{
    * [WHY] 全景大屏每 60s 已经拉过一次全量估值，K线列不传就会再多一轮请求
    */
   liveData?: Map<string, FundValuationData> | null
+  /**
+   * [WHAT] 工具条是否显示 QDII 圆点开关；默认显示
+   * [WHY] 用户要往星标里加一批 QDII 基金专门看 K线，需要一个一眼能切的开关（点亮=只看 QDII，熄灭=只看其他）；
+   *       全景大屏用自己的 #toolbar 头部，但也从插槽拿到 qdiiOnly / toggleQdiiOnly 自行渲染，
+   *       所以这个开关只控制「内置工具条」（独立星标页）是否显示
+   */
+  showQdiiFilter?: boolean
+  /**
+   * [WHAT] 是否在每个 K 线卡片左上角显示「净值是否已更新」状态点
+   * [WHY] 用户要求星标K线页去掉「估值/净值」聚合标签，改用与 .home 持仓趋势（FundGridItem）一致的逐只标记：
+   *       交易中=灰 / 已更新=黄(#ff9800) / 未更新=绿(#4caf50)。默认关，仅星标页开启，避免污染全景大屏密集布局。
+   */
+  showUpdateStatus?: boolean
 }>(), {
   columns: 2,
   period: '3m',
@@ -74,6 +88,8 @@ const props = withDefaults(defineProps<{
   aspectRatio: '16 / 10',
   liveData: null,
   minItemWidth: 0,
+  showQdiiFilter: true,
+  showUpdateStatus: false,
 })
 
 const emit = defineEmits<{ 'update:period': [Period] }>()
@@ -98,6 +114,7 @@ const isReady = ref(false)
 /** [WHAT] 递增它就能强制所有图表重挂载（手动刷新时用） */
 const reloadTick = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
+let tradingTimer: ReturnType<typeof setInterval> | null = null
 
 watch(() => props.period, v => { activePeriod.value = v })
 watch(activePeriod, v => emit('update:period', v))
@@ -115,14 +132,37 @@ function realtimeFor(code: string): { currentValue: number; dayChange: number; i
   }
 }
 
+// ========== QDII 筛选（极简圆点开关）==========
+// [WHAT] 一个点亮的圆点：点亮=只看 QDII，熄灭(默认)=只看非 QDII（其他）
+// [WHY] 用户要往星标里加一批 QDII 基金专门看 K线，要一个一眼能切的开关；
+//       默认熄灭=看其他，避免一上来就把现有非 QDII 星标和以后加的 QDII 混在一起
+const qdiiOnly = ref(false)
+function setQdiiOnly(v: boolean) { qdiiOnly.value = v }
+function toggleQdiiOnly() { qdiiOnly.value = !qdiiOnly.value }
+
+// [WHAT] 单只基金的 QDII 标记：持仓里有就用持仓的手动开关，已清仓（持仓里没有）退回星标快照
+// [WHY] 与全局口径一致——QDII 判定只用持仓手动开关，不自动从接口推导；清仓后快照里保留了 isQDII
+function isQdiiCode(code: string): boolean {
+  const h = (holdingStore.holdings || []).find((x: any) => x.code === code)
+  if (h) return !!h.isQDII
+  return !!getStarredFundMeta(code)?.isQDII
+}
+
+// [WHAT] 真正渲染的列表：先按账户排序（starredList），再按 QDII 圆点开关筛选
+const displayList = computed(() => {
+  if (!qdiiOnly.value) return starredList.value.filter(c => !isQdiiCode(c))
+  return starredList.value.filter(c => isQdiiCode(c))
+})
+
 /**
  * [WHAT] 当前这一屏用的到底是估值还是净值（给工具条显示用）
  * [WHY] 用户要能一眼看出延线点的数据来源；只要有任一只是估值就显示「估值」
+ *       只统计当前筛选后实际展示的基金，避免被隐藏分组干扰基准显示
  */
 const valueBasis = computed(() => {
   let nav = 0
   let est = 0
-  for (const code of starredList.value) {
+  for (const code of displayList.value) {
     const d = liveMap.value.get(code)
     if (!d || !(d.currentValue > 0)) continue
     if (d.isNav) nav++
@@ -131,6 +171,43 @@ const valueBasis = computed(() => {
   if (nav === 0 && est === 0) return ''
   return est > 0 ? '估值' : '净值'
 })
+
+/**
+ * [WHAT] 当前筛选后实际展示的星标基金的「当天收益」总和（货币单位，元）
+ * [WHY] 全景大屏星标K线头部要显示这一屏所有基金的当日盈亏合计；QDII 圆点开关切换后 displayList 变化，合计随之联动
+ * [HOW] 直接复用持仓 store 已算好的 `holding.todayProfit`（与 stores/holding.ts 同日收益口径一致，
+ *        = shares * prevNav * dayChange/100）；无持仓（仅星标快照）的基金没有市值，跳过不计入。
+ */
+const displayDailyProfit = computed(() => {
+  const holdings = new Map<string, any>((holdingStore.holdings || []).map((h: any) => [h.code, h]))
+  let sum = 0
+  for (const code of displayList.value) {
+    const h = holdings.get(code)
+    const tp = h != null ? Number(h.todayProfit) : NaN
+    if (Number.isFinite(tp)) sum += tp
+  }
+  return sum
+})
+
+/**
+ * [WHAT] 单只基金的「净值是否已更新」状态，与 .home 持仓趋势（FundGridItem.getFundNameClass）同口径：
+ *        交易中=灰(pending) / 已更新=黄(#ff9800) / 未更新=绿(#4caf50)
+ * [WHY] 用户要求星标K线页去掉「估值/净值」聚合标签，改用和持仓趋势一致的逐只标记；颜色取值与 FundGridItem 完全一致。
+ * [HOW] 交易时间内=灰；否则优先用持仓 isUpdated，无持仓退回估值/净值 isNav 判定。
+ */
+const tradingSession = ref<TradingSession>('closed')
+function updateTradingSession() {
+  tradingSession.value = getTradingSession()
+}
+function fundUpdateStatus(code: string): 'pending' | 'updated' | 'not-updated' {
+  const s = tradingSession.value
+  if (s === 'morning' || s === 'afternoon') return 'pending'
+  const h = (holdingStore.holdings || []).find((x: any) => x.code === code)
+  if (h && typeof h.isUpdated === 'boolean') return h.isUpdated ? 'updated' : 'not-updated'
+  const d = liveMap.value.get(code)
+  if (d) return d.isNav ? 'updated' : 'not-updated'
+  return 'not-updated'
+}
 
 // ========== 持仓信息（名称 / 市值 / 收益率 / 成本净值）==========
 // [FIX] 持仓被删后，从星标快照里兜底取 name / 累计涨跌幅 / 成本线，保证还能继续显示
@@ -208,6 +285,14 @@ function sortStarredByAccount(codes: string[]): string[] {
 
 function refreshList() {
   starredList.value = sortStarredByAccount([...getStarredFunds()])
+  // [FIX] 默认（非 QDII）组为空、但 QDII 组有数据时，自动切到 QDII，
+  //       否则「有星标却整页空白（K线加载不出来）」——尤其用户只加了 QDII 基金看 K线时。
+  //       只在当前还是默认 off 时自动翻转，不跟用户手动切换打架。
+  if (!qdiiOnly.value) {
+    const hasNonQdii = starredList.value.some(c => !isQdiiCode(c))
+    const hasQdii = starredList.value.some(isQdiiCode)
+    if (!hasNonQdii && hasQdii) qdiiOnly.value = true
+  }
 }
 
 /**
@@ -384,6 +469,8 @@ function goDetail(code: string) {
 // ========== 生命周期 ==========
 onMounted(async () => {
   window.addEventListener('starred-funds-changed', onStarredChanged)
+  updateTradingSession()
+  tradingTimer = setInterval(updateTradingSession, 60000)
   await boot()
   startAutoRefresh()
 })
@@ -399,6 +486,7 @@ onDeactivated(() => stopAutoRefresh())
 onUnmounted(() => {
   window.removeEventListener('starred-funds-changed', onStarredChanged)
   stopAutoRefresh()
+  if (tradingTimer) clearInterval(tradingTimer)
 })
 
 // ========== 布局 ==========
@@ -432,13 +520,16 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
       name="toolbar"
       :period="activePeriod"
       :set-period="setPeriod"
-      :count="starredList.length"
+      :count="displayList.length"
       :value-basis="valueBasis"
+      :daily-profit="displayDailyProfit"
+      :qdii-only="qdiiOnly"
+      :toggle-qdii-only="toggleQdiiOnly"
       :refresh="reloadCharts"
       :force-refresh="handleRefresh"
     >
       <div v-if="showToolbar" class="skp-toolbar">
-        <span class="skp-count">★ {{ starredList.length }}</span>
+        <span class="skp-count">★ {{ displayList.length }}</span>
         <span v-if="valueBasis" class="skp-basis" :class="valueBasis === '估值' ? 'est' : 'nav'">{{ valueBasis }}</span>
         <span class="skp-spacer"></span>
         <button
@@ -454,6 +545,16 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
             <path d="M21 3v5h-5"/>
           </svg>
         </button>
+        <button
+          v-if="showQdiiFilter"
+          class="skp-qdii-toggle"
+          :class="{ active: qdiiOnly }"
+          @click="toggleQdiiOnly"
+          title="点亮只看 QDII，熄灭只看其他"
+        >
+          <span class="skp-qdii-dot"></span>
+          <span class="skp-qdii-label">QDII</span>
+        </button>
         <div class="skp-seg">
           <button
             v-for="t in periodTabs"
@@ -468,14 +569,24 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
 
     <!-- 图表区 -->
     <div class="skp-body">
-      <div v-if="starredList.length === 0" class="skp-empty">
+      <div v-if="displayList.length === 0" class="skp-empty">
         <div class="skp-empty-icon">★</div>
-        <div class="skp-empty-text">还没有星标基金</div>
-        <div class="skp-empty-hint">长按基金卡片，点击"星标"即可添加</div>
+        <template v-if="starredList.length === 0">
+          <div class="skp-empty-text">还没有星标基金</div>
+          <div class="skp-empty-hint">长按基金卡片，点击"星标"即可添加</div>
+        </template>
+        <template v-else-if="qdiiOnly">
+          <div class="skp-empty-text">暂无 QDII 星标基金</div>
+          <div class="skp-empty-hint">熄灭 QDII 开关即可查看其他星标</div>
+        </template>
+        <template v-else>
+          <div class="skp-empty-text">暂无其他星标基金</div>
+          <div class="skp-empty-hint">点亮 QDII 开关即可查看 QDII 星标</div>
+        </template>
       </div>
 
       <div v-else class="skp-grid" :style="gridStyle">
-        <div v-for="code in starredList" :key="code" class="skp-item" :style="itemStyle">
+        <div v-for="code in displayList" :key="code" class="skp-item" :style="itemStyle">
           <div v-if="showControls" class="skp-item-controls">
             <button v-if="showDetail" class="skp-ctrl-btn" @click="goDetail(code)" title="查看详情">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -497,6 +608,7 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
             :fund-code="code"
             :period="activePeriod"
             :fund-name="fundInfoMap.get(code)?.name || ''"
+            :update-status="showUpdateStatus ? fundUpdateStatus(code) : undefined"
             :market-value="fundInfoMap.get(code)?.marketValue"
             :show-market-value="showMarketValue"
             :show-name-market-value="showNameMarketValue"
@@ -616,6 +728,43 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
   background: var(--skp-bg);
   color: var(--skp-active);
   font-weight: 600;
+}
+
+/* ========== QDII 圆点开关 ========== */
+.skp-qdii-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--skp-border);
+  background: var(--skp-surface);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--skp-muted);
+  font-size: 11px;
+  line-height: 18px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.skp-qdii-toggle:hover { color: var(--skp-text); }
+.skp-qdii-toggle.active {
+  color: var(--skp-active);
+  border-color: var(--skp-active);
+}
+.skp-qdii-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--skp-muted);
+  box-sizing: border-box;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.skp-qdii-toggle.active .skp-qdii-dot {
+  background: var(--skp-active);
+  border-color: var(--skp-active);
+  box-shadow: 0 0 4px var(--skp-active);
 }
 
 /* ========== 图表区 ========== */

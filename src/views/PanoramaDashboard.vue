@@ -188,18 +188,26 @@ onUnmounted(() => {
 })
 
 // ============ 交易状态 ============
+// [FIX] 必须依赖响应式时间，不能用裸 new Date()——后者非响应式，computed 首次求值后
+// 会被永久缓存，导致状态卡死（如午休不翻下午盘、周末不翻开市）。
+// 统一由一个响应式 currentDate 驱动 currentTime / isWeekend / tradingStatus。
+const currentDate = ref(new Date())
 const isWeekend = computed(() => {
-  const day = new Date().getDay()
+  const day = currentDate.value.getDay()
   return day === 0 || day === 6
 })
 const tradingSession = ref<TradingSession>('closed')
 const tradingStatus = computed(() => {
-  const h = new Date().getHours()
   if (isWeekend.value) return { text: '休市', class: 'closed', sub: '周末' }
-  if (h >= 9 && h < 11) return { text: '交易中', class: 'trading', sub: '上午盘' }
-  if (h >= 11 && h < 13) return { text: '午休', class: 'noon', sub: '11:30-13:00' }
-  if (h >= 13 && h < 15) return { text: '交易中', class: 'trading', sub: '下午盘' }
-  return { text: '已休市', class: 'closed', sub: '' }
+  // [FIX] 必须精确到分钟：A股 上午盘 9:30-11:30，午休 11:30-13:00，下午盘 13:00-15:00。
+  // 只按小时判断会让 11:00-11:29 也显示成午休（应仍为上午盘），看起来「没跟时间联动」。
+  const d = currentDate.value
+  const mins = d.getHours() * 60 + d.getMinutes()
+  if (mins < 9 * 60 + 30) return { text: '未开盘', class: 'closed', sub: '09:30 开盘' }
+  if (mins < 11 * 60 + 30) return { text: '交易中', class: 'trading', sub: '上午盘' }
+  if (mins < 13 * 60) return { text: '午休', class: 'noon', sub: '11:30-13:00' }
+  if (mins < 15 * 60) return { text: '交易中', class: 'trading', sub: '下午盘' }
+  return { text: '已休市', class: 'closed', sub: '09:30 开盘' }
 })
 
 // 只统计真正持仓（排除 observe 量化观察）
@@ -219,10 +227,13 @@ const updateProgress = computed(() => {
 })
 
 // ============ 时间 ============
-const currentTime = ref('')
+// [FIX] currentDate 为响应式时钟源，currentTime 派生自它，保证交易状态随时间刷新
+const currentTime = computed(() => {
+  const d = currentDate.value
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+})
 function updateTime() {
-  const d = new Date()
-  currentTime.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  currentDate.value = new Date()
 }
 
 // ============ 打开新窗口 ============
@@ -441,7 +452,7 @@ const allTradesWithReturn = computed(() => {
 // [WHY] 交易只发生在交易日，用「近N个自然日」过滤会踩坑：
 //       周一选「近3天」= 09-07/09-06/09-05，上周五 09-04 反而被排除，而周末根本没交易。
 //       所以区间一律按「有交易的日期」倒序取前 N 个，工作日/节假日自动对齐。
-const tradeFilter = ref<string>('all')   // 'all' | 'recent3' | 'recent5' | 'prev' | 'YYYY-MM-DD'
+const tradeFilter = ref<string>('all')   // 'all' | 'today' | 'recent3' | 'prev' | 'YYYY-MM-DD'
 const showTradeFilterMenu = ref(false)
 
 const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -472,8 +483,8 @@ const prevTradeDate = computed(() => {
 const tradeFilterLabel = computed(() => {
   const f = tradeFilter.value
   if (f === 'all') return '全部'
-  if (f === 'recent3') return '近3个交易日'
-  if (f === 'recent5') return '近一周'
+  if (f === 'today') return '今日'
+  if (f === 'recent3') return '近3日'
   if (f === 'prev') return prevTradeDate.value ? `上一交易日 ${prevTradeDate.value.date.slice(5)}` : '上一交易日'
   return f
 })
@@ -481,9 +492,12 @@ const tradeFilterLabel = computed(() => {
 const filteredTrades = computed(() => {
   const f = tradeFilter.value
   if (f === 'all') return allTradesWithReturn.value
-  if (f === 'recent3' || f === 'recent5') {
-    const n = f === 'recent3' ? 3 : 5
-    const dates = new Set(tradeDateStats.value.slice(0, n).map(d => d.date))
+  if (f === 'today') {
+    const today = getCalendarDateStr()
+    return allTradesWithReturn.value.filter(t => t.date === today)
+  }
+  if (f === 'recent3') {
+    const dates = new Set(tradeDateStats.value.slice(0, 3).map(d => d.date))
     return allTradesWithReturn.value.filter(t => dates.has(t.date))
   }
   if (f === 'prev') {
@@ -1359,14 +1373,26 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             :show-refresh="false"
             :show-market-value="false"
             :show-name-market-value="true"
+            :show-update-status="true"
             open-in-new-tab
           >
-            <template #toolbar="{ period, setPeriod, count, valueBasis }">
+            <template #toolbar="{ period, setPeriod, count, dailyProfit, qdiiOnly, toggleQdiiOnly }">
               <div class="panel-header">
                 <span class="panel-title">⭐ 星标K线</span>
                 <span class="panel-sub">{{ count }} 只</span>
-                <span v-if="valueBasis" class="kline-basis" :class="valueBasis === '估值' ? 'est' : 'nav'">{{ valueBasis }}</span>
+                <span class="panel-profit" :class="dailyProfit >= 0 ? 'up' : 'down'">
+                  {{ dailyProfit >= 0 ? '+' : '' }}{{ fmtMoney(dailyProfit) }}
+                </span>
                 <span class="panel-link" @click="openStarKLine">全屏 →</span>
+                <button
+                  class="kline-qdii-toggle"
+                  :class="{ active: qdiiOnly }"
+                  @click="toggleQdiiOnly"
+                  title="点亮只看 QDII，熄灭只看其他"
+                >
+                  <span class="kline-qdii-dot"></span>
+                  <span class="kline-qdii-label">QDII</span>
+                </button>
                 <div class="kline-seg">
                   <button
                     v-for="t in klinePeriodTabs"
@@ -1523,8 +1549,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               </div>
               <div class="trade-filter-menu" v-if="showTradeFilterMenu" @click.stop>
                 <div class="tf-item" :class="{ active: tradeFilter === 'all' }" @click="selectTradeFilter('all')">全部</div>
-                <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3个交易日</div>
-                <div class="tf-item" :class="{ active: tradeFilter === 'recent5' }" @click="selectTradeFilter('recent5')">近一周</div>
+                <div class="tf-item" :class="{ active: tradeFilter === 'today' }" @click="selectTradeFilter('today')">今日</div>
                 <div
                   class="tf-item tf-prev"
                   :class="{ active: tradeFilter === 'prev', disabled: !prevTradeDate }"
@@ -1533,6 +1558,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                   上一交易日
                   <span class="tf-hint" v-if="prevTradeDate">{{ prevTradeDate.date.slice(5) }} {{ prevTradeDate.weekday }}</span>
                 </div>
+                <div class="tf-item" :class="{ active: tradeFilter === 'recent3' }" @click="selectTradeFilter('recent3')">近3日</div>
                 <div class="tf-divider" v-if="tradeDateStats.length > 0"></div>
                 <div class="tf-scroll">
                   <div
@@ -2207,6 +2233,16 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   margin-left: 4px;
 }
 
+/* 星标K线头部：当前这一屏（按 QDII 开关筛选后）所有基金的当日收益合计 */
+.panel-profit {
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.panel-profit.up { color: var(--color-up, #f6465d); }
+.panel-profit.down { color: var(--color-down, #0ecb81); }
+
 .panel-link {
   margin-left: auto;
   font-size: 11px;
@@ -2694,18 +2730,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   overflow: hidden;
 }
 
-/* K线头部的「估值 / 净值」基准 */
-.kline-basis {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border-light);
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-.kline-basis.est { color: #f0a020; border-color: rgba(240, 160, 32, 0.4); }
-.kline-basis.nav { color: #12b886; border-color: rgba(18, 184, 134, 0.4); }
-
 /* K线头部的周期切换 */
 .kline-seg {
   display: flex;
@@ -2731,6 +2755,43 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   background: var(--bg-secondary);
   color: var(--color-primary, #3b82f6);
   font-weight: 600;
+}
+
+/* K线头部的 QDII 圆点开关 */
+.kline-qdii-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.kline-qdii-toggle:hover { color: var(--text-primary); }
+.kline-qdii-toggle.active {
+  color: var(--color-primary, #3b82f6);
+  border-color: var(--color-primary, #3b82f6);
+}
+.kline-qdii-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--text-secondary);
+  box-sizing: border-box;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.kline-qdii-toggle.active .kline-qdii-dot {
+  background: var(--color-primary, #3b82f6);
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 4px var(--color-primary, #3b82f6);
 }
 
 /* 量化观察 */

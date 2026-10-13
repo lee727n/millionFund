@@ -23,6 +23,12 @@ const periodTabs = [
   { key: '6m' as const, label: '6月' },
   { key: '1y' as const, label: '1年' },
 ]
+
+// [WHAT] 与全景大屏 PanoramaDashboard.fmtMoney 同口径：金额格式化（≥1万显示 xx万）
+function fmtMoney(v: number) {
+  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(2) + '万'
+  return Math.round(v).toString()
+}
 </script>
 
 <template>
@@ -34,6 +40,7 @@ const periodTabs = [
         color-scheme="auto"
         :show-market-value="false"
         :show-detail="false"
+        :show-update-status="true"
         aspect-ratio="4 / 3"
       >
         <!--
@@ -42,7 +49,7 @@ const periodTabs = [
                  第二行 = 4 个等宽周期按钮（手机上好点）
           [WHY] 插槽内容编译在本页作用域，所以下面 scoped 样式直接生效，不用 :deep
         -->
-        <template #toolbar="{ count, valueBasis, forceRefresh }">
+        <template #toolbar="{ count, dailyProfit, forceRefresh, qdiiOnly, toggleQdiiOnly }">
           <div class="msk-title">
             <button class="msk-back" @click="router.back()" aria-label="返回">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -51,9 +58,20 @@ const periodTabs = [
             </button>
             <span class="msk-title-text">星标K线</span>
             <span v-if="count" class="msk-badge">{{ count }}</span>
-            <span v-if="valueBasis" class="msk-basis" :class="valueBasis === '估值' ? 'est' : 'nav'">
-              {{ valueBasis }}
+            <!-- [WHAT] 当前这一屏（按 QDII 开关筛选后）所有星标基金的当日收益合计，与全景大屏同口径 -->
+            <span class="msk-profit" :class="dailyProfit >= 0 ? 'up' : 'down'">
+              {{ dailyProfit >= 0 ? '+' : '' }}{{ fmtMoney(dailyProfit) }}
             </span>
+            <!-- [WHAT] 与电脑端全景大屏一致的 QDII 圆点开关：点亮=只看 QDII，熄灭=只看其他 -->
+            <button
+              class="msk-qdii-toggle"
+              :class="{ active: qdiiOnly }"
+              @click="toggleQdiiOnly"
+              title="点亮只看 QDII，熄灭只看其他"
+            >
+              <span class="msk-qdii-dot"></span>
+              <span class="msk-qdii-label">QDII</span>
+            </button>
             <span class="msk-spacer"></span>
             <button class="msk-refresh" @click="forceRefresh" title="刷新">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -145,16 +163,15 @@ const periodTabs = [
   flex-shrink: 0;
 }
 
-.msk-basis {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border-light);
-  color: var(--text-secondary);
+/* [WHAT] 头部当日收益合计：放在「数量」右侧，涨红跌绿（中国习惯） */
+.msk-profit {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
-.msk-basis.est { color: #f0a020; border-color: rgba(240, 160, 32, 0.4); }
-.msk-basis.nav { color: #12b886; border-color: rgba(18, 184, 134, 0.4); }
+.msk-profit.up { color: var(--color-up, #f6465d); }
+.msk-profit.down { color: var(--color-down, #0ecb81); }
 
 .msk-spacer { flex: 1; }
 
@@ -174,11 +191,47 @@ const periodTabs = [
 }
 .msk-refresh:active { background: var(--bg-tertiary); color: var(--primary-color); }
 
+/* ========== QDII 圆点开关（与电脑端全景大屏一致）========== */
+.msk-qdii-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.msk-qdii-toggle.active {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.msk-qdii-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--text-secondary);
+  box-sizing: border-box;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.msk-qdii-toggle.active .msk-qdii-dot {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 4px var(--primary-color);
+}
+
 /* ========== 头部第二行：周期切换 ========== */
 .msk-seg {
   display: flex;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 3px 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
@@ -186,7 +239,7 @@ const periodTabs = [
 
 .msk-seg-btn {
   flex: 1;
-  height: 30px;
+  height: 24px;
   border: 1px solid var(--border-light);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
@@ -205,6 +258,7 @@ const periodTabs = [
 
 /* ========== 图表区：手机上间距收紧 ========== */
 /* [WHY] 底部安全区 App.vue 的 .app-container 已经统一加过了，这里再加会多出一截空白 */
-:deep(.skp-grid) { gap: 6px; }
-:deep(.skp-body) { padding: 6px; }
+/* [WHAT] gap / padding 从 6px 收到 4px，配合更矮的周期条，10 个 K 线能少出滚动条 */
+:deep(.skp-grid) { gap: 4px; }
+:deep(.skp-body) { padding: 4px; }
 </style>
