@@ -8,7 +8,7 @@ import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
 import { useThemeStore } from '@/stores/theme'
 import {
-  getTrades, addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, getStarredFundMeta, starMetaFromFund,
+  getTrades, addStarredFund, removeStarredFund, getStarredFunds, getStarredFundMeta, starMetaFromFund,
   getPanoramaColWidths, savePanoramaColWidths,
   getPanoramaAccountOrder, savePanoramaAccountOrder,
   PANORAMA_ACCOUNT_KEYS
@@ -186,6 +186,17 @@ onUnmounted(() => {
   window.removeEventListener('touchmove', onTouchMove)
   window.removeEventListener('touchend', onDragEnd)
 })
+
+// [WHAT] 响应式星标集合：让持仓卡上的星星在星标变更后即时切换红/空心，不被 localStorage 读取的非响应式吞掉
+const starredCodes = ref<Set<string>>(new Set(getStarredFunds()))
+function refreshStarredCodes() {
+  starredCodes.value = new Set(getStarredFunds())
+}
+function isStarred(code: string): boolean {
+  return starredCodes.value.has(code)
+}
+window.addEventListener('starred-funds-changed', refreshStarredCodes)
+onUnmounted(() => window.removeEventListener('starred-funds-changed', refreshStarredCodes))
 
 // ============ 交易状态 ============
 // [FIX] 必须依赖响应式时间，不能用裸 new Date()——后者非响应式，computed 首次求值后
@@ -801,18 +812,17 @@ function handleActionDelete() {
   }
 }
 
-function handleActionStar() {
-  closeActionBar()
-  if (selectedFundForAction.value) {
-    const code = selectedFundForAction.value.code
-    if (isStarredFund(code)) {
-      removeStarredFund(code)
-      showToast('已取消星标')
-    } else {
-      addStarredFund(code, starMetaFromFund(selectedFundForAction.value))
-      showToast('已加入星标K线')
-    }
+// [WHAT] 持仓卡上的星星：点亮=加入星标K线，空心=取消星标（与手机端星标K线图表同交互）
+function toggleStar(fund: any) {
+  if (!fund?.code) return
+  if (isStarred(fund.code)) {
+    removeStarredFund(fund.code)
+    showToast('已取消星标')
+  } else {
+    addStarredFund(fund.code, starMetaFromFund(fund))
+    showToast('已加入星标K线')
   }
+  refreshStarredCodes() // 立即刷新本地响应式集合，星星即时变色
 }
 
 // ============ 交易弹窗（加仓/减仓）============
@@ -1388,10 +1398,20 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                       <span class="fm-today-arrow">{{ fund.todayChange && parseFloat(fund.todayChange) >= 0 ? '▲' : (fund.todayChange ? '▼' : '') }}</span>
                       {{ fund.todayChange ? fmtPct(parseFloat(fund.todayChange)) : '--' }}
                     </span>
-                    <!-- 第一行：QD + 名称 + 行业备注 -->
+                    <!-- 第一行：QD + 名称 + 星标 + 行业备注 -->
                     <div class="fm-row fm-row-top">
                       <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
                       <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
+                      <span
+                        class="fm-star"
+                        :class="{ starred: isStarred(fund.code) }"
+                        :title="isStarred(fund.code) ? '取消星标' : '加入星标K线'"
+                        @click.stop="toggleStar(fund)"
+                      >
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                          <path d="M12 2.5l2.95 6.06 6.6.96-4.77 4.65 1.13 6.58L12 17.97 6.09 20.75l1.13-6.58L2.45 9.52l6.6-.96z" />
+                        </svg>
+                      </span>
                       <span v-if="fund.industrySectors" class="fm-industry" :title="'行业：' + fund.industrySectors">{{ fund.industrySectors?.replace(/\n+/g, '·').trim() }}</span>
                     </div>
                     <!-- 第二行：code+估/净+估值(+评级+信号) 靠左，市值+累计 靠右 -->
@@ -1727,7 +1747,6 @@ function getFundNameClass(fund: any): Record<string, boolean> {
       <button class="action-bar-btn" @click="handleActionConvert">转换</button>
       <button class="action-bar-btn" @click="handleActionAdjust">调成本</button>
       <button class="action-bar-btn" @click="handleActionSource">来源</button>
-      <button class="action-bar-btn" @click="handleActionStar">{{ selectedFundForAction && isStarredFund(selectedFundForAction.code) ? '取消星标' : '星标' }}</button>
       <button class="action-bar-btn delete" @click="handleActionDelete">删除</button>
     </div>
 
@@ -2655,6 +2674,32 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   max-width: 90px;
   min-width: 0;
   transition: color 0.3s;
+}
+
+/* [WHAT] 持仓卡名称右侧的星标切换：实心红=已星标，空心红边框=未星标（与手机端星标K线图表一致） */
+.fm-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: #f6465d;
+  transition: transform 0.12s;
+}
+.fm-star svg {
+  fill: none;
+  stroke: #f6465d;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  display: block;
+}
+.fm-star.starred svg {
+  fill: #f6465d;
+  stroke: #f6465d;
+}
+.fm-star:active {
+  transform: scale(1.25);
 }
 
 /* [WHAT] 基金名后紧跟的「行业板块」备注标签（持仓列 + 量化观察共用） */
