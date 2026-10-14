@@ -39,6 +39,7 @@ function fmtMoney(v: number) {
         :columns="2"
         color-scheme="auto"
         :show-market-value="false"
+        :show-left-market-value="true"
         :show-detail="false"
         :show-update-status="true"
         aspect-ratio="4 / 3"

@@ -296,6 +296,7 @@ function toggleTradeFilterMenu() {
 const groupedTrades = computed(() => {
   // 获取当前持仓中的基金代码列表
   const holdings = getHoldings()
+  const holdingShares = new Map(holdings.map((h: any) => [h.code, h.shares || 0]))
   const holdingCodes = new Set(holdings.map(h => h.code))
   
   const groups = new Map<string, {
@@ -308,8 +309,9 @@ const groupedTrades = computed(() => {
 
   filteredTrades.value.forEach(trade => {
     if (!groups.has(trade.code)) {
-      // 判断是否已清仓：不在持仓列表中即为已清仓
-      const isCleared = !holdingCodes.has(trade.code)
+      // 判断是否已清仓：不在持仓列表中，或持仓份额已归 0（含按比例清仓后归零）
+      const remaining = holdingShares.get(trade.code)
+      const isCleared = remaining === undefined || remaining === 0 || !holdingCodes.has(trade.code)
       groups.set(trade.code, {
         code: trade.code,
         name: trade.name,

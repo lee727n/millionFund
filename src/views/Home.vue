@@ -474,7 +474,9 @@ const tradeFormData = ref({
   amount: '',
   netValue: '',
   date: '',
-  isEstimate: false
+  isEstimate: false,
+  isClear: false,
+  clearRatio: 1 // [WHAT] 清仓比例：1=全清, 0.5=1/2, 1/3, 0.25=1/4
 })
 const tradeNetValueHistory = ref<{ time: string; value: number }[]>([])
 let tradeHistoryFund = ''
@@ -510,7 +512,9 @@ async function handleActionTrade() {
     amount: '',
     netValue: holding.currentValue ? holding.currentValue.toFixed(4) : '',
     date: getCalendarDateStr(), // 本地时间
-    isEstimate: true
+    isEstimate: true,
+    isClear: false,
+    clearRatio: 1
   }
   showTradeDialog.value = true
 
@@ -612,26 +616,106 @@ watch(() => tradeFormData.value.date, (newDate) => {
   }
 })
 
+// [WHAT] 清仓：切换交易类型时联动设置 isClear；清仓 = 按比例卖出持仓份额
+type TradeTab = 'buy' | 'sell' | 'clear'
+function setTradeType(t: TradeTab) {
+  if (t === 'clear') {
+    tradeFormData.value.type = 'sell'
+    tradeFormData.value.isClear = true
+    tradeFormData.value.clearRatio = 1 // 默认全清
+    fillClearAmount()
+  } else {
+    tradeFormData.value.type = t
+    tradeFormData.value.isClear = false
+  }
+}
+
+// [WHAT] 清仓比例切换：更新带出的份额/金额
+function setClearRatio(r: number) {
+  tradeFormData.value.clearRatio = r
+  fillClearAmount()
+}
+
+// [WHAT] 清仓模式下，按「当前持仓份额 × 清仓比例 × 成交净值」自动带出卖出金额（无需用户手算）
+function fillClearAmount() {
+  const code = selectedFundForAction.value?.code
+  const h = code ? holdingStore.holdings.find(x => x.code === code) : null
+  const totalShares = h?.shares || 0
+  const ratio = tradeFormData.value.clearRatio || 1
+  const shares = ratio >= 1 ? totalShares : Math.round(totalShares * ratio * 100) / 100
+  const nv = parseFloat(tradeFormData.value.netValue)
+  if (shares > 0 && nv > 0) {
+    tradeFormData.value.amount = (shares * nv).toFixed(2)
+  } else {
+    tradeFormData.value.amount = ''
+  }
+}
+
+// 清仓模式下：净值到位（实时估值/历史查找）或比例变化时，自动刷新带出的金额
+watch(
+  () => [tradeFormData.value.isClear, tradeFormData.value.clearRatio, tradeFormData.value.netValue],
+  () => { if (tradeFormData.value.isClear) fillClearAmount() }
+)
+
+// [WHAT] 清仓比例选项（全清 / 1/2 / 1/3 / 1/4），供按钮渲染与文案统一
+const CLEAR_RATIOS = [
+  { value: 1, label: '全清' },
+  { value: 0.5, label: '1/2' },
+  { value: 1 / 3, label: '1/3' },
+  { value: 0.25, label: '1/4' }
+]
+function clearRatioLabel(): string {
+  const r = tradeFormData.value.clearRatio
+  const found = CLEAR_RATIOS.find(x => Math.abs(x.value - r) < 1e-6)
+  return found ? found.label : (r >= 1 ? '全清' : r.toString())
+}
+function isClearRatioActive(v: number): boolean {
+  return Math.abs(tradeFormData.value.clearRatio - v) < 1e-6
+}
+
 async function submitTrade() {
   const holding = selectedFundForAction.value
   if (!holding) return
 
-  const amount = parseFloat(tradeFormData.value.amount)
   const netValue = parseFloat(tradeFormData.value.netValue)
   const date = tradeFormData.value.date || getCalendarDateStr() // 本地时间
-  const type = tradeFormData.value.type
   const isEstimate = tradeFormData.value.isEstimate
+  const isClear = tradeFormData.value.isClear
 
-  if (!amount || amount <= 0) {
-    showToast('请输入有效的交易金额')
-    return
+  // [WHAT] 清仓：按「当前持仓份额」自动带出份额与金额，无需用户手填
+  let type: TradeType = tradeFormData.value.type
+  let shares: number
+  let amount: number
+  if (isClear) {
+    const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)
+    const totalShares = currentHolding?.shares || 0
+    const ratio = tradeFormData.value.clearRatio || 1
+    if (totalShares <= 0) {
+      showToast('当前无持仓份额可清仓')
+      return
+    }
+    if (!netValue || netValue <= 0) {
+      showToast('请输入有效的净值')
+      return
+    }
+    type = 'sell'
+    // 全清(ratio>=1)直接卖光；按比例则四舍五入保留 2 位份额
+    const sellShares = ratio >= 1 ? totalShares : Math.round(totalShares * ratio * 100) / 100
+    shares = sellShares
+    amount = sellShares * netValue
+    tradeFormData.value.amount = amount.toFixed(2)
+  } else {
+    amount = parseFloat(tradeFormData.value.amount)
+    if (!amount || amount <= 0) {
+      showToast('请输入有效的交易金额')
+      return
+    }
+    if (!netValue || netValue <= 0) {
+      showToast('请输入有效的净值')
+      return
+    }
+    shares = amount / netValue
   }
-  if (!netValue || netValue <= 0) {
-    showToast('请输入有效的净值')
-    return
-  }
-
-  const shares = amount / netValue
 
   const loadingToast = showLoadingToast('提交中...')
   try {
@@ -655,12 +739,13 @@ async function submitTrade() {
         currentHolding.shares = (currentHolding.shares || 0) + shares
       } else if (type === 'sell') {
         const currentShares = currentHolding.shares || 0
-        if (shares > currentShares) {
+        if (!isClear && shares > currentShares) {
           closeToast()
           showToast(`减仓份额超过持仓份额(当前${currentShares.toFixed(2)}份)`)
           return
         }
-        currentHolding.shares = currentShares - shares
+        // 清仓按比例卖出：剩余 = 当前份额 - 卖出份额；全清(ratio>=1)后归 0，交易记录自动标记「已清仓」
+        currentHolding.shares = Math.max(0, currentShares - shares)
       }
       currentHolding.currentValue = netValue
       holdingStore.addOrUpdateHolding(currentHolding)
@@ -668,7 +753,7 @@ async function submitTrade() {
 
     closeToast()
     showToast({
-      message: `${type === 'buy' ? '加仓' : '减仓'}成功`,
+      message: `${isClear ? '清仓' : type === 'buy' ? '加仓' : '减仓'}成功`,
       duration: 2000
     })
     showTradeDialog.value = false
@@ -2232,17 +2317,24 @@ function handleNameClick(code: string, name: string) {
           <div class="trade-type-group">
             <span 
               class="trade-type-tab" 
-              :class="{ active: tradeFormData.type === 'buy', buy: tradeFormData.type === 'buy' }"
-              @click="tradeFormData.type = 'buy'"
+              :class="{ active: tradeFormData.type === 'buy' && !tradeFormData.isClear, buy: tradeFormData.type === 'buy' && !tradeFormData.isClear }"
+              @click="setTradeType('buy')"
             >
               加仓
             </span>
             <span 
               class="trade-type-tab" 
-              :class="{ active: tradeFormData.type === 'sell', sell: tradeFormData.type === 'sell' }"
-              @click="tradeFormData.type = 'sell'"
+              :class="{ active: tradeFormData.type === 'sell' && !tradeFormData.isClear, sell: tradeFormData.type === 'sell' && !tradeFormData.isClear }"
+              @click="setTradeType('sell')"
             >
               减仓
+            </span>
+            <span 
+              class="trade-type-tab" 
+              :class="{ active: tradeFormData.isClear, sell: tradeFormData.isClear }"
+              @click="setTradeType('clear')"
+            >
+              清仓
             </span>
           </div>
 
@@ -2256,8 +2348,23 @@ function handleNameClick(code: string, name: string) {
             v-model="tradeFormData.amount"
             label="交易金额"
             type="number"
-            placeholder="请输入金额"
+            :readonly="tradeFormData.isClear"
+            :placeholder="tradeFormData.isClear ? '清仓金额自动带出' : '请输入金额'"
           />
+
+          <div class="clear-ratio-row" v-if="tradeFormData.isClear">
+            <span class="clear-ratio-label">清仓比例</span>
+            <div class="clear-ratio-btns">
+              <button
+                type="button"
+                v-for="r in CLEAR_RATIOS"
+                :key="r.value"
+                class="clear-ratio-btn"
+                :class="{ active: isClearRatioActive(r.value) }"
+                @click="setClearRatio(r.value)"
+              >{{ r.label }}</button>
+            </div>
+          </div>
 
           <van-field
             v-model="tradeFormData.netValue"
@@ -2283,7 +2390,18 @@ function handleNameClick(code: string, name: string) {
           />
 
           <div class="trade-preview">
-            <span>预计份额: {{ 
+            <span v-if="tradeFormData.isClear">
+              清仓份额: {{ 
+                (() => {
+                  const h = holdingStore.holdings.find(x => x.code === selectedFundForAction?.code)
+                  const total = h?.shares || 0
+                  const ratio = tradeFormData.clearRatio || 1
+                  const s = ratio >= 1 ? total : Math.round(total * ratio * 100) / 100
+                  return s.toFixed(2)
+                })()
+              }} 份（{{ clearRatioLabel() }}）
+            </span>
+            <span v-else>预计份额: {{ 
               tradeFormData.netValue && tradeFormData.amount 
                 ? (parseFloat(tradeFormData.amount) / parseFloat(tradeFormData.netValue)).toFixed(2) 
                 : '--' 
@@ -2293,7 +2411,7 @@ function handleNameClick(code: string, name: string) {
 
         <div class="dialog-footer">
           <van-button @click="showTradeDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
+          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.isClear ? '清仓' : tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -4923,6 +5041,42 @@ function handleNameClick(code: string, name: string) {
 .trade-preview span {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* 清仓比例选择行 */
+.clear-ratio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 16px 0;
+  padding: 8px 0;
+}
+.clear-ratio-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.clear-ratio-btns {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+.clear-ratio-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid var(--border-light, #e5e5e5);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.clear-ratio-btn.active {
+  border-color: var(--color-up, #f6465d);
+  color: var(--color-up, #f6465d);
+  background: rgba(246, 70, 93, 0.08);
+  font-weight: 600;
 }
 
 .net-value-tag {

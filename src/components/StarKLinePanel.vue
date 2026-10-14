@@ -45,6 +45,11 @@ const props = withDefaults(defineProps<{
    *       独立星标页仍走右对齐市值布局
    */
   showNameMarketValue?: boolean
+  /**
+   * [WHAT] 每个 K 线卡片第二行【左侧】显示持仓金额（手机版星标页用）
+   * [WHY] 用户要求手机页第二行右侧是「当日% / 累计%」，左侧补「持仓金额」；默认 false，仅手机页开启
+   */
+  showLeftMarketValue?: boolean
   /** [WHAT] 点详情时新开窗口（全景大屏用，避免把大屏页面顶掉）；默认站内跳转 */
   openInNewTab?: boolean
   /** dark = 固定深色；auto = 跟随全局主题 */
@@ -83,6 +88,7 @@ const props = withDefaults(defineProps<{
   showRefresh: true,
   showMarketValue: true,
   showNameMarketValue: false,
+  showLeftMarketValue: false,
   openInNewTab: false,
   colorScheme: 'dark',
   aspectRatio: '16 / 10',
@@ -361,8 +367,12 @@ async function boot() {
   //       会全被当成「其他」组。加载完必须再排一次
   refreshList()
   syncStarMeta()
-  await loadRealtime()
+  // [PERF] 不等「当天估值」算完就先渲染：每张 MiniKLineChart 挂载后会自己拉历史净值先画出走势，
+  //        估值/净值（realtime）到位后通过 props.realtime 触发重绘，把「今天延伸点」补上。
+  //        这样首屏历史 K 线立即出现，不再被批量估值请求卡住整页。
   isReady.value = true
+  // 估值/净值数据后台补齐（不阻塞渲染）；完成后 realtimeFor 返回非 null → 各图表自动重绘当日点
+  loadRealtime()
 }
 
 /**
@@ -480,6 +490,7 @@ onActivated(async () => {
   refreshList() // 同上：持仓加载完按账户重排
   syncStarMeta()
   isReady.value = true
+  loadRealtime() // [FIX] 重新激活时补齐实时数据（全景有 liveData 会提前返回，不影响；手机页走自拉）
   startAutoRefresh()
 })
 onDeactivated(() => stopAutoRefresh())
@@ -612,6 +623,7 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
             :market-value="fundInfoMap.get(code)?.marketValue"
             :show-market-value="showMarketValue"
             :show-name-market-value="showNameMarketValue"
+            :show-left-market-value="showLeftMarketValue"
             :return-rate="fundInfoMap.get(code)?.returnRate"
             :cost-nav-value="fundInfoMap.get(code)?.costNavValue"
             :realtime="realtimeFor(code)"

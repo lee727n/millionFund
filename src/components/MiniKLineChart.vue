@@ -51,6 +51,12 @@ const props = withDefaults(defineProps<{
    */
   showNameMarketValue?: boolean
   /**
+   * [WHAT] 在第二行信息条【左侧】显示持仓金额（¥xxx / xx万）
+   * [WHY] 手机版星标K线页要求：第二行右侧是「当日% / 累计%」，左侧补「持仓金额」，分列两翼一目了然
+   * [EDGE] 仅 twoLineHeader（窄图两行头）模式下绘制，避免和单行的基金名挤在一起；金额走 fmtWan 口径
+   */
+  showLeftMarketValue?: boolean
+  /**
    * [WHAT] 父层（如全景大屏）已经拉好的实时数据，传进来就不再自己请求
    * [WHY] 全景大屏一页十几个图，各自 fetchFundAccurateData 会把请求放大 N 倍，
    *       而且可能与页面其它模块拿到的估值/净值口径不一致
@@ -71,6 +77,7 @@ const props = withDefaults(defineProps<{
   topRightReserve: 0,
   showMarketValue: true,
   showNameMarketValue: false,
+  showLeftMarketValue: false,
 })
 
 // ========== 常量 ==========
@@ -629,6 +636,16 @@ function drawChart() {
       ctx.font = '9px Arial'
       ctx.fillStyle = suffixColor
       ctx.fillText(nameSuffix, padding.left + nameDrawnWidth + SUFFIX_GAP, nameY + 1)
+    }
+
+    // [WHAT] 第二行【左侧】持仓金额：仅 showLeftMarketValue 开启、且是「两行头」窄图时绘制，
+    //        与右侧的「当日% / 累计%」分列两翼。单行模式下会和基金名挤在一起，故跳过。
+    if (props.showLeftMarketValue && twoLineHeader && props.marketValue !== undefined && props.marketValue !== null) {
+      const leftY = 23
+      ctx.textAlign = 'left'
+      ctx.font = '9px Arial'
+      ctx.fillStyle = colors.textSecondary
+      ctx.fillText(`持仓 ${fmtWan(props.marketValue)}`, padding.left, leftY)
     }
 
     // 右侧的量
