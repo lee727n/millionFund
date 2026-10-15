@@ -12,6 +12,7 @@ declare module 'vue' {
     BackupActions: typeof import('./src/components/BackupActions.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
+    FundName: typeof import('./src/components/FundName.vue')['default']
     MiniKLineChart: typeof import('./src/components/MiniKLineChart.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

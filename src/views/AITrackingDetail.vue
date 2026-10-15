@@ -156,7 +156,18 @@ function formatPrice(price: number): string {
   return price.toFixed(4)
 }
 
+// [WHY] 当天新增的转换：成本基准=当天净值，「累计」应为 0（当天真实涨跌由「今日」字段展示）
+function isConversionSameDay(): boolean {
+  if (!date.value) return false
+  const d = new Date(date.value + 'T00:00:00')
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate()
+}
+
 function getStatusClass(): string {
+  if (isConversionSameDay()) return ''
   if (!sellNav.value || !buyNav.value || !sellPrice.value || !buyPrice.value) return ''
   // 使用累计涨幅判断：买入涨幅 >= 卖出涨幅 = 调仓成功
   const sellChangePercent = ((sellPrice.value - sellNav.value) / sellNav.value) * 100
@@ -165,6 +176,7 @@ function getStatusClass(): string {
 }
 
 function getStatusText(): string {
+  if (isConversionSameDay()) return '今日'
   if (!sellNav.value || !buyNav.value || !sellPrice.value || !buyPrice.value) return '--'
   // 使用累计涨幅判断：买入涨幅 >= 卖出涨幅 = 调仓成功
   const sellChangePercent = ((sellPrice.value - sellNav.value) / sellNav.value) * 100
@@ -201,6 +213,7 @@ function getDailyChangeText(type: 'sell' | 'buy'): string {
 
 // 累计涨幅相关（与 record-calc 一致）
 function getTotalChangeClass(type: 'sell' | 'buy'): string {
+  if (isConversionSameDay()) return ''
   const nav = type === 'sell' ? sellNav.value : buyNav.value
   const price = type === 'sell' ? sellPrice.value : buyPrice.value
   
@@ -210,6 +223,7 @@ function getTotalChangeClass(type: 'sell' | 'buy'): string {
 }
 
 function getTotalChangeText(type: 'sell' | 'buy'): string {
+  if (isConversionSameDay()) return '+0.00%'
   const nav = type === 'sell' ? sellNav.value : buyNav.value
   const price = type === 'sell' ? sellPrice.value : buyPrice.value
   
@@ -220,6 +234,7 @@ function getTotalChangeText(type: 'sell' | 'buy'): string {
 }
 
 function getDiffText(): string {
+  if (isConversionSameDay()) return '+0.00%'
   if (!sellNav.value || !buyNav.value || !sellPrice.value || !buyPrice.value) return '--'
   
   // 计算买入和卖出的累计涨幅
@@ -234,6 +249,7 @@ function getDiffText(): string {
 
 // 与 record-calc 一致的计算公式
 function getCalcProcessCombined(): string {
+  if (isConversionSameDay()) return '今日转换，累计 0.00%'
   if (!sellPrice.value || !buyPrice.value || !sellNav.value || !buyNav.value) return '--'
   
   const sellChange = ((sellPrice.value - sellNav.value) / sellNav.value) * 100

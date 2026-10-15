@@ -130,6 +130,12 @@ async function fetchFundInfo(type: 'sell' | 'buy') {
   }
 }
 
+function getSnapshotDate(info: { isNav?: boolean; navDate?: string; estimateTime?: string }, fallback: string): string {
+  if (info.isNav && info.navDate) return info.navDate
+  const estimateDate = info.estimateTime?.slice(0, 10)
+  return estimateDate || fallback
+}
+
 async function confirmAddRecord() {
   if (!newRecord.value.sellCode || !newRecord.value.buyCode) {
     showToast({ message: '请填写基金代码', duration: 2000 })
@@ -145,6 +151,8 @@ async function confirmAddRecord() {
     let buyNav = 0
     let sellNavEstimated = false
     let buyNavEstimated = false
+    let sellNavDate = ''
+    let buyNavDate = ''
     const targetDate = newRecord.value.date || getCalendarDateStr() // 本地时间
 
     if (newRecord.value.date) {
@@ -163,9 +171,9 @@ async function confirmAddRecord() {
         buyName = buyName || newRecord.value.buyCode
         sellNav = sellRecord.netValue
         buyNav = buyRecord.netValue
+        sellNavDate = newRecord.value.date
+        buyNavDate = newRecord.value.date
       } else {
-        sellNavEstimated = true
-        buyNavEstimated = true
         const [sellInfo, buyInfo] = await Promise.all([
           // [FIX] 使用 forceRefresh 强制获取最新数据
           fetchFundAccurateData(newRecord.value.sellCode, false, true),
@@ -174,6 +182,8 @@ async function confirmAddRecord() {
         if (sellInfo && sellInfo.currentValue > 0) {
           sellName = sellInfo.name
           sellNav = sellInfo.currentValue
+          sellNavEstimated = !sellInfo.isNav
+          sellNavDate = getSnapshotDate(sellInfo, newRecord.value.date)
         } else {
           showToast({ message: '获取卖出基金信息失败', duration: 2000 })
           closeToast()
@@ -182,6 +192,8 @@ async function confirmAddRecord() {
         if (buyInfo && buyInfo.currentValue > 0) {
           buyName = buyInfo.name
           buyNav = buyInfo.currentValue
+          buyNavEstimated = !buyInfo.isNav
+          buyNavDate = getSnapshotDate(buyInfo, newRecord.value.date)
         } else {
           showToast({ message: '获取买入基金信息失败', duration: 2000 })
           closeToast()
@@ -189,8 +201,6 @@ async function confirmAddRecord() {
         }
       }
     } else {
-      sellNavEstimated = true
-      buyNavEstimated = true
       const [sellInfo, buyInfo] = await Promise.all([
         fetchFundAccurateData(newRecord.value.sellCode),
         fetchFundAccurateData(newRecord.value.buyCode)
@@ -198,6 +208,8 @@ async function confirmAddRecord() {
       if (sellInfo && sellInfo.currentValue > 0) {
         sellName = sellInfo.name
         sellNav = sellInfo.currentValue
+        sellNavEstimated = !sellInfo.isNav
+        sellNavDate = getSnapshotDate(sellInfo, targetDate)
       } else {
         showToast({ message: '获取卖出基金信息失败或无估值数据', duration: 2000 })
         closeToast()
@@ -206,6 +218,8 @@ async function confirmAddRecord() {
       if (buyInfo && buyInfo.currentValue > 0) {
         buyName = buyInfo.name
         buyNav = buyInfo.currentValue
+        buyNavEstimated = !buyInfo.isNav
+        buyNavDate = getSnapshotDate(buyInfo, targetDate)
       } else {
         showToast({ message: '获取买入基金信息失败或无估值数据', duration: 2000 })
         closeToast()
@@ -218,10 +232,12 @@ async function confirmAddRecord() {
       sellName: sellName,
       sellNav: sellNav,
       sellNavEstimated: sellNavEstimated,
+      sellNavDate: sellNavDate,
       buyCode: newRecord.value.buyCode,
       buyName: buyName,
       buyNav: buyNav,
       buyNavEstimated: buyNavEstimated,
+      buyNavDate: buyNavDate,
       date: targetDate
     })
 
@@ -2953,8 +2969,8 @@ function handleNameClick(code: string, name: string) {
 }
 
 .jd-update-status.updated {
-  color: #ff9800;
-  background: rgba(255, 152, 0, 0.1);
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
 }
 
 .jd-update-status.updating {

@@ -14,6 +14,7 @@
     --text-primary: #333333;
     --text-secondary: #666666;
     --text-tertiary: #999999;
+    --fund-updated-name: #1f2328;
     --border-color: #f0f0f0;
     --up-color: #e4393c;
     --down-color: #1db82c;
@@ -32,6 +33,7 @@
     --text-primary: #e0e0e0;
     --text-secondary: #a0a0a0;
     --text-tertiary: #707070;
+    --fund-updated-name: #c9d1d9;
     --border-color: #333333;
     --up-color: #ff6b6b;
     --down-color: #4ecdc4;
@@ -51,6 +53,7 @@
         --text-primary: #e0e0e0;
         --text-secondary: #a0a0a0;
         --text-tertiary: #707070;
+        --fund-updated-name: #c9d1d9;
         --border-color: #333333;
         --up-color: #ff6b6b;
         --down-color: #4ecdc4;

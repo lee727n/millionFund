@@ -2077,8 +2077,8 @@ async function refreshHoldingsCache() {
 }
 
 .col-name .update-status-tag.updated {
-  color: #ff9800;
-  background: rgba(255, 152, 0, 0.1);
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
 }
 
 .col-name .update-status-tag.not-updated {

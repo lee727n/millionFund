@@ -71,12 +71,12 @@
 
           <!-- 第一行：卖出基金 + 箭头 + 买入基金 -->
           <div class="simple-fund-item simple-cell-sell simple-cell-row1">
-            <span class="simple-fund-name">{{ record.sellName || record.sellCode }}</span>
+            <FundName :code="record.sellCode" :name="record.sellName || record.sellCode" :slice="8" class="simple-fund-name" :live-is-nav-map="liveIsNavMap" />
             <span class="simple-change" :class="getChangeClass(record, 'sell')">{{ getChangeText(record, 'sell') }}</span>
           </div>
           <span class="simple-arrow simple-cell-arrow">→</span>
           <div class="simple-fund-item simple-cell-buy simple-cell-row1">
-            <span class="simple-fund-name">{{ record.buyName || record.buyCode }}</span>
+            <FundName :code="record.buyCode" :name="record.buyName || record.buyCode" :slice="8" class="simple-fund-name" :live-is-nav-map="liveIsNavMap" />
             <span class="simple-change" :class="getChangeClass(record, 'buy')">{{ getChangeText(record, 'buy') }}</span>
           </div>
 
@@ -86,11 +86,11 @@
               <van-icon name="delete-o" />
             </span>
             <span class="simple-today-diff desktop-only" :class="getDayDiffClass(record)" v-if="getDayDiffText(record)">差值: {{ getDayDiffText(record) }}</span>
-            <span class="simple-today-label">卖出估值</span>
+            <span class="simple-today-label">卖出{{ navTagOf(record.sellCode) }}</span>
             <span class="simple-today-value" :class="getDayChangeClass(record, 'sell')">{{ getDayChangeText(record, 'sell') }}</span>
           </div>
           <div class="simple-today-buy simple-cell-buy simple-cell-row2">
-            <span class="simple-today-label">买入估值</span>
+            <span class="simple-today-label">买入{{ navTagOf(record.buyCode) }}</span>
             <span class="simple-today-value" :class="getDayChangeClass(record, 'buy')">{{ getDayChangeText(record, 'buy') }}</span>
           </div>
         </div>
@@ -107,12 +107,15 @@
             <div class="fund-item sell">
               <div class="fund-label">卖</div>
               <div class="fund-info">
-                <div class="fund-name">{{ record.sellName || record.sellCode }}</div>
+                <div class="fund-name">
+                <FundName :code="record.sellCode" :name="record.sellName || record.sellCode" :slice="12" />
+              </div>
                 <div class="fund-row">
                   <div class="fund-left">
                     <span class="fund-code">{{ record.sellCode }}</span>
                     <span class="fund-day-change" :class="getDayChangeClass(record, 'sell')">
                       <span class="fund-day-change-label">今日：</span>{{ getDayChangeText(record, 'sell') }}
+                  <span class="fund-nav-tag" :class="fundPrices[record.sellCode]?.isNav ? 'is-nav' : 'is-est'">{{ navTagOf(record.sellCode) }}</span>
                     </span>
                   </div>
                   <div class="fund-change-right" :class="getChangeClass(record, 'sell')">
@@ -124,12 +127,15 @@
             <div class="fund-item buy">
               <div class="fund-label">买</div>
               <div class="fund-info">
-                <div class="fund-name">{{ record.buyName || record.buyCode }}</div>
+                <div class="fund-name">
+                <FundName :code="record.buyCode" :name="record.buyName || record.buyCode" :slice="12" />
+              </div>
                 <div class="fund-row">
                   <div class="fund-left">
                     <span class="fund-code">{{ record.buyCode }}</span>
                     <span class="fund-day-change" :class="getDayChangeClass(record, 'buy')">
                       <span class="fund-day-change-label">今日：</span>{{ getDayChangeText(record, 'buy') }}
+                  <span class="fund-nav-tag" :class="fundPrices[record.buyCode]?.isNav ? 'is-nav' : 'is-est'">{{ navTagOf(record.buyCode) }}</span>
                     </span>
                   </div>
                   <div class="fund-change-right" :class="getChangeClass(record, 'buy')">
@@ -202,6 +208,9 @@ import { showToast, showLoadingToast, closeToast } from 'vant'
 import { useAITrackingStore, type AITrackingRecord } from '@/stores/aiTracking'
 import { fetchFundAccurateData, fetchNetValueHistoryFast } from '@/api/fundFast'
 import { useRouter } from 'vue-router'
+import { useFundUpdateStatus } from '@/composables/useFundUpdateStatus'
+import FundName from '@/components/FundName.vue'
+import { getCalendarDateStr } from '@/utils/navDate'
 
 const aiTrackingStore = useAITrackingStore()
 const router = useRouter()
@@ -226,6 +235,7 @@ const records = computed(() => {
     const getDiff = (record: typeof a) => {
       const sellPrice = fundPrices.value[record.sellCode]?.value || 0
       const buyPrice = fundPrices.value[record.buyCode]?.value || 0
+      if (isConversionSameDay(record)) return 0
       if (!sellPrice || !buyPrice || !record.sellNav || !record.buyNav) return -Infinity
       const sellChange = ((sellPrice - record.sellNav) / record.sellNav) * 100
       const buyChange = ((buyPrice - record.buyNav) / record.buyNav) * 100
@@ -243,6 +253,7 @@ const successCount = computed(() => {
 
   let success = 0
   for (const record of records.value) {
+    if (isConversionSameDay(record)) continue
     const sellPrice = fundPrices.value[record.sellCode]?.value || 0
     const buyPrice = fundPrices.value[record.buyCode]?.value || 0
 
@@ -270,6 +281,7 @@ const totalChange = computed(() => {
 
   let total = 0
   for (const record of records.value) {
+    if (isConversionSameDay(record)) continue
     const sellPrice = fundPrices.value[record.sellCode]?.value || 0
     const buyPrice = fundPrices.value[record.buyCode]?.value || 0
 
@@ -302,6 +314,13 @@ interface NewRecord {
   sellName: string
   buyCode: string
   buyName: string
+}
+
+// 记录成本快照属于哪一天：估值取估值时间当天，已公布净值取净值日期。
+function getSnapshotDate(info: { isNav?: boolean; navDate?: string; estimateTime?: string }, fallback: string): string {
+  if (info.isNav && info.navDate) return info.navDate
+  const estimateDate = info.estimateTime?.slice(0, 10)
+  return estimateDate || fallback
 }
 
 const newRecord = ref<NewRecord>({
@@ -461,7 +480,9 @@ async function confirmAddRecord() {
     let buyNav = 0
     let sellNavEstimated = false
     let buyNavEstimated = false
-    const targetDate = newRecord.value.date || new Date().toISOString().split('T')[0]
+    let sellNavDate = ''
+    let buyNavDate = ''
+    const targetDate = newRecord.value.date || getCalendarDateStr()
 
     if (newRecord.value.date) {
       const historyDays = Math.ceil((new Date().getTime() - new Date(newRecord.value.date).getTime()) / (1000 * 60 * 60 * 24)) + 10
@@ -479,9 +500,11 @@ async function confirmAddRecord() {
         buyName = buyName || newRecord.value.buyCode
         sellNav = sellRecord.netValue
         buyNav = buyRecord.netValue
+        sellNavEstimated = false
+        buyNavEstimated = false
+        sellNavDate = newRecord.value.date
+        buyNavDate = newRecord.value.date
       } else {
-        sellNavEstimated = true
-        buyNavEstimated = true
         const [sellInfo, buyInfo] = await Promise.all([
           fetchFundAccurateData(newRecord.value.sellCode),
           fetchFundAccurateData(newRecord.value.buyCode)
@@ -489,6 +512,8 @@ async function confirmAddRecord() {
         if (sellInfo && sellInfo.currentValue > 0) {
           sellName = sellInfo.name
           sellNav = sellInfo.currentValue
+          sellNavEstimated = !sellInfo.isNav
+          sellNavDate = getSnapshotDate(sellInfo, newRecord.value.date)
         } else {
           showToast({ message: '获取卖出基金信息失败', duration: 2000 })
           closeToast()
@@ -497,6 +522,8 @@ async function confirmAddRecord() {
         if (buyInfo && buyInfo.currentValue > 0) {
           buyName = buyInfo.name
           buyNav = buyInfo.currentValue
+          buyNavEstimated = !buyInfo.isNav
+          buyNavDate = getSnapshotDate(buyInfo, newRecord.value.date)
         } else {
           showToast({ message: '获取买入基金信息失败', duration: 2000 })
           closeToast()
@@ -504,8 +531,6 @@ async function confirmAddRecord() {
         }
       }
     } else {
-      sellNavEstimated = true
-      buyNavEstimated = true
       const [sellInfo, buyInfo] = await Promise.all([
         fetchFundAccurateData(newRecord.value.sellCode),
         fetchFundAccurateData(newRecord.value.buyCode)
@@ -513,6 +538,8 @@ async function confirmAddRecord() {
       if (sellInfo && sellInfo.currentValue > 0) {
         sellName = sellInfo.name
         sellNav = sellInfo.currentValue
+        sellNavEstimated = !sellInfo.isNav
+        sellNavDate = getSnapshotDate(sellInfo, targetDate)
       } else {
         showToast({ message: '获取卖出基金信息失败或无估值数据', duration: 2000 })
         closeToast()
@@ -521,6 +548,8 @@ async function confirmAddRecord() {
       if (buyInfo && buyInfo.currentValue > 0) {
         buyName = buyInfo.name
         buyNav = buyInfo.currentValue
+        buyNavEstimated = !buyInfo.isNav
+        buyNavDate = getSnapshotDate(buyInfo, targetDate)
       } else {
         showToast({ message: '获取买入基金信息失败或无估值数据', duration: 2000 })
         closeToast()
@@ -533,10 +562,12 @@ async function confirmAddRecord() {
       sellName: sellName,
       sellNav: sellNav,
       sellNavEstimated: sellNavEstimated,
+      sellNavDate: sellNavDate,
       buyCode: newRecord.value.buyCode,
       buyName: buyName,
       buyNav: buyNav,
       buyNavEstimated: buyNavEstimated,
+      buyNavDate: buyNavDate,
       date: targetDate
     })
 
@@ -571,7 +602,17 @@ function formatDate(dateStr: string) {
   return dateStr
 }
 
-const fundPrices = ref<Record<string, { value: number; change: number }>>({})
+const fundPrices = ref<Record<string, { value: number; change: number; isNav: boolean }>>({})
+// [WHAT] 把 fundPrices 转成「按 code 查 isNav」的兜底表，传给 <FundName> 判定状态色（净=已更新/估=未更新）
+const liveIsNavMap = computed(() => {
+  const m = new Map<string, { isNav?: boolean }>()
+  for (const [code, p] of Object.entries(fundPrices.value)) m.set(code, { isNav: p.isNav })
+  return m
+})
+// 净/估标签：该基金当天是否已更新净值
+function navTagOf(code: string): string {
+  return fundPrices.value[code]?.isNav ? '净' : '估'
+}
 const isRefreshing = ref(false)
 const autoRefreshEnabled = ref(false)
 let autoRefreshInterval: number | null = null
@@ -619,58 +660,36 @@ async function fetchCurrentPrices() {
       const info = await fetchFundAccurateData(code)
       fundPrices.value[code] = {
         value: info?.currentValue || 0,
-        change: info?.dayChange || 0
+        change: info?.dayChange || 0,
+        isNav: !!info?.isNav
       }
     } catch (e) {
       console.error(`Failed to fetch price for ${code}:`, e)
     }
   }
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // [REFACTOR] 估值快照校正统一交给 store.confirmEstimatedNavs：
+  // 它按 sellNavDate/buyNavDate 把「添加时抓的估值」锁定成当日真实净值，
+  // 晚间刷新 / 次日刷新 / onActivated 都会触发，避免长期沿用旧快照使「累计」偏大。
+  await aiTrackingStore.confirmEstimatedNavs()
+}
 
-  for (const record of records.value) {
-    const recordDate = new Date(record.date)
-    recordDate.setHours(0, 0, 0, 0)
-
-    const needUpdateSell = record.sellNavEstimated
-    const needUpdateBuy = record.buyNavEstimated
-
-    if (needUpdateSell || needUpdateBuy) {
-      const historyDays = Math.ceil((today.getTime() - recordDate.getTime()) / (1000 * 60 * 60 * 24)) + 5
-      try {
-        const [sellHistory, buyHistory] = await Promise.all([
-          fetchNetValueHistoryFast(record.sellCode, historyDays),
-          fetchNetValueHistoryFast(record.buyCode, historyDays)
-        ])
-
-        const sellRecord = sellHistory.records?.find(h => h.date === record.date)
-        const buyRecord = buyHistory.records?.find(h => h.date === record.date)
-
-        let newSellNav = record.sellNav
-        let newBuyNav = record.buyNav
-        let updated = false
-
-        if (needUpdateSell && sellRecord) {
-          newSellNav = sellRecord.netValue
-          updated = true
-        }
-        if (needUpdateBuy && buyRecord) {
-          newBuyNav = buyRecord.netValue
-          updated = true
-        }
-
-        if (updated) {
-          aiTrackingStore.confirmRecordNav(record.id, newSellNav, newBuyNav)
-        }
-      } catch (e) {
-        console.error(`Failed to fetch history for record ${record.id}:`, e)
-      }
-    }
-  }
+// [WHY] 当天新增的转换：成本基准=当天净值，「累计」应为 0（当天真实涨跌由「今日」字段展示）
+// [WHAT] 无日期的转换 record.date 记为今天；但添加那一刻冻结的 sellNav/buyNav 往往是「昨天净值」或
+//        「盘中更早的估值」，而 fundPrices 是重新拉取的实时值，两者相减会把基金当天的涨跌幅当成
+//        「转换收益」显示。故同一天内强制累计=0。
+function isConversionSameDay(record: AITrackingRecord): boolean {
+  if (!record.date) return false
+  const d = new Date(record.date + 'T00:00:00')
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate()
 }
 
 function getChangeText(record: AITrackingRecord, type: 'sell' | 'buy') {
+  // 同一天的转换，累计强制为 0
+  if (isConversionSameDay(record)) return '+0.00%'
   const code = type === 'sell' ? record.sellCode : record.buyCode
   const nav = type === 'sell' ? record.sellNav : record.buyNav
   const currentPrice = fundPrices.value[code]?.value || 0
@@ -719,6 +738,7 @@ function getDayDiffClass(record: AITrackingRecord): string {
 }
 
 function getCalcProcess(record: AITrackingRecord, type: 'sell' | 'buy') {
+  if (isConversionSameDay(record)) return '今日转换，累计 0.00%'
   const code = type === 'sell' ? record.sellCode : record.buyCode
   const nav = type === 'sell' ? record.sellNav : record.buyNav
   const currentPrice = fundPrices.value[code]?.value || 0
@@ -736,6 +756,7 @@ function getMiddleText(text: string, len: number = 5): string {
 }
 
 function getCalcProcessCombined(record: AITrackingRecord) {
+  if (isConversionSameDay(record)) return '今日转换，累计 0.00%'
   const sellCode = record.sellCode
   const buyCode = record.buyCode
   const sellNav = record.sellNav
@@ -755,6 +776,7 @@ function getCalcProcessCombined(record: AITrackingRecord) {
 }
 
 function getStatusText(record: AITrackingRecord): string {
+  if (isConversionSameDay(record)) return '今日'
   const sellPrice = fundPrices.value[record.sellCode]?.value || 0
   const buyPrice = fundPrices.value[record.buyCode]?.value || 0
   
@@ -768,6 +790,7 @@ function getStatusText(record: AITrackingRecord): string {
 
 // [WHAT] 计算买入涨幅 - 卖出涨幅的差值
 function getDiffText(record: AITrackingRecord): string {
+  if (isConversionSameDay(record)) return '+0.00%'
   const sellPrice = fundPrices.value[record.sellCode]?.value || 0
   const buyPrice = fundPrices.value[record.buyCode]?.value || 0
   
@@ -781,6 +804,7 @@ function getDiffText(record: AITrackingRecord): string {
 }
 
 function getDiffClass(record: AITrackingRecord): string {
+  if (isConversionSameDay(record)) return ''
   const sellPrice = fundPrices.value[record.sellCode]?.value || 0
   const buyPrice = fundPrices.value[record.buyCode]?.value || 0
   
@@ -850,6 +874,7 @@ function handleDragEnd(event: DragEvent) {
 }
 
 function getStatusClass(record: AITrackingRecord): string {
+  if (isConversionSameDay(record)) return ''
   const sellPrice = fundPrices.value[record.sellCode]?.value || 0
   const buyPrice = fundPrices.value[record.buyCode]?.value || 0
   
@@ -862,6 +887,7 @@ function getStatusClass(record: AITrackingRecord): string {
 }
 
 function getChangeClass(record: AITrackingRecord, type: 'sell' | 'buy') {
+  if (isConversionSameDay(record)) return ''
   const code = type === 'sell' ? record.sellCode : record.buyCode
   const nav = type === 'sell' ? record.sellNav : record.buyNav
   const currentPrice = fundPrices.value[code]?.value || 0
@@ -877,7 +903,9 @@ onMounted(() => {
 
 // 页面激活时触发（包括第一次进入和从详情页返回）
 onActivated(() => {
-  // 从详情页返回时不做任何操作，依赖keep-alive缓存数据
+  // 从详情页返回时重新校正估值快照（把添加时抓的估值锁定成当日真实净值），
+  // 这样隔夜/次日再进页面，成本基准已是正确净值，无需手动刷新。
+  aiTrackingStore.confirmEstimatedNavs()
 })
 
 // 页面停用时触发（离开页面）
@@ -1447,6 +1475,30 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   max-width: 120px;
   margin-bottom: 4px;
+}
+
+/* [WHAT] 基金名状态色（复用 FundName 组件注入的 fm-updated / fm-pending / fm-in-trading 类）
+   与全景大屏持仓/星标K线同口径：已更新=绿 / 未更新=灰 / 交易中=灰 */
+.fm-name.fm-updated { color: var(--fund-updated-name); }
+.fm-name.fm-pending { color: var(--text-muted); }
+.fm-name.fm-in-trading { color: var(--text-muted); }
+
+/* 净/估 标签：已更新净值=净（灰蓝），否则=估（橙） */
+.fund-nav-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+.fund-nav-tag.is-nav {
+  background: rgba(120, 144, 156, 0.2);
+  color: var(--text-muted);
+}
+.fund-nav-tag.is-est {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
 }
 
 .fund-row {

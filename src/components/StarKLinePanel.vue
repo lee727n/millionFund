@@ -13,7 +13,7 @@ import { useHoldingStore } from '@/stores/holding'
 import { useFundValuation, type FundValuationData } from '@/composables/useFundValuation'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { isHolidaySync } from '@/utils/holiday'
-import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
+import { useFundUpdateStatus } from '@/composables/useFundUpdateStatus'
 
 type Period = '1m' | '3m' | '6m' | '1y'
 
@@ -76,7 +76,7 @@ const props = withDefaults(defineProps<{
   /**
    * [WHAT] 是否在每个 K 线卡片左上角显示「净值是否已更新」状态点
    * [WHY] 用户要求星标K线页去掉「估值/净值」聚合标签，改用与 .home 持仓趋势（FundGridItem）一致的逐只标记：
-   *       交易中=灰 / 已更新=黄(#ff9800) / 未更新=绿(#4caf50)。默认关，仅星标页开启，避免污染全景大屏密集布局。
+   *       交易中=灰 / 未更新=灰(与交易中同色) / 已更新=柔白(比纯白暗、不刺眼)。默认关，仅星标页开启，避免污染全景大屏密集布局。
    */
   showUpdateStatus?: boolean
 }>(), {
@@ -197,23 +197,12 @@ const displayDailyProfit = computed(() => {
 
 /**
  * [WHAT] 单只基金的「净值是否已更新」状态，与 .home 持仓趋势（FundGridItem.getFundNameClass）同口径：
- *        交易中=灰(pending) / 已更新=黄(#ff9800) / 未更新=绿(#4caf50)
+ *        交易中=灰(pending) / 已更新=柔白(比纯白暗、不刺眼) / 未更新=灰(not-updated，与交易中同色)
  * [WHY] 用户要求星标K线页去掉「估值/净值」聚合标签，改用和持仓趋势一致的逐只标记；颜色取值与 FundGridItem 完全一致。
- * [HOW] 交易时间内=灰；否则优先用持仓 isUpdated，无持仓退回估值/净值 isNav 判定。
+ * [HOW] 直接复用共享组合式 useFundUpdateStatus（与持仓/量化观察/AI追踪 同一套判定）；交易时间内=灰，
+ *       否则优先用持仓 isUpdated，无持仓退回 liveMap.isNav 判定。
  */
-const tradingSession = ref<TradingSession>('closed')
-function updateTradingSession() {
-  tradingSession.value = getTradingSession()
-}
-function fundUpdateStatus(code: string): 'pending' | 'updated' | 'not-updated' {
-  const s = tradingSession.value
-  if (s === 'morning' || s === 'afternoon') return 'pending'
-  const h = (holdingStore.holdings || []).find((x: any) => x.code === code)
-  if (h && typeof h.isUpdated === 'boolean') return h.isUpdated ? 'updated' : 'not-updated'
-  const d = liveMap.value.get(code)
-  if (d) return d.isNav ? 'updated' : 'not-updated'
-  return 'not-updated'
-}
+const { fundUpdateStatus } = useFundUpdateStatus()
 
 // ========== 持仓信息（名称 / 市值 / 收益率 / 成本净值）==========
 // [FIX] 持仓被删后，从星标快照里兜底取 name / 累计涨跌幅 / 成本线，保证还能继续显示
@@ -479,8 +468,6 @@ function goDetail(code: string) {
 // ========== 生命周期 ==========
 onMounted(async () => {
   window.addEventListener('starred-funds-changed', onStarredChanged)
-  updateTradingSession()
-  tradingTimer = setInterval(updateTradingSession, 60000)
   await boot()
   startAutoRefresh()
 })
@@ -619,7 +606,7 @@ const itemStyle = computed(() => ({ aspectRatio: props.aspectRatio }))
             :fund-code="code"
             :period="activePeriod"
             :fund-name="fundInfoMap.get(code)?.name || ''"
-            :update-status="showUpdateStatus ? fundUpdateStatus(code) : undefined"
+            :update-status="showUpdateStatus ? fundUpdateStatus(code, liveMap) : undefined"
             :market-value="fundInfoMap.get(code)?.marketValue"
             :show-market-value="showMarketValue"
             :show-name-market-value="showNameMarketValue"

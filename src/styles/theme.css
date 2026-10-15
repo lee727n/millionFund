@@ -19,6 +19,7 @@
     --text-primary: #f0f6fc;
     --text-secondary: #8b949e;
     --text-muted: #6e7681;
+    --fund-updated-name: #c9d1d9;
     --text-highlight: #ffffff;
     /* 边框 */
     --border-color: #30363d;
@@ -84,6 +85,7 @@
     --text-primary: #1f2328;
     --text-secondary: #57606a;
     --text-muted: #8c959f;
+    --fund-updated-name: #1f2328;
     --text-highlight: #000000;
     --border-color: #d0d7de;
     --border-light: #e6eaef;

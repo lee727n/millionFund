@@ -17,13 +17,14 @@ import {
 import StarKLinePanel from '@/components/StarKLinePanel.vue'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
-import { getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { useFundValuation } from '@/composables/useFundValuation'
+import { useFundUpdateStatus } from '@/composables/useFundUpdateStatus'
 import { createTrade } from '@/composables/useFundTrade'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import BackupActions from '@/components/BackupActions.vue'
+import FundName from '@/components/FundName.vue'
 import { useTabbar } from '@/composables/useTabbar'
 
 const router = useRouter()
@@ -208,7 +209,8 @@ const isWeekend = computed(() => {
   const day = currentDate.value.getDay()
   return day === 0 || day === 6
 })
-const tradingSession = ref<TradingSession>('closed')
+// [WHAT] 交易时段状态（已更新/未更新/交易中）由共享组合式 useFundUpdateStatus 提供（单例定时器，组件复用）
+const { tradingSession } = useFundUpdateStatus()
 const tradingStatus = computed(() => {
   if (isWeekend.value) return { text: '休市', class: 'closed', sub: '周末' }
   // [FIX] 必须精确到分钟：A股 上午盘 9:30-11:30，午休 11:30-13:00，下午盘 13:00-15:00。
@@ -622,12 +624,23 @@ const aiAnalysis = computed<TradeAnalysisResult>(() => {
   return analyzeTrades(getTrades(), liveFundData.value)
 })
 
+// [WHY] 当天新增的转换：成本基准=当天净值，「累计」应为 0（当天真实涨跌由「今日」字段展示）
+function isConversionSameDay(r: { date: string }): boolean {
+  if (!r.date) return false
+  const d = new Date(r.date + 'T00:00:00')
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate()
+}
+
 // ============ AI 追踪 ============
 // 用 liveFundData 计算 buyChange/sellChange（和 AITracking.vue 一致的逻辑）
 function computeTrackChange(code: string, nav: number): number {
   const data = liveFundData.value.get(code)
   if (!data || !nav) return 0
-  const currentPrice = data.currentValue || data.nav || data.estimate || 0
+  // 与 AITracking.vue 一致：只使用统一估值层给出的 currentValue；拉取失败为 0 时不拿旧净值冒充当前值。
+  const currentPrice = data.currentValue || 0
   if (!currentPrice) return 0
   return ((currentPrice - nav) / nav) * 100
 }
@@ -639,8 +652,8 @@ const aiTrackRecords = computed(() => {
       const buyLive = liveFundData.value.get(r.buyCode)
       return {
         ...r,
-        sellChange: computeTrackChange(r.sellCode, r.sellNav),
-        buyChange: computeTrackChange(r.buyCode, r.buyNav),
+        sellChange: isConversionSameDay(r) ? 0 : computeTrackChange(r.sellCode, r.sellNav),
+        buyChange: isConversionSameDay(r) ? 0 : computeTrackChange(r.buyCode, r.buyNav),
         sellToday: sellLive?.dayChange ?? 0,
         buyToday: buyLive?.dayChange ?? 0
       }
@@ -653,7 +666,8 @@ const aiTrackRecords = computed(() => {
 })
 
 const aiTrackStats = computed(() => {
-  const records = aiTrackRecords.value
+  // 与 AITracking.vue 一致：当天刚添加的转换尚未进入成功/失败统计，累计为 0。
+  const records = aiTrackRecords.value.filter(r => !isConversionSameDay(r))
   const successCount = records.filter(r => r.buyChange >= r.sellChange).length
   const totalDiff = records.reduce((t, r) => t + (r.buyChange - r.sellChange), 0)
   return { total: records.length, success: successCount, totalChange: totalDiff }
@@ -724,6 +738,10 @@ async function refreshAll(forceRefresh: boolean = false) {
     })
     await loadFundData([...codes], forceRefresh, starQdii)
 
+    // AI 追踪的估值成本也在每次全景刷新时校正：
+    // 添加当天先用估值并记录估值日期；晚间/次日拿到历史净值后替换为同一天的真实净值。
+    await aiTrackingStore.confirmEstimatedNavs()
+
     // 3. 刷新指数
     await loadIndices()
 
@@ -744,10 +762,6 @@ async function refreshAll(forceRefresh: boolean = false) {
 
 // ============ 生命周期 ============
 onMounted(async () => {
-  // 初始化交易状态
-  tradingSession.value = getTradingSession()
-  window.setInterval(() => { tradingSession.value = getTradingSession() }, 30000)
-
   updateTime()
   setInterval(updateTime, 1000)
 
@@ -1143,6 +1157,13 @@ const newRecord = ref<NewRecord>({ date: '', sellCode: '', sellName: '', buyCode
 function resetNewRecord() {
   newRecord.value = { date: '', sellCode: '', sellName: '', buyCode: '', buyName: '' }
 }
+
+function getSnapshotDate(info: { isNav?: boolean; navDate?: string; estimateTime?: string }, fallback: string): string {
+  if (info.isNav && info.navDate) return info.navDate
+  const estimateDate = info.estimateTime?.slice(0, 10)
+  return estimateDate || fallback
+}
+
 function openAddAITrackingDialog() {
   closeActionBar()
   resetNewRecord()
@@ -1173,6 +1194,7 @@ async function confirmAddRecord() {
   try {
     let sellName = newRecord.value.sellName, buyName = newRecord.value.buyName
     let sellNav = 0, buyNav = 0, sellNavEstimated = false, buyNavEstimated = false
+    let sellNavDate = '', buyNavDate = ''
     const targetDate = newRecord.value.date || getCalendarDateStr()
     if (newRecord.value.date) {
       const days = Math.ceil((Date.now() - new Date(newRecord.value.date).getTime()) / 86400000) + 10
@@ -1186,31 +1208,47 @@ async function confirmAddRecord() {
         sellName = sellName || newRecord.value.sellCode
         buyName = buyName || newRecord.value.buyCode
         sellNav = sr.netValue; buyNav = br.netValue
+        sellNavEstimated = false; buyNavEstimated = false
+        sellNavDate = newRecord.value.date; buyNavDate = newRecord.value.date
       } else {
-        sellNavEstimated = buyNavEstimated = true
         const [si, bi] = await Promise.all([
           fetchFundAccurateData(newRecord.value.sellCode, false, true),
           fetchFundAccurateData(newRecord.value.buyCode, false, true)
         ])
-        if (si && si.currentValue > 0) { sellName = si.name; sellNav = si.currentValue }
+        if (si && si.currentValue > 0) {
+          sellName = si.name; sellNav = si.currentValue
+          sellNavEstimated = !si.isNav
+          sellNavDate = getSnapshotDate(si, newRecord.value.date)
+        }
         else { closeToast(); showToast('获取卖出基金信息失败'); return }
-        if (bi && bi.currentValue > 0) { buyName = bi.name; buyNav = bi.currentValue }
+        if (bi && bi.currentValue > 0) {
+          buyName = bi.name; buyNav = bi.currentValue
+          buyNavEstimated = !bi.isNav
+          buyNavDate = getSnapshotDate(bi, newRecord.value.date)
+        }
         else { closeToast(); showToast('获取买入基金信息失败'); return }
       }
     } else {
-      sellNavEstimated = buyNavEstimated = true
       const [si, bi] = await Promise.all([
         fetchFundAccurateData(newRecord.value.sellCode),
         fetchFundAccurateData(newRecord.value.buyCode)
       ])
-      if (si && si.currentValue > 0) { sellName = si.name; sellNav = si.currentValue }
+      if (si && si.currentValue > 0) {
+        sellName = si.name; sellNav = si.currentValue
+        sellNavEstimated = !si.isNav
+        sellNavDate = getSnapshotDate(si, targetDate)
+      }
       else { closeToast(); showToast('获取卖出基金信息失败'); return }
-      if (bi && bi.currentValue > 0) { buyName = bi.name; buyNav = bi.currentValue }
+      if (bi && bi.currentValue > 0) {
+        buyName = bi.name; buyNav = bi.currentValue
+        buyNavEstimated = !bi.isNav
+        buyNavDate = getSnapshotDate(bi, targetDate)
+      }
       else { closeToast(); showToast('获取买入基金信息失败'); return }
     }
     aiTrackingStore.addRecord({
-      sellCode: newRecord.value.sellCode, sellName, sellNav, sellNavEstimated,
-      buyCode: newRecord.value.buyCode, buyName, buyNav, buyNavEstimated, date: targetDate
+      sellCode: newRecord.value.sellCode, sellName, sellNav, sellNavEstimated, sellNavDate,
+      buyCode: newRecord.value.buyCode, buyName, buyNav, buyNavEstimated, buyNavDate, date: targetDate
     })
     closeToast()
     showToast({ message: '已添加到 AI 追踪', duration: 2000 })
@@ -1236,7 +1274,16 @@ function getTrackDiff(r: any) {
   return (r.buyChange || 0) - (r.sellChange || 0)
 }
 function getTrackSuccess(r: any) {
-  return (r.buyChange || 0) >= (r.sellChange || 0)
+  return !isConversionSameDay(r) && (r.buyChange || 0) >= (r.sellChange || 0)
+}
+function getTrackStatusClass(r: any) {
+  if (isConversionSameDay(r)) return ''
+  return getTrackSuccess(r) ? 'success' : 'fail'
+}
+function getTrackChangeClass(r: any, type: 'sell' | 'buy') {
+  if (isConversionSameDay(r)) return ''
+  const value = type === 'sell' ? (r.sellChange || 0) : (r.buyChange || 0)
+  return value >= 0 ? 'up' : 'down'
 }
 function getSignalIcon(signal: string) {
   const map: Record<string, string> = { take_profit: '🎯', buy_back: '🔄', cut_loss: '🛑', add_on_dip: '📉', observe: '👀' }
@@ -1251,15 +1298,17 @@ function getFundSignal(fundCode: string) {
   return aiAnalysis.value.signals?.find((s: any) => s.fundCode === fundCode)
 }
 
-// 交易中：统一灰白色；非交易中：已更新=黄，未更新=绿
-function getFundNameClass(fund: any): Record<string, boolean> {
-  const inTrading = tradingSession.value === 'morning' || tradingSession.value === 'afternoon'
-  if (inTrading) return { 'fm-in-trading': true }
-  return {
-    'fm-updated': !!fund.isUpdated,
-    'fm-pending': !fund.isUpdated
-  }
+// 净/估标签：某基金当天是否已更新净值（liveFundData.isNav）
+function navTagOf(code: string): '净' | '估' {
+  return liveFundData.value.get(code)?.isNav ? '净' : '估'
 }
+
+// AI追踪模块用：把 liveFundData 转成「按 code 查 isNav」的兜底表，传给 <FundName> 判断状态色
+const aiLiveIsNavMap = computed(() => {
+  const m = new Map<string, { isNav?: boolean }>()
+  liveFundData.value.forEach((v: any, code: string) => m.set(code, { isNav: v.isNav }))
+  return m
+})
 </script>
 
 <template>
@@ -1454,7 +1503,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                     <!-- 第一行：QD + 名称 + 星标 + 行业备注 -->
                     <div class="fm-row fm-row-top">
                       <span v-if="fund.isQDII" class="fm-qd-tag">QD</span>
-                      <span class="fm-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 8) }}</span>
+                      <FundName :code="fund.code" :name="fund.name" :slice="8" @click.stop="openTopHoldings(fund, $event)" />
                       <span
                         class="fm-star"
                         :class="{ starred: isStarred(fund.code) }"
@@ -1589,7 +1638,7 @@ function getFundNameClass(fund: any): Record<string, boolean> {
             >
               <!-- 名称 + 行业备注：包一层 flex:1 容器，保证行业紧跟名称，同时把右侧指标整体顶到右端 -->
               <div class="observe-name-wrap">
-                <span class="observe-name" :class="getFundNameClass(fund)" :title="fund.name" @click.stop="openTopHoldings(fund, $event)">{{ fund.name?.slice(0, 10) }}</span>
+                <FundName :code="fund.code" :name="fund.name" :slice="10" class="observe-name" @click.stop="openTopHoldings(fund, $event)" />
                 <span v-if="fund.industrySectors" class="fm-industry observe-industry" :title="'行业：' + fund.industrySectors">{{ fund.industrySectors?.replace(/\n+/g, '·').trim() }}</span>
               </div>
               <span 
@@ -1622,22 +1671,22 @@ function getFundNameClass(fund: any): Record<string, boolean> {
               v-for="record in aiTrackRecords" 
               :key="record.id"
               class="track-row"
-              :class="getTrackSuccess(record) ? 'success' : 'fail'"
+              :class="getTrackStatusClass(record)"
             >
               <div class="track-funds">
-                <span class="track-fund-name">{{ (record.sellName || record.sellCode)?.slice(0, 6) }}</span>
+                <FundName :code="record.sellCode" :name="record.sellName || record.sellCode" :slice="6" class="track-fund-name" :live-is-nav-map="aiLiveIsNavMap" />
                 <span class="track-arrow">→</span>
-                <span class="track-fund-name">{{ (record.buyName || record.buyCode)?.slice(0, 6) }}</span>
-                <span class="track-diff" :class="getTrackSuccess(record) ? 'up' : 'down'">
+                <FundName :code="record.buyCode" :name="record.buyName || record.buyCode" :slice="6" class="track-fund-name" :live-is-nav-map="aiLiveIsNavMap" />
+                <span class="track-diff" :class="isConversionSameDay(record) ? '' : (getTrackSuccess(record) ? 'up' : 'down')">
                   {{ getTrackDiff(record) >= 0 ? '+' : '' }}{{ getTrackDiff(record).toFixed(2) }}%
                 </span>
               </div>
               <div class="track-changes">
-                <span class="track-change-item" :class="(record.sellChange || 0) >= 0 ? 'up' : 'down'">
-                  卖 <span class="track-today-tag" :class="record.sellToday >= 0 ? 'up' : 'down'">估{{ fmtPct(record.sellToday) }}</span>累{{ fmtPct(record.sellChange || 0) }}
+                <span class="track-change-item" :class="getTrackChangeClass(record, 'sell')">
+                  卖 <span class="track-today-tag" :class="record.sellToday >= 0 ? 'up' : 'down'">{{ navTagOf(record.sellCode) }}{{ fmtPct(record.sellToday) }}</span>累{{ fmtPct(record.sellChange || 0) }}
                 </span>
-                <span class="track-change-item" :class="(record.buyChange || 0) >= 0 ? 'up' : 'down'">
-                  买 <span class="track-today-tag" :class="record.buyToday >= 0 ? 'up' : 'down'">估{{ fmtPct(record.buyToday) }}</span>累{{ fmtPct(record.buyChange || 0) }}
+                <span class="track-change-item" :class="getTrackChangeClass(record, 'buy')">
+                  买 <span class="track-today-tag" :class="record.buyToday >= 0 ? 'up' : 'down'">{{ navTagOf(record.buyCode) }}{{ fmtPct(record.buyToday) }}</span>累{{ fmtPct(record.buyChange || 0) }}
                 </span>
               </div>
             </div>
@@ -2510,9 +2559,9 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   50% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); opacity: 0.7; }
 }
 
-/* updated: 橙色（全部更新完） */
-.update-progress.updated { color: #ff9800; background: rgba(255,152,0,0.1); }
-.update-progress.updated .update-progress-fill { background: #ff9800; }
+/* updated: 绿色（全部更新完） */
+.update-progress.updated { color: #4caf50; background: rgba(76,175,80,0.1); }
+.update-progress.updated .update-progress-fill { background: #4caf50; }
 
 .update-progress.closed { color: var(--text-secondary); background: rgba(158,158,158,0.1); }
 .update-progress.closed .update-progress-fill { background: var(--text-muted); }
@@ -2836,8 +2885,8 @@ function getFundNameClass(fund: any): Record<string, boolean> {
 }
 
 /* 交易时间内：已更新=橙色，未更新=绿色 */
-.fm-name.fm-updated, .observe-name.fm-updated { color: #ff9800; }
-.fm-name.fm-pending, .observe-name.fm-pending { color: #4caf50; }
+.fm-name.fm-updated, .observe-name.fm-updated { color: var(--fund-updated-name); }
+.fm-name.fm-pending, .observe-name.fm-pending { color: rgba(255, 255, 255, 0.55); }
 .fm-name.fm-in-trading, .observe-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
 
 .fm-score {

@@ -444,17 +444,17 @@ function getRatioStyle(ratio: number) {
   white-space: nowrap;
 }
 
-/* 基金名称更新状态颜色 */
+/* 基金名称更新状态颜色：交易中/未更新=灰，已更新=绿，不再用黄色 */
 .fund-name-pending {
   color: var(--text-secondary) !important;
 }
 
 .fund-name-not-updated {
-  color: #4caf50 !important;
+  color: var(--text-secondary) !important;
 }
 
 .fund-name-updated {
-  color: #ff9800 !important;
+  color: var(--fund-updated-name) !important;
 }
 
 .source-icon-small {

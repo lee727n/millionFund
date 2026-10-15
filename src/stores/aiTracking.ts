@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { fetchNetValueHistoryFast } from '@/api/fundFast'
 
 export interface AITrackingRecord {
   id: string
@@ -7,10 +8,14 @@ export interface AITrackingRecord {
   sellName: string
   sellNav: number
   sellNavEstimated?: boolean
+  /** sellNav 对应的净值日期（估值快照属于哪一天），用于之后校正为当日真实净值 */
+  sellNavDate?: string
   buyCode: string
   buyName: string
   buyNav: number
   buyNavEstimated?: boolean
+  /** buyNav 对应的净值日期 */
+  buyNavDate?: string
   date: string
   createdAt: string
 }
@@ -57,6 +62,46 @@ export const useAITrackingStore = defineStore('aiTracking', () => {
       record.sellNavEstimated = false
       record.buyNavEstimated = false
       saveToLocalStorage()
+    }
+  }
+
+  // [WHY] 转换时记录的成本基准（sellNav/buyNav）是在「添加那一刻」抓的估值快照，可能属于昨天/前天的净值。
+  //       这里把它校正成快照当天（sellNavDate/buyNavDate）已公布的真实净值，避免长期沿用旧快照导致「累计」偏大。
+  // [WHAT] 任何一次刷新（晚间/次日/onActivated）都调用；无 estimated 标记的 record 直接跳过，开销极低。
+  async function confirmEstimatedNavs() {
+    const pending = records.value.filter(r => r.sellNavEstimated || r.buyNavEstimated)
+    if (pending.length === 0) return
+    for (const record of pending) {
+      try {
+        const historyDays = 15
+        const [sellHistory, buyHistory] = await Promise.all([
+          // 强制刷新历史净值：估值转净值的校正不能命中白天的旧缓存，尤其是晚间刚公布净值时。
+          record.sellNavEstimated ? fetchNetValueHistoryFast(record.sellCode, historyDays, true) : Promise.resolve(null),
+          record.buyNavEstimated ? fetchNetValueHistoryFast(record.buyCode, historyDays, true) : Promise.resolve(null)
+        ])
+        let updated = false
+        if (record.sellNavEstimated && sellHistory?.records) {
+          const target = record.sellNavDate || record.date
+          const sr = sellHistory.records.find(h => h.date === target)
+          if (sr && sr.netValue > 0) {
+            record.sellNav = sr.netValue
+            record.sellNavEstimated = false
+            updated = true
+          }
+        }
+        if (record.buyNavEstimated && buyHistory?.records) {
+          const target = record.buyNavDate || record.date
+          const br = buyHistory.records.find(h => h.date === target)
+          if (br && br.netValue > 0) {
+            record.buyNav = br.netValue
+            record.buyNavEstimated = false
+            updated = true
+          }
+        }
+        if (updated) saveToLocalStorage()
+      } catch (e) {
+        console.error('[aiTracking] confirmEstimatedNavs failed for', record.id, e)
+      }
     }
   }
 
@@ -124,6 +169,7 @@ export const useAITrackingStore = defineStore('aiTracking', () => {
     removeRecord,
     updateRecordNav,
     confirmRecordNav,
+    confirmEstimatedNavs,
     importRecords,
     clearAll,
     reorderRecords,
