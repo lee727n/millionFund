@@ -691,7 +691,8 @@ async function batchImport() {
           netValue: buyNetValue,
           shares: shares,
           estimated, // 批量导入用实际净值，不标 estimated
-          source: item.source
+          source: item.source,
+          adjustCash: false // [WHAT] 批量导入是历史/存量数据迁移，不动现金余额
         })
 
         console.log('[批量导入] 添加成功:', fundCode, '净值:', buyPrice, '份额:', shares.toFixed(4))

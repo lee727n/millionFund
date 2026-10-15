@@ -11,6 +11,7 @@ import {
   getTrades, addStarredFund, removeStarredFund, getStarredFunds, getStarredFundMeta, starMetaFromFund,
   getPanoramaColWidths, savePanoramaColWidths,
   getPanoramaAccountOrder, savePanoramaAccountOrder,
+  getPanoramaAccountCash, savePanoramaAccountCash,
   PANORAMA_ACCOUNT_KEYS
 } from '@/utils/storage'
 import StarKLinePanel from '@/components/StarKLinePanel.vue'
@@ -329,6 +330,45 @@ const txStats = computed(() => calcAccountStats(txHoldings.value))
 const jdStats = computed(() => calcAccountStats(jdHoldings.value))
 const otherStats = computed(() => calcAccountStats(otherHoldings.value))
 
+// ============ 各账户现金余额 ============
+// [WHAT] 支付宝/腾讯/京东 三个账户各自的现金余额，可在持仓列点击编辑
+// [WHY] 用户想在大屏直接看到每个账户「持仓市值 + 现金」视图，并在顶栏汇总出现金总余额
+const CASH_ACCOUNT_KEYS = ['ali', 'TX', 'JD'] as const
+const accountCash = ref<Record<string, number>>(getPanoramaAccountCash())
+
+function getAccountCash(key: string): number {
+  return accountCash.value[key] || 0
+}
+const totalCash = computed(() =>
+  CASH_ACCOUNT_KEYS.reduce((t, k) => t + getAccountCash(k), 0)
+)
+
+// ---- 现金编辑弹窗 ----
+const cashEditDialog = reactive({
+  open: false,
+  key: '' as string,
+  label: '' as string,
+  value: 0
+})
+function openCashEdit(key: string, label: string) {
+  cashEditDialog.key = key
+  cashEditDialog.label = label
+  cashEditDialog.value = getAccountCash(key)
+  cashEditDialog.open = true
+}
+function confirmCashEdit() {
+  const v = Number(cashEditDialog.value)
+  const next = { ...accountCash.value }
+  next[cashEditDialog.key] = isFinite(v) && v >= 0 ? v : 0
+  accountCash.value = next
+  savePanoramaAccountCash(next)
+  cashEditDialog.open = false
+  showToast('现金余额已保存')
+}
+function closeCashEdit() {
+  cashEditDialog.open = false
+}
+
 // ============ 持仓列：账户区块顺序 + 高度（都能拖） ============
 // [WHY] 原来 4 个账户区块是 4 段几乎一模一样的静态模板，顺序/高度写死。
 //       抽成 accountSections 后：顺序就是数组顺序，高度就是每段的内联 max-height，
@@ -620,8 +660,8 @@ const aiTrackStats = computed(() => {
 })
 
 // ============ 市场指数 ============
-// 目标顺序：上证指数、创业板指、沪深300、日经225、道琼斯、纳斯达克
-const targetIndexNames = ['上证指数', '创业板指', '沪深300', '日经225', '道琼斯', '纳斯达克']
+// 目标顺序：上证指数、创业板指、沪深300、日经225、标普500、纳斯达克
+const targetIndexNames = ['上证指数', '创业板指', '沪深300', '日经225', '标普500', '纳斯达克']
 
 async function loadIndices() {
   try {
@@ -948,6 +988,12 @@ async function submitTrade() {
     if (!netValue || netValue <= 0) return showToast('请输入有效的净值')
     shares = amount / netValue
   }
+  // [FIX] 减仓前先校验份额不超过持仓，避免「已写入交易记录/已调整现金」后又回退导致数据不一致
+  const cur = holdingStore.holdings.find(h => h.code === holding.code)
+  if (type === 'sell' && !isClear && cur && shares > (cur.shares || 0)) {
+    return showToast(`减仓份额超过当前持仓(${cur.shares?.toFixed(2)}份)`)
+  }
+
   showLoadingToast({ message: '提交中...', forbidClick: true })
   try {
     // [WHAT] 统一走 useFundTrade.createTrade（加仓/减仓共用出口，避免漏 estimated/source/estimateAtTrade）
@@ -956,20 +1002,15 @@ async function submitTrade() {
       netValue, shares, fee: 0, estimated: tradeFormData.value.isEstimate,
       source: holding.source
     })
-    const cur = holdingStore.holdings.find(h => h.code === holding.code)
     if (cur) {
       if (type === 'buy') cur.shares = (cur.shares || 0) + shares
-      else {
-        if (!isClear && shares > (cur.shares || 0)) {
-          closeToast(); showToast(`减仓份额超过当前持仓(${cur.shares?.toFixed(2)}份)`)
-          return
-        }
-        // 清仓按比例卖出：剩余 = 当前份额 - 卖出份额；全清(ratio>=1)后归 0，交易记录自动标记「已清仓」
-        cur.shares = Math.max(0, (cur.shares || 0) - shares)
-      }
+      // 清仓/减仓：剩余 = 当前份额 - 卖出份额（全清 ratio>=1 后归 0），交易记录自动标记「已清仓」
+      else cur.shares = Math.max(0, (cur.shares || 0) - shares)
       cur.currentValue = netValue
       holdingStore.addOrUpdateHolding(cur)
     }
+    // [WHAT] 交易已联动写入现金余额，重新读回 ref 让顶栏/账户现金即时刷新
+    accountCash.value = getPanoramaAccountCash()
     closeToast()
     showToast({ message: `${isClear ? '清仓' : type === 'buy' ? '加仓' : '减仓'}成功`, duration: 2000 })
     showTradeDialog.value = false
@@ -1227,10 +1268,14 @@ function getFundNameClass(fund: any): Record<string, boolean> {
     <header class="top-bar">
       <div class="top-left">
         <span class="logo-dot"></span>
-        <span class="top-title">AI 百万实盘 · 全景大屏</span>
+        <span class="top-title">AI 百万实盘</span>
       </div>
 
       <div class="top-stats">
+        <div class="stat-block cash-block">
+          <span class="stat-label">现金余额</span>
+          <span class="stat-value">{{ fmtMoney(totalCash) }}</span>
+        </div>
         <div class="stat-block" :class="isWeekend ? 'closed' : (totalStats.todayProfit >= 0 ? 'up' : 'down')">
           <span class="stat-label">总市值</span>
           <span class="stat-value">{{ fmtMoney(totalStats.marketValue) }}</span>
@@ -1365,6 +1410,14 @@ function getFundNameClass(fund: any): Record<string, boolean> {
                 <span v-else class="account-icon-fallback">{{ acc.fallback }}</span>
                 <span class="account-name">{{ acc.label }}</span>
                 <span class="account-count">{{ acc.stats.count }} 只</span>
+                <span
+                  v-if="acc.key !== 'other'"
+                  class="account-cash"
+                  title="点击编辑现金余额"
+                  @click.stop="openCashEdit(acc.key, acc.label)"
+                >
+                  <span class="account-cash-icon">💰</span>{{ fmtMoney(getAccountCash(acc.key)) }}
+                </span>
                 <div class="account-spacer"></div>
                 <span class="account-stat">{{ fmtMoney(acc.stats.marketValue) }}</span>
                 <span
@@ -1827,6 +1880,34 @@ function getFundNameClass(fund: any): Record<string, boolean> {
       </div>
     </van-dialog>
 
+    <!-- 现金余额编辑弹窗 -->
+    <van-dialog
+      v-model:show="cashEditDialog.open"
+      :close-on-click-overlay="false"
+      show-cancel-button
+      class="pa-dialog"
+    >
+      <template #header>
+        <div class="pa-dialog-header">
+          <span>{{ cashEditDialog.label }} · 现金余额</span>
+          <span class="pa-dialog-close" @click="closeCashEdit">✕</span>
+        </div>
+      </template>
+      <div class="pa-dialog-body">
+        <div class="pa-field">
+          <label>现金余额 (元)</label>
+          <input v-model="cashEditDialog.value" type="number" step="0.01" placeholder="请输入该账户现金余额" />
+        </div>
+        <div class="pa-info">
+          持仓市值 {{ fmtMoney(getAccountCash(cashEditDialog.key)) }} + 现金 {{ fmtMoney(Number(cashEditDialog.value) || 0) }}
+        </div>
+      </div>
+      <div class="pa-dialog-footer">
+        <button class="pa-btn cancel" @click="closeCashEdit">取消</button>
+        <button class="pa-btn confirm" @click="confirmCashEdit">保存</button>
+      </div>
+    </van-dialog>
+
     <!-- 调成本弹窗 -->
     <van-dialog
       v-model:show="showCostDialog"
@@ -2067,6 +2148,16 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   font-size: 9px;
   color: var(--text-muted);
 }
+
+/* [WHAT] 现金余额块：与总市值同款上下布局，加一抹差异化底色便于一眼定位 */
+.cash-block {
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--border-light);
+}
+.cash-block .stat-label { color: var(--primary-color, #6366f1); }
+.cash-block .stat-value { color: var(--primary-color, #6366f1); }
 
 .stat-block.up .stat-value,
 .account-pct.up,
@@ -2583,6 +2674,31 @@ function getFundNameClass(fund: any): Record<string, boolean> {
   min-width: 60px;
   text-align: right;
 }
+
+/* [WHAT] 账户现金余额：账户标题行内可点击编辑的小标签 */
+.account-cash {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--primary-color, #6366f1);
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.account-cash:hover {
+  filter: brightness(1.08);
+  border-color: var(--primary-color, #6366f1);
+}
+.account-cash:active { transform: scale(0.96); }
+.account-cash-icon { font-size: 11px; line-height: 1; }
 
 .fund-mini-grid {
   padding: 0;

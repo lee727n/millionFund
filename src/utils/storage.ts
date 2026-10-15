@@ -16,6 +16,7 @@ export const STORAGE_KEYS = {
   PANORAMA_COL_WIDTHS: 'panorama_col_widths',
   PANORAMA_ACCOUNT_ORDER: 'panorama_account_order',
   PANORAMA_ACCOUNT_HEIGHTS: 'panorama_account_heights',
+  PANORAMA_ACCOUNT_CASH: 'panorama_account_cash',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -52,7 +53,8 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.STARRED_FUNDS,
       STORAGE_KEYS.PANORAMA_COL_WIDTHS,
       STORAGE_KEYS.PANORAMA_ACCOUNT_ORDER,
-      STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS
+      STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS,
+      STORAGE_KEYS.PANORAMA_ACCOUNT_CASH
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
@@ -765,4 +767,31 @@ export function getPanoramaAccountHeights(): Record<string, number> {
 /** 保存持仓列各账户区块的网格最大高度 */
 export function savePanoramaAccountHeights(heights: Record<string, number>): void {
   setItem(STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS, normalizeAccountHeights(heights))
+}
+
+// ========== 全景大屏持仓列：各账户现金余额 ==========
+// [WHAT] 支付宝/腾讯/京东 三个账户各自的现金余额，可在全景持仓列点击编辑
+// [WHY] 用户想在大屏直接看到每个账户「持仓市值 + 现金」的全局资金视图，并手动维护现金数
+
+/** 获取各账户现金余额（缺省为 0） */
+export function getPanoramaAccountCash(): Record<string, number> {
+  const raw = getItem<Record<string, number>>(STORAGE_KEYS.PANORAMA_ACCOUNT_CASH, {})
+  const out: Record<string, number> = {}
+  if (raw && typeof raw === 'object') {
+    for (const k of PANORAMA_ACCOUNT_KEYS) {
+      const v = raw[k]
+      out[k] = typeof v === 'number' && isFinite(v) ? v : 0
+    }
+  }
+  return out
+}
+
+/** 保存各账户现金余额 */
+export function savePanoramaAccountCash(cash: Record<string, number>): void {
+  const out: Record<string, number> = {}
+  for (const k of PANORAMA_ACCOUNT_KEYS) {
+    const v = cash[k]
+    out[k] = typeof v === 'number' && isFinite(v) ? v : 0
+  }
+  setItem(STORAGE_KEYS.PANORAMA_ACCOUNT_CASH, out)
 }

@@ -649,7 +649,8 @@ async function confirmImport() {
           amount: cost,
           netValue: buyNetValue,
           shares: shares,
-          estimated: false // 截图导入始终用净值，不用估值
+          estimated: false, // 截图导入始终用净值，不用估值
+          adjustCash: false // [WHAT] 截图导入为存量数据迁移，且未带 source，明确不动现金
         })
 
         imported++

@@ -117,13 +117,14 @@ function getColors() {
 }
 
 // [WHAT] 买入点按金额深浅着色：金额越小越浅、越大越深，均为红色。
-// [WHY] 一眼区分不同买入金额——固定红相(hsl 351°)，仅亮度从 70%(浅) 到 40%(深) 渐变。
-//       仅一个买入点时取中间档；非有限金额回退主题红。
-function getBuyAmountColor(amount: number, min: number, max: number): string {
+// [WHY] 用「绝对金额」而非「单基金内相对区间」着色——跨基金一致：1W 的点永远比 5000 红，
+//       不会因某基金里还有更大的买点而被稀释成浅色。以 12000 为深红基准（≈1W 即接近最深），
+//       极小金额仍有最低红度；非有限金额回退主题红。
+function getBuyAmountColor(amount: number): string {
   if (!isFinite(amount)) return '#f6465d'
-  if (max <= min) return 'hsl(351, 88%, 56%)'
-  const t = (amount - min) / (max - min) // 0=最小, 1=最大
-  const light = 70 - t * 30 // 70%(浅=少) → 40%(深=多)
+  const REF = 12000
+  const t = Math.max(0, Math.min(1, amount / REF)) // 0=极小, 1=≥REF(深红)
+  const light = 72 - t * 34 // 72%(浅=少) → 38%(深=多)
   return `hsl(351, 88%, ${light.toFixed(1)}%)`
 }
 
@@ -809,11 +810,6 @@ function drawChart() {
   const trades = getTradesByCode(props.fundCode)
   const tTrades = getTTradesByCode(props.fundCode)
 
-  // [WHAT] 买入金额区间，用于把买入点按金额深浅着色（浅=少，深=多）
-  const buyAmounts = trades.filter(t => t.type === 'buy' && isFinite(t.amount)).map(t => t.amount)
-  const buyMin = buyAmounts.length ? Math.min(...buyAmounts) : 0
-  const buyMax = buyAmounts.length ? Math.max(...buyAmounts) : 0
-
   // 获取今天的日期字符串
   const today = new Date()
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -863,7 +859,7 @@ function drawChart() {
     ctx.beginPath()
     ctx.arc(x, y, 2.5, 0, Math.PI * 2)
     // [WHAT] 买入点按金额深浅着色（浅=少，深=多）；卖出保持绿
-    ctx.fillStyle = isBuy ? getBuyAmountColor(trade.amount, buyMin, buyMax) : colors.downColor
+    ctx.fillStyle = isBuy ? getBuyAmountColor(trade.amount) : colors.downColor
     ctx.fill()
   }
 
@@ -912,14 +908,14 @@ function drawChart() {
   }
 
   // ========== 买入金额深浅图例 ==========
-  // [WHAT] 仅当存在 ≥2 个不同买入金额时画：浅(左)=少 → 深(右)=多，一眼看懂点色含义
-  if (buyMax > buyMin) {
+  // [WHAT] 存在买入点时画：浅(左)=少 → 深(右)=多，对应绝对金额着色口径（与图上点一致）
+  if (trades.some(t => t.type === 'buy')) {
     const lw = 56, lh = 6
     const lx = (width - lw) / 2
     const ly = height - padding.bottom - lh - 4
     const grad = ctx.createLinearGradient(lx, 0, lx + lw, 0)
-    grad.addColorStop(0, getBuyAmountColor(buyMin, buyMin, buyMax))
-    grad.addColorStop(1, getBuyAmountColor(buyMax, buyMin, buyMax))
+    grad.addColorStop(0, getBuyAmountColor(0))
+    grad.addColorStop(1, getBuyAmountColor(12000))
     ctx.fillStyle = grad
     ctx.fillRect(lx, ly, lw, lh)
     ctx.strokeStyle = colors.borderColor
@@ -955,7 +951,7 @@ function drawChart() {
     const hiColor = data.type === 'ttrade'
       ? '#a855f7'
       : (data.type === 'trade' && data.trade.type === 'buy'
-        ? getBuyAmountColor(data.trade.amount, buyMin, buyMax)
+        ? getBuyAmountColor(data.trade.amount)
         : colors.upColor)
     ctx.fillStyle = hiColor
     ctx.fill()

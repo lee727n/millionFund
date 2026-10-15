@@ -8,7 +8,7 @@
 //        holding.ts(自愈补齐买点) 均改调本 composable。
 //        AITracking.vue 因数据模型(AITrackingRecord)与确认逻辑(日期匹配历史净值)不同，保持独立未合并。
 
-import { addTrade, getTradesByCode } from '@/utils/storage'
+import { addTrade, getTradesByCode, getPanoramaAccountCash, savePanoramaAccountCash } from '@/utils/storage'
 import type { FundAccurateData } from '@/api/fundFast'
 import type { TradeType } from '@/types/fund'
 
@@ -50,6 +50,8 @@ export function createTrade(params: {
   fee?: number
   estimated: boolean
   source?: string
+  /** [WHAT] 是否联动对应账户的现金余额（买入扣减 / 卖出加回）。历史/批量/自愈类建交易传 false，避免把存量持仓成本误当新支出 */
+  adjustCash?: boolean
 }): void {
   addTrade({
     id: '',
@@ -67,6 +69,21 @@ export function createTrade(params: {
     source: params.source,
     createdAt: Date.now()
   })
+
+  // [WHAT] 交易联动现金余额：买入扣减、卖出加回对应账户现金
+  // [WHY] 用户希望「加仓/新增基金」自动从对应账户现金扣款、「减仓/清仓」自动回款，形成实时可用资金视图
+  // [GUARD] 仅对 支付宝/腾讯/京东 三账户维护现金；adjustCash:false 跳过历史/批量/自愈类建交易
+  if (params.adjustCash !== false && params.source) {
+    const CASH_ACCOUNTS = ['ali', 'TX', 'JD'] as const
+    if ((CASH_ACCOUNTS as readonly string[]).includes(params.source) && params.amount > 0) {
+      const delta = params.type === 'buy' ? -params.amount : params.type === 'sell' ? params.amount : 0
+      if (delta !== 0) {
+        const cash = getPanoramaAccountCash()
+        cash[params.source] = (cash[params.source] || 0) + delta
+        savePanoramaAccountCash(cash)
+      }
+    }
+  }
 }
 
 /**
@@ -83,6 +100,7 @@ export function createBuyTrade(params: {
   shares: number
   estimated: boolean
   source?: string
+  adjustCash?: boolean
 }): void {
   createTrade({ ...params, type: 'buy' })
 }

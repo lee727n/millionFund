@@ -278,7 +278,8 @@ export const useHoldingStore = defineStore('holding', () => {
         netValue: buyNet,
         shares: h.shares,
         estimated: false, // 存量买入净值是真实净值，不参与晚上估值重算
-        source: h.source
+        source: h.source,
+        adjustCash: false // [WHAT] 自愈补齐买点：不动现金（存量持仓成本基数不应当新支出扣减）
       })
 
       holdingsChanged = true

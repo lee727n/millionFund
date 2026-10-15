@@ -427,6 +427,12 @@ async function submitTrade() {
 
   const shares = amount / netValue
 
+  // [FIX] 减仓前先校验份额不超过持仓，避免「已写入交易记录/已调整现金」后又回退导致数据不一致
+  const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)
+  if (type === 'sell' && currentHolding && shares > (currentHolding.shares || 0)) {
+    return showToast(`减仓份额超过持仓(${(currentHolding.shares || 0).toFixed(2)}份)`)
+  }
+
   const loadingToast = showLoadingToast('提交中...')
   try {
     // [WHAT] 统一走 useFundTrade.createTrade（买入/卖出共用出口，避免漏 estimated/source）
@@ -443,18 +449,11 @@ async function submitTrade() {
       source: holding.source
     })
 
-    const currentHolding = holdingStore.holdings.find(h => h.code === holding.code)
     if (currentHolding) {
       if (type === 'buy') {
         currentHolding.shares = (currentHolding.shares || 0) + shares
       } else {
-        const currentShares = currentHolding.shares || 0
-        if (shares > currentShares) {
-          closeToast()
-          showToast(`减仓份额超过持仓(${currentShares.toFixed(2)}份)`)
-          return
-        }
-        currentHolding.shares = currentShares - shares
+        currentHolding.shares = (currentHolding.shares || 0) - shares
       }
       currentHolding.currentValue = netValue
       holdingStore.addOrUpdateHolding(currentHolding)

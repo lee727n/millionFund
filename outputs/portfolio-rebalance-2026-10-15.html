@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>持仓体检与调仓建议 · 2026-10-15</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f7fa;
+    color: #1a202c;
+    line-height: 1.6;
+    padding: 24px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  header h1 { font-size: 26px; font-weight: 700; color: #1a202c; }
+  header .sub { color: #64748b; font-size: 14px; margin-top: 4px; }
+  .section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .section h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1a202c; display: flex; align-items: center; gap: 8px; }
+  .section h2::before { content: ""; width: 4px; height: 18px; background: #2563eb; border-radius: 2px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .card { background: #f8fafc; border-radius: 10px; padding: 18px; }
+  .card .label { font-size: 13px; color: #64748b; }
+  .card .value { font-size: 24px; font-weight: 700; margin-top: 6px; }
+  .card .value.neg { color: #dc2626; }
+  .card .value.pos { color: #16a34a; }
+  .card .hint { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart { width: 100%; height: 360px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-weight: 600; color: #475569; }
+  td { padding: 9px 12px; border-top: 1px solid #e2e8f0; }
+  tr:hover td { background: #f8fafc; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+  .tag-sell { background: #fef2f2; color: #dc2626; }
+  .tag-hold { background: #f0fdf4; color: #16a34a; }
+  .tag-buy { background: #eff6ff; color: #2563eb; }
+  .tag-half { background: #fffbeb; color: #d97706; }
+  .prob { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .prob-item { background: #fff7ed; border-left: 4px solid #f97316; padding: 16px; border-radius: 8px; }
+  .prob-item h3 { font-size: 15px; color: #c2410c; margin-bottom: 6px; }
+  .prob-item p { font-size: 13.5px; color: #475569; }
+  .note { font-size: 12.5px; color: #94a3b8; margin-top: 12px; }
+  .disclaimer { font-size: 12px; color: #94a3b8; line-height: 1.8; background: #f8fafc; border-radius: 8px; padding: 16px; }
+  .pos-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  ul { padding-left: 18px; }
+  li { font-size: 13.5px; color: #475569; margin-bottom: 6px; }
+  .big-num { font-weight: 700; }
+  .red { color: #dc2626; }
+  .green { color: #16a34a; }
+  .blue { color: #2563eb; }
+  @media (max-width: 860px) {
+    .cards, .chart-row, .prob, .pos-summary { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>持仓体检与调仓建议</h1>
+    <div class="sub">数据时点：2026-10-15 10:05 · 基于截图持仓 + 现金余额 · 行业穿透为基于基金定位的推断（非前十大持仓实测）</div>
+  </header>
+
+  <!-- 资金总览 -->
+  <div class="section">
+    <h2>一、资金总览</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="label">总资产</div>
+        <div class="value">255.82万</div>
+        <div class="hint">持仓 + 现金</div>
+      </div>
+      <div class="card">
+        <div class="label">基金持仓市值</div>
+        <div class="value">191.41万</div>
+        <div class="hint">占总资产 74.8%</div>
+      </div>
+      <div class="card">
+        <div class="label">现金余额</div>
+        <div class="value green">64.41万</div>
+        <div class="hint">占总资产 25.2%</div>
+      </div>
+      <div class="card">
+        <div class="label">今日盈亏</div>
+        <div class="value neg">-2.07%</div>
+        <div class="hint">-4.04万（截图口径）</div>
+      </div>
+    </div>
+    <div class="note">账户现金分布：支付宝 15.24万 · 腾讯 29.45万 · 京东 19.72万。现金占比 25% 已属合理，问题不在"满仓"，而在<b>持仓内部结构过度集中于科技/AI赛道</b>。</div>
+  </div>
+
+  <!-- 行业穿透 -->
+  <div class="section">
+    <h2>二、行业穿透（基于基金定位推断）</h2>
+    <div class="chart-row">
+      <div id="pieCurrent" class="chart"></div>
+      <div id="pieTarget" class="chart"></div>
+    </div>
+    <div class="note">左：当前行业暴露 · 右：建议目标结构。穿透方法：按基金名称与定位归类（红利低波 / 纯债 / 稳健混合 / 海外成熟 / 海外科技AI / 国内科技AI半导体 / 灵活混合）。精确穿透需每只基金最新前十大持仓。</div>
+  </div>
+
+  <!-- 核心问题 -->
+  <div class="section">
+    <h2>三、核心结构问题</h2>
+    <div class="prob">
+      <div class="prob-item">
+        <h3>① 海外科技 / AI 重复暴露（最严重）</h3>
+        <p>6 只 QDII / 全球基金（华富全球科技、长信标普100、华宝纳指、银华海外数字、广发全球精选、东方AI），底层大概率 60-80% 重合于美股科技股（Magnificent 7 + 纳指权重）。<b>看似分散，实为同一波风险，合计 63.6万（占持仓 33%）。</b></p>
+      </div>
+      <div class="prob-item">
+        <h3>② 国内科创板 / AI / 半导体 重叠</h3>
+        <p>东方阿尔法科、广发半导体设备、易方达供给改革、财通科创、华夏上证科创 5 只，底层大概率同重仓科创板 + 半导体 + AI 算力。<b>合计 55.6万（占持仓 29%），累计亏损普遍 -19% ~ -33%。</b></p>
+      </div>
+      <div class="prob-item">
+        <h3>③ 红利 / 价值 / 防御层几乎为零</h3>
+        <p>红利低波类仅天弘中证红利低波 100 联接 <b>0.50万（占持仓 0.3%）</b>。今天 -2% 行情下组合没有缓冲垫，下跌完全由科技仓位吸收。</p>
+      </div>
+      <div class="prob-item">
+        <h3>④ 亏损灵活型基金占比过高</h3>
+        <p>国联安优选(-24.6%)、东方惠新(-20.7%)、方正富邦(-22.1%)、东方阿尔法科(-32.9%) 等累计深套基金合计 <b>46万（占持仓 24%）</b>，且多只定位重叠，拖累整体收益。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 调仓目标 -->
+  <div class="section">
+    <h2>四、调仓目标结构（中性方案）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>资产分类</th>
+          <th>当前占比</th>
+          <th>当前金额</th>
+          <th>目标占比</th>
+          <th>目标金额</th>
+          <th>调整方向</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>💰 现金 / 货币</td><td>25.2%</td><td>64.41万</td><td>25%</td><td>64万</td><td><span class="tag tag-hold">持平</span></td></tr>
+        <tr><td>🛡️ 红利低波 / 价值</td><td>0.3%</td><td>0.50万</td><td>15%</td><td>38万</td><td><span class="tag tag-buy">加仓 +37.5万</span></td></tr>
+        <tr><td>⚖️ 纯债 / 短债</td><td>0%</td><td>0</td><td>10%</td><td>26万</td><td><span class="tag tag-buy">新建 +26万</span></td></tr>
+        <tr><td>⚖️ 稳健混合</td><td>11.6%</td><td>22.23万</td><td>10%</td><td>26万</td><td><span class="tag tag-half">加仓 +3.8万</span></td></tr>
+        <tr><td>🌏 海外成熟（纳指）</td><td>13.3%</td><td>25.45万</td><td>8%</td><td>20万</td><td><span class="tag tag-half">减 -5.5万</span></td></tr>
+        <tr><td>🌏 海外科技 / AI 主题</td><td>19.9%</td><td>35.4万</td><td>7%</td><td>18万</td><td><span class="tag tag-sell">减 -17.4万</span></td></tr>
+        <tr><td>🔬 国内科技 / AI / 半导体</td><td>29.1%</td><td>55.63万</td><td>15%</td><td>38万</td><td><span class="tag tag-sell">减 -17.6万</span></td></tr>
+        <tr><td>🔀 灵活 / 混合</td><td>24.1%</td><td>46.11万</td><td>10%</td><td>26万</td><td><span class="tag tag-sell">减 -20.1万</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note">防御层（现金+红利+纯债+稳健）由当前 <b>37.9%</b> 提升至 <b>60%</b>；进攻层（海外+国内科技）由 <b>62%</b> 降至 <b>30%</b>。预期最大回撤由约 -15% 收敛至 -8% ~ -9%。</div>
+  </div>
+
+  <!-- 具体操作 -->
+  <div class="section">
+    <h2>五、逐只基金操作清单</h2>
+    <h3 style="font-size:15px;margin:8px 0 12px;color:#475569;">P1 · 海外 QDII 去重（释放约 24.6万）</h3>
+    <table>
+      <thead><tr><th>基金</th><th>代码</th><th>当前</th><th>操作</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>长信标普100等</td><td>519981</td><td>11.32万</td><td><span class="tag tag-sell">清仓</span></td><td>与纳指高度重合（标普100≈纳指80%）</td></tr>
+        <tr><td>广发全球精选</td><td>021277</td><td>10.45万</td><td><span class="tag tag-half">减半→5万</span></td><td>与其他海外基金重叠</td></tr>
+        <tr><td>银华海外数字</td><td>016702</td><td>14.83万</td><td><span class="tag tag-half">减半→7万</span></td><td>虽+10.88%，但属海外科技敞口</td></tr>
+        <tr><td>华富全球科技QDII</td><td>024239</td><td>17.64万</td><td><span class="tag tag-hold">保留</span></td><td>QDII 中最专的科技主题</td></tr>
+        <tr><td>华宝纳斯达克精选</td><td>017437</td><td>7.62万</td><td><span class="tag tag-hold">保留</span></td><td>纳指核心代表</td></tr>
+        <tr><td>东方人工智能</td><td>017811</td><td>1.73万</td><td><span class="tag tag-hold">保留</span></td><td>金额小，AI 卫星仓</td></tr>
+        <tr><td>建信新兴市场QDII</td><td>539002</td><td>3.34万</td><td><span class="tag tag-hold">保留</span></td><td>区域分散，非纯科技</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;color:#475569;">P2 · 国内科创 / AI 整合（释放约 23万）</h3>
+    <table>
+      <thead><tr><th>基金</th><th>代码</th><th>当前</th><th>操作</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>东方阿尔法科</td><td>025500</td><td>14.75万</td><td><span class="tag tag-half">减半→7万</span></td><td>累计-32.85%，深套减仓</td></tr>
+        <tr><td>广发半导体设备</td><td>020640</td><td>17.72万</td><td><span class="tag tag-half">减半→9万</span></td><td>半导体行业敞口保留一半</td></tr>
+        <tr><td>财通科技创新</td><td>000984</td><td>6.85万</td><td><span class="tag tag-half">减半→3.5万</span></td><td>累计-19.4%</td></tr>
+        <tr><td>华夏上证科创</td><td>024418</td><td>6.70万</td><td><span class="tag tag-half">减半→3.5万</span></td><td>累计-18.8%</td></tr>
+        <tr><td>易方达供给改革</td><td>002910</td><td>9.61万</td><td><span class="tag tag-hold">保留</span></td><td>定位独特（供给改革+转型）</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;color:#475569;">P3 · 灵活 / 混合清理（释放约 31万）</h3>
+    <table>
+      <thead><tr><th>基金</th><th>代码</th><th>当前</th><th>操作</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>国联安优选行业</td><td>257070</td><td>14.69万</td><td><span class="tag tag-half">减半→7万</span></td><td>累计-24.6%，定位与科技重叠</td></tr>
+        <tr><td>东方惠新灵活</td><td>002163</td><td>16.51万</td><td><span class="tag tag-half">减半→8万</span></td><td>累计-20.7%，金额过大</td></tr>
+        <tr><td>方正富邦核心</td><td>018816</td><td>3.00万</td><td><span class="tag tag-sell">清仓</span></td><td>累计-22.1%，金额小无意义</td></tr>
+        <tr><td>华宝致远混合（腾讯）</td><td>008253</td><td>5.00万</td><td><span class="tag tag-sell">清仓</span></td><td>灵活定位，与京东重复</td></tr>
+        <tr><td>华宝致远混合（京东）</td><td>008254</td><td>4.13万</td><td><span class="tag tag-sell">清仓</span></td><td>同上，合并到一端</td></tr>
+        <tr><td>银华中小盘</td><td>180031</td><td>2.78万</td><td><span class="tag tag-sell">清仓</span></td><td>累计-14.4%，金额过小</td></tr>
+        <tr><td>中信建投品质</td><td>014016</td><td>22.23万</td><td><span class="tag tag-half">加仓→26万</span></td><td>作为稳健核心底仓</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;color:#475569;">P4 · 加仓防御层（约 64万）</h3>
+    <table>
+      <thead><tr><th>去向</th><th>金额</th><th>工具建议</th></tr></thead>
+      <tbody>
+        <tr><td>🛡️ 红利低波</td><td class="blue big-num">+37.5万</td><td>红利低波100ETF（512890）/ 中证红利ETF（510880）或原天弘联接继续定投</td></tr>
+        <tr><td>⚖️ 纯债 / 短债</td><td class="blue big-num">+26万</td><td>易方达中短期债C / 广发纯债C / 南方中短债C</td></tr>
+        <tr><td>⚖️ 稳健混合（中信建投品质）</td><td class="blue big-num">+3.8万</td><td>维持作为稳健底仓</td></tr>
+        <tr><td>🌏 纳指核心（华宝纳指加仓）</td><td class="blue big-num">+4.4万</td><td>纳指核心由 7.62→12万</td></tr>
+      </tbody>
+    </table>
+    <div class="note">减仓回笼约 78万，加仓防御层约 64万，剩余约 14万可补充现金（总现金升至 ~78万，约 30%）。调仓不宜一次完成，建议分 3-4 批、每批间隔 1-2 周，避开单日大幅波动。</div>
+  </div>
+
+  <!-- 调仓前后对比 -->
+  <div class="section">
+    <h2>六、调仓前后风险对比</h2>
+    <div class="pos-summary">
+      <div>
+        <h3 style="font-size:15px;margin-bottom:10px;color:#dc2626;">调仓前</h3>
+        <ul>
+          <li>股票基金仓位：<b>74.8%</b>（191.41万）</li>
+          <li>其中科技 / AI 类：<b>62%</b>（119万）</li>
+          <li>防御层（红利+纯债+稳健）：<b>37.9%</b></li>
+          <li>现金：<b>25.2%</b></li>
+          <li>估算最大回撤：<span class="red">-15% ~ -16%</span>（科技 -30% 情景）</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-size:15px;margin-bottom:10px;color:#16a34a;">调仓后</h3>
+        <ul>
+          <li>股票基金仓位：<b>~45%</b>（约 115万，含海外+国内科技+灵活）</li>
+          <li>其中科技 / AI 类：<b>30%</b>（约 76万）</li>
+          <li>防御层（红利+纯债+稳健）：<b>60%</b></li>
+          <li>现金：<b>~30%</b></li>
+          <li>估算最大回撤：<span class="green">-8% ~ -9%</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 免责声明 -->
+  <div class="section">
+    <div class="disclaimer">
+      <b>免责声明</b>：以上内容基于用户提供的截图持仓与现金余额，行业穿透为基于基金名称与定位的推断（非各基金最新前十大持仓实测），仅供结构诊断与仓位管理参考，不构成投资建议。市场有风险，投资需谨慎。任何投资决策应结合个人风险承受能力、资金状况和投资目标独立判断，必要时咨询持牌专业机构。过往表现不预示未来收益。
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const currentData = [
+    { name: '海外科技/AI', value: 63.59 },
+    { name: '国内科技/AI/半导体', value: 55.63 },
+    { name: '灵活/混合', value: 46.11 },
+    { name: '稳健/品质', value: 22.23 },
+    { name: '海外多元化', value: 3.34 },
+    { name: '红利低波', value: 0.50 }
+  ];
+  const targetData = [
+    { name: '现金', value: 64 },
+    { name: '红利低波', value: 38 },
+    { name: '纯债/短债', value: 26 },
+    { name: '稳健混合', value: 26 },
+    { name: '海外成熟(纳指)', value: 20 },
+    { name: '海外科技/AI', value: 18 },
+    { name: '国内科技/AI', value: 38 },
+    { name: '灵活/混合', value: 26 }
+  ];
+
+  const colorSet = ['#2563eb','#dc2626','#f97316','#16a34a','#0891b2','#9333ea','#ca8a04','#64748b'];
+
+  function renderPie(id, data, title) {
+    const chart = echarts.init(document.getElementById(id));
+    chart.setOption({
+      title: { text: title, left: 'center', textStyle: { fontSize: 14, color: '#1a202c' } },
+      tooltip: { trigger: 'item', formatter: '{b}: {c}万 ({d}%)' },
+      legend: { type: 'scroll', bottom: 0, textStyle: { fontSize: 11 } },
+      series: [{
+        type: 'pie',
+        radius: ['38%', '66%'],
+        center: ['50%', '48%'],
+        itemStyle: { borderColor: '#fff', borderWidth: 2 },
+        label: { formatter: '{b}\n{d}%', fontSize: 11 },
+        data: data.map((d, i) => ({ ...d, itemStyle: { color: colorSet[i % colorSet.length] } }))
+      }]
+    });
+    window.addEventListener('resize', () => chart.resize());
+  }
+
+  renderPie('pieCurrent', currentData, '当前行业暴露（持仓 191万）');
+  renderPie('pieTarget', targetData, '建议目标结构（总资产 256万）');
+</script>
+</body>
+</html>
