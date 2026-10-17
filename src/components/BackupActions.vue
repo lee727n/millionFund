@@ -20,6 +20,8 @@ import {
   saveStarredFunds,
   getWatchlist,
   saveWatchlist,
+  getPanoramaAccountCash,
+  savePanoramaAccountCash,
 } from '@/utils/storage'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { clearFundCache } from '@/api/fundFast'
@@ -152,6 +154,10 @@ function buildBackupPayload(withNetValues: boolean) {
     //       否则「已删持仓但仍星标」的基金跨设备恢复后会变空白（只备份了代码，快照没跟着走）
     starredFunds: getAllStarredFundMeta(),
     watchlist: getWatchlist(),
+    // [WHAT] 各账户现金余额（支付宝/腾讯/京东/其他）：驱动首页/全景「持仓市值占比进度条」
+    // [WHY] 不备份的话，恢复后现金为 0、占比进度条全部归零，看不到真实的全局资金视图
+    // [NOTE] 老备份无此字段，恢复时会跳过（不写空），不会清掉当前手机上已有的现金数
+    panoramaAccountCash: getPanoramaAccountCash(),
   }
 
   if (withNetValues) {
@@ -209,7 +215,17 @@ function applyBackupData(jsonData: any): boolean {
     saveWatchlist(jsonData.watchlist.filter((c: unknown) => typeof c === 'string'))
   }
 
+  // [WHY] 老版本备份文件里没有这个字段，此时必须「跳过」而不是写空对象——
+  //       否则恢复一次旧备份，当前手机上已经填好的各账户现金余额会被无声清空，
+  //       连带首页/全景的「持仓市值占比进度条」一起归零。
+  if (jsonData.panoramaAccountCash && typeof jsonData.panoramaAccountCash === 'object') {
+    savePanoramaAccountCash(jsonData.panoramaAccountCash)
+  }
+
   emit('restored')
+  // [WHY] 通知所有已缓存页面（手机首页等 keep-alive 组件）重新读取现金余额——
+  //       否则在「持仓」页恢复后切回首页，首页仍显示旧现金、占比进度条不刷新
+  window.dispatchEvent(new Event('backup-restored'))
   return true
 }
 

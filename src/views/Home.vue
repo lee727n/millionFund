@@ -16,7 +16,7 @@ import { useAITrackingStore } from '@/stores/aiTracking'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex, fetchTopHoldings, type HoldingStock, fetchIntradayData, type IntradayPoint, fetchFundAccurateData, fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
-import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund } from '@/utils/storage'
+import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund, getPanoramaAccountCash } from '@/utils/storage'
 import { createTrade } from '@/composables/useFundTrade'
 import type { TradeType } from '@/types/fund'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
@@ -25,6 +25,10 @@ import FundCard from '@/components/FundCard.vue'
 import FundGridItem from '@/components/FundGridItem.vue'
 import riseW from '@/assets/riseW.jpg'
 import downW from '@/assets/downW.jpg'
+import aliIcon from '@/assets/ali.jpg'
+import txIcon from '@/assets/TX.jpg'
+import jdIcon from '@/assets/JD.jpg'
+import eyeIcon from '@/assets/eye.png'
 
 const router = useRouter()
 const fundStore = useFundStore()
@@ -1245,6 +1249,98 @@ const jdUpdateStatus = computed(() => {
   return { text: '已更新', class: 'updated' }
 })
 
+// [WHAT] 手机版首页：按 3 个账户（支付宝/腾讯/京东）从上到下分块展示，参考全景大屏持仓布局
+// [WHY] 用户希望首页持仓区直接照全景的账户分块来排；原有的 3 个账户过滤按钮不再需要。
+const mobileAccountCash = ref<Record<string, number>>(getPanoramaAccountCash())
+
+const MOBILE_ACCOUNT_ORDER = ['ali', 'TX', 'JD'] as const
+const mobileAccountMeta: Record<string, { label: string; icon: string }> = {
+  ali: { label: '支付宝', icon: aliIcon },
+  TX: { label: '腾讯', icon: txIcon },
+  JD: { label: '京东', icon: jdIcon }
+}
+
+// [WHAT] 按账户归集基金，并强制降序展示（升序/降序按钮已隐藏，默认即降序）
+function buildMobileAccountFunds(source: string) {
+  const funds = holdingStore.holdings.filter(f => f.source === source)
+  const totalValue = funds.reduce((t, f) => t + (f.currentValue || 0) * (f.shares || 0), 0)
+  return [...funds].sort((a, b) => {
+    const ca = parseFloat(a.todayChange || '0')
+    const cb = parseFloat(b.todayChange || '0')
+    return cb - ca
+  }).map(f => {
+    const marketValue = (f.currentValue || 0) * (f.shares || 0)
+    return {
+      ...f,
+      marketValue,
+      ratio: totalValue > 0 ? (marketValue / totalValue) * 100 : 0
+    }
+  })
+}
+
+function calcMobileAccountStats(funds: any[]) {
+  const marketValue = funds.reduce((t, f) => t + (f.marketValue || (f.currentValue || 0) * (f.shares || 0)), 0)
+  const todayProfit = funds.reduce((t, f) => t + (typeof f.todayProfit === 'number' ? f.todayProfit : parseFloat(f.todayProfit || '0')), 0)
+  const prevValue = marketValue - todayProfit
+  const profitPercent = prevValue > 0 ? (todayProfit / prevValue) * 100 : 0
+  return { marketValue, todayProfit, profitPercent, count: funds.length }
+}
+
+// [WHAT] 基金「更新进度」：每天展示更新了多少只基金（与全景大屏 updateProgress 同口径）
+//        isUpdated = 该基金今天该拿到的那期净值是否已出；交易中显示呼吸绿点；
+//        仅「更新中」(0<已更新<总数) 显示进度条，已更新/未更新只显示文字
+function calcUpdateProgress(funds: any[]) {
+  const total = funds.length
+  if (total === 0) return { updated: 0, total: 0, text: '无数据', cls: 'closed', percent: 0, bar: false }
+  const updated = funds.filter(f => f.isUpdated).length
+  const inTrading = tradingSession.value === 'morning' || tradingSession.value === 'afternoon'
+  if (inTrading) return { updated, total, text: '交易中', cls: 'updating', percent: (updated / total) * 100, bar: false }
+  if (updated === 0) return { updated, total, text: '未更新', cls: 'not-updated', percent: 0, bar: false }
+  if (updated < total) return { updated, total, text: `更新中 ${updated}/${total}`, cls: 'updating', percent: (updated / total) * 100, bar: true }
+  return { updated, total, text: `已更新 ${total}/${total}`, cls: 'updated', percent: 100, bar: false }
+}
+
+// [WHAT] 全局更新进度：所有持仓（含量化观察）今天更新了多少只
+const globalUpdateProgress = computed(() => calcUpdateProgress(holdingStore.holdings))
+
+// [WHAT] 每个账户区块：基金列表 + 统计 + 现金 + 持仓市值占比（轨道=总仓位，填充=持仓市值）
+const mobileAccountSections = computed(() =>
+  MOBILE_ACCOUNT_ORDER.map(key => {
+    const funds = buildMobileAccountFunds(key)
+    if (funds.length === 0) return null
+    const stats = calcMobileAccountStats(funds)
+    const cash = mobileAccountCash.value[key] || 0
+    const totalPosition = cash + stats.marketValue
+    const posPct = totalPosition > 0 ? Math.min(100, (stats.marketValue / totalPosition) * 100) : 0
+    return {
+      key,
+      label: mobileAccountMeta[key].label,
+      icon: mobileAccountMeta[key].icon,
+      funds,
+      stats,
+      cash,
+      totalPosition,
+      posPct
+    }
+  }).filter(Boolean) as any[]
+)
+
+// [WHAT] 量化观察单独成块（无现金/占比/更新进度）
+const mobileObserveSection = computed(() => {
+  const funds = observeHoldings.value
+  if (funds.length === 0) return null
+  const stats = calcMobileAccountStats(funds)
+  return { label: '量化观察', icon: eyeIcon, funds, stats }
+})
+
+function fmtMoney(v: number) {
+  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(2) + '万'
+  return Math.round(v).toString()
+}
+function fmtPctValue(v: number) {
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+}
+
 // [WHAT] 排序持仓基金（兼容旧代码）
 const sortedHoldings = computed(() => {
   return [...normalHoldings.value, ...observeHoldings.value]
@@ -1304,12 +1400,22 @@ function refreshStarredCount() {
 function onStarredFundsChanged() {
   refreshStarredCount()
 }
+// [WHAT] 恢复备份（本地/云）后，各账户现金余额已写回 localStorage，这里重新读取，
+//        保证首页「持仓市值占比进度条」用的现金数是最新的（首页是 keep-alive，不会重挂载）
+function refreshMobileAccountCash() {
+  mobileAccountCash.value = getPanoramaAccountCash()
+}
+function onBackupRestored() {
+  refreshMobileAccountCash()
+}
 onMounted(() => {
   refreshStarredCount()
   window.addEventListener('starred-funds-changed', onStarredFundsChanged)
+  window.addEventListener('backup-restored', onBackupRestored)
 })
 onUnmounted(() => {
   window.removeEventListener('starred-funds-changed', onStarredFundsChanged)
+  window.removeEventListener('backup-restored', onBackupRestored)
 })
 
 // [WHAT] 手机版 vConsole 调试开关：默认关闭，需要看日志时再点开
@@ -1363,6 +1469,9 @@ onMounted(async () => {
 })
 
 onActivated(() => {
+  // [WHY] 首页被 keep-alive 缓存，从「持仓」页恢复备份后切回来时不会重挂载，
+  //       这里主动重新读取各账户现金余额，确保占比进度条用的是恢复后的最新值
+  refreshMobileAccountCash()
   if (autoRefreshEnabled.value) {
     autoRefreshInterval = window.setInterval(refreshData, 60000)
   }
@@ -1610,240 +1719,112 @@ function handleNameClick(code: string, name: string) {
     >
 
       
-      <!-- 持仓趋势 -->
+      <!-- 持仓趋势（手机版：参考全景大屏，按账户从上到下分块；持仓趋势四字/调试/排序/简全已隐藏） -->
       <div class="market-overview" v-if="holdingStore.holdings.length > 0">
-        <div class="overview-title">
-          <div class="title-left">
-            <span class="live-dot" :class="tradingStatus.class"></span>
-            <span>持仓趋势</span>
-            <div class="mobile-profit-summary mobile-only">
-              <span :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
-              </span>
-              <span :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
-                {{ isWeekend ? '' : '盈亏' + Math.round(totalTodayProfit) }}
-              </span>
-            </div>
-            <!-- [WHAT] 手机版星标K线入口：紧跟盈亏，点进 /m/star-kline -->
-            <span
-              class="mobile-star-entry mobile-only"
-              :class="{ 'is-empty': starredCount === 0 }"
-              role="button"
-              aria-label="星标K线"
-              @click="openMobileStarKline"
-            >
-              <svg class="mobile-star-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
-              </svg>
-              <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
-            </span>
-            <!-- [WHAT] 手机版 vConsole 调试开关：紧跟星标，默认关，占位和星星差不多小；右侧加「调试」两字说明用途 -->
-            <span
-              class="vconsole-toggle mobile-only"
-              :class="{ on: vConsoleEnabled }"
-              role="switch"
-              :aria-checked="vConsoleEnabled"
-              @click="toggleVConsole"
-            >
-              <span class="vconsole-switch"><span class="vconsole-knob"></span></span>
-              <span class="vconsole-label">调试</span>
-            </span>
-            <!-- 网页端：按钮在第一行 -->
-            <div class="sort-buttons web-only">
-              <img 
-                :src="riseW" 
-                class="sort-web-icon"
-                :class="{ active: sortDirection === 'up' }"
-                @click="handleSort('up')"
-                alt="升序" 
-              />
-              <img 
-                :src="downW" 
-                class="sort-web-icon"
-                :class="{ active: sortDirection === 'down' }"
-                @click="handleSort('down')"
-                alt="降序" 
-              />
-            </div>
-            <div class="source-buttons web-only">
-              <div class="ui-mode-toggle">
-                <span 
-                  class="ui-mode-btn" 
-                  :class="{ active: uiMode === 'simple' }"
-                  @click="uiMode = 'simple'"
-                >简</span>
-                <span 
-                  class="ui-mode-btn" 
-                  :class="{ active: uiMode === 'full' }"
-                  @click="uiMode = 'full'"
-                >全</span>
-              </div>
-              <van-button 
-                size="small" 
-                class="source-button"
-                :class="{ active: currentSourceFilter === 'ali' }"
-                @click="filterBySource('ali')"
-              >
-                <img src="@/assets/ali.jpg" class="source-icon" alt="支付宝" />
-              </van-button>
-              <van-button 
-                size="small" 
-                class="source-button"
-                :class="{ active: currentSourceFilter === 'TX' }"
-                @click="filterBySource('TX')"
-              >
-                <img src="@/assets/TX.jpg" class="source-icon" alt="腾讯" />
-              </van-button>
-              <van-button 
-                size="small" 
-                class="source-button"
-                :class="{ active: currentSourceFilter === 'JD' }"
-                @click="filterBySource('JD')"
-              >
-                <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
-              </van-button>
-              <span v-if="jdUpdateStatus" class="jd-update-status" :class="jdUpdateStatus.class">
-                {{ jdUpdateStatus.text }}
-              </span>
-              <van-button 
-                size="small" 
-                class="source-button portfolio-btn"
-                @click="openPortfolio"
-              >
-                <span class="panorama-text">全景面板</span>
-              </van-button>
-              <van-button 
-                size="small" 
-                class="source-button portfolio-btn"
-                @click="openStarKline"
-              >
-                <span class="panorama-text">★星标K线</span>
-              </van-button>
-            </div>
+        <!-- 持仓趋势模块头部：左=全局单行(绿点+盈亏+更新进度+星标)，右=交易状态(已收盘/时间，原有逻辑不变) -->
+        <div class="m-holding-header">
+          <div class="m-holding-bar">
+          <span class="live-dot" :class="tradingStatus.class"></span>
+          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
+            {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
+          </span>
+          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
+            {{ isWeekend ? '' : '盈亏' + (totalTodayProfit >= 0 ? '+' : '') + Math.round(totalTodayProfit) }}
+          </span>
+          <span
+            class="mobile-star-entry"
+            :class="{ 'is-empty': starredCount === 0 }"
+            role="button"
+            aria-label="星标K线"
+            @click="openMobileStarKline"
+          >
+            <svg class="mobile-star-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
+            </svg>
+            <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
+          </span>
+          <!-- 基金更新进度条：今天更新了多少只（仅「更新中」状态显示进度条，已更新/未更新只显示文字） -->
+          <span class="m-update-progress" :class="[globalUpdateProgress.cls, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
+            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
+              <span class="m-up-live-dot"></span>
+            </template>
+            <template v-else-if="globalUpdateProgress.bar">
+              <span class="m-update-bar"><span class="m-update-fill" :style="{ width: globalUpdateProgress.percent + '%' }"></span></span>
+            </template>
+            <span class="m-update-text">{{ globalUpdateProgress.text }}</span>
+          </span>
           </div>
-          <div class="holding-stats">
-            <div class="profit-section">
-              <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                <span class="profit-label">利润率</span>
-                <span class="profit-percent" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-                  {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
-                </span>
-              </div>
-              <div class="profit-divider"></div>
-              <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
-                <span class="profit-label">今日盈亏</span>
-                <span class="profit-value">{{ isWeekend ? '休市' : ((totalTodayProfit >= 0 ? '+' : '') + totalTodayProfit.toFixed(2) + '元') }}</span>
-              </div>
-            </div>
-            <div class="trading-status" :class="tradingStatus.class">
-              <span class="status-text">{{ tradingStatus.text }}</span>
-              <span class="status-time">{{ tradingStatus.subText }}</span>
-            </div>
+
+          <!-- 交易状态：时间(左) + 已收盘(右)，单行展示，节省上下空间 -->
+          <div class="trading-status m-status-inline" :class="tradingStatus.class">
+            <span class="status-time">{{ tradingStatus.subText }}</span>
+            <span class="status-text">{{ tradingStatus.text }}</span>
           </div>
         </div>
-        <!-- 移动端：第二行按钮 -->
-        <div class="overview-buttons mobile-only">
-          <div class="sort-buttons">
-            <div 
-              class="sort-icon-button sort-up"
-              :class="{ active: sortDirection === 'up' }"
-              @click="handleSort('up')"
-            >
-              <img 
-                :src="riseW" 
-                class="sort-icon" 
-                alt="升序" 
+
+        <!-- 3 个账户分块：支付宝 / 腾讯 / 京东 -->
+        <template v-for="acc in mobileAccountSections" :key="acc.key">
+          <div class="m-account-block">
+            <div class="m-account-header">
+              <img :src="acc.icon" class="m-account-icon" />
+              <span class="m-account-name">{{ acc.label }}</span>
+              <span class="m-account-count">{{ acc.stats.count }} 只</span>
+              <span class="m-account-cash">
+                <span class="m-cash-icon">💰</span>{{ fmtMoney(acc.cash) }}
+              </span>
+              <!-- 持仓市值占比进度条：轨道=总仓位(现金+市值)，填充=持仓市值 -->
+              <div
+                v-if="acc.totalPosition > 0"
+                class="m-account-position"
+                :title="`持仓占比 ${fmtPctValue(acc.posPct)} · 市值 ${fmtMoney(acc.stats.marketValue)} / 总仓位 ${fmtMoney(acc.totalPosition)}（含现金 ${fmtMoney(acc.cash)}）`"
+              >
+                <div class="m-pos-track">
+                  <div class="m-pos-fill" :style="{ width: acc.posPct + '%' }"></div>
+                </div>
+                <span class="m-pos-label">{{ fmtPctValue(acc.posPct) }}</span>
+              </div>
+              <span v-else class="m-account-position-empty">—</span>
+              <div class="m-account-spacer"></div>
+              <span class="m-account-mv">{{ fmtMoney(acc.stats.marketValue) }}</span>
+            </div>
+            <div class="index-grid">
+              <FundGridItem
+                v-for="fund in acc.funds"
+                :key="fund.code"
+                :fund="fund"
+                :ui-mode="uiMode"
+                :trading-session="tradingSession"
+                @click="router.push(`/detail/${fund.code}`)"
+                @open-top-holdings="openTopHoldings(fund, $event)"
+                @open-intraday-modal="openIntradayModal(fund, $event)"
+                @longpress="handleFundLongpress"
               />
             </div>
-            <div 
-              class="sort-icon-button sort-down"
-              :class="{ active: sortDirection === 'down' }"
-              @click="handleSort('down')"
-            >
-              <img 
-                :src="downW" 
-                class="sort-icon" 
-                alt="降序" 
-              />
-            </div>
           </div>
-          <div class="source-buttons">
-            <div class="ui-mode-toggle">
-              <span 
-                class="ui-mode-btn" 
-                :class="{ active: uiMode === 'simple' }"
-                @click="uiMode = 'simple'"
-              >简</span>
-              <span 
-                class="ui-mode-btn" 
-                :class="{ active: uiMode === 'full' }"
-                @click="uiMode = 'full'"
-              >全</span>
-            </div>
-            <van-button 
-              size="small" 
-              class="source-button"
-              :class="{ active: currentSourceFilter === 'ali' }"
-              @click="filterBySource('ali')"
-            >
-              <img src="@/assets/ali.jpg" class="source-icon" alt="支付宝" />
-            </van-button>
-            <van-button 
-              size="small" 
-              class="source-button"
-              :class="{ active: currentSourceFilter === 'TX' }"
-              @click="filterBySource('TX')"
-            >
-              <img src="@/assets/TX.jpg" class="source-icon" alt="腾讯" />
-            </van-button>
-            <van-button 
-              size="small" 
-              class="source-button"
-              :class="{ active: currentSourceFilter === 'JD' }"
-              @click="filterBySource('JD')"
-            >
-              <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
-            </van-button>
-            <span v-if="jdUpdateStatus" class="jd-update-status" :class="jdUpdateStatus.class">
-              {{ jdUpdateStatus.text }}
-            </span>
+        </template>
+
+        <!-- 量化观察 -->
+        <div class="m-account-block" v-if="mobileObserveSection">
+          <div class="m-account-header">
+            <img v-if="mobileObserveSection.icon" :src="mobileObserveSection.icon" class="m-account-icon" />
+            <span class="m-account-name">{{ mobileObserveSection.label }}</span>
+            <span class="m-account-count">{{ mobileObserveSection.stats.count }} 只</span>
+            <div class="m-account-spacer"></div>
+            <span class="m-account-mv">{{ fmtMoney(mobileObserveSection.stats.marketValue) }}</span>
           </div>
-        </div>
-        <div class="index-grid">
-          <FundGridItem
-            v-for="fund in normalHoldings"
-            :key="fund.code"
-            :fund="fund"
-            :ui-mode="uiMode"
-            :trading-session="tradingSession"
-            @click="router.push(`/detail/${fund.code}`)"
-            @open-top-holdings="openTopHoldings(fund, $event)"
-            @open-intraday-modal="openIntradayModal(fund, $event)"
-            @longpress="handleFundLongpress"
-          />
-          <div v-if="observeHoldings.length > 0" class="observe-divider">
-            <div class="observe-divider-line"></div>
-            <span class="observe-divider-text">量化观察</span>
-            <span 
-              class="observe-profit-badge" 
-              :class="isWeekend ? 'closed' : (observeTodayProfitPercent >= 0 ? 'up' : 'down')"
-              v-if="observeHoldings.length > 0"
-            >
-              {{ isWeekend ? '休市' : ((observeTodayProfitPercent >= 0 ? '+' : '') + observeTodayProfitPercent.toFixed(2) + '%') }}
-            </span>
-            <div class="observe-divider-line"></div>
+          <div class="index-grid">
+            <FundGridItem
+              v-for="fund in mobileObserveSection.funds"
+              :key="fund.code"
+              :fund="fund"
+              :ui-mode="uiMode"
+              :trading-session="tradingSession"
+              @click="router.push(`/detail/${fund.code}`)"
+              @open-top-holdings="openTopHoldings(fund, $event)"
+              @open-intraday-modal="openIntradayModal(fund, $event)"
+              @longpress="handleFundLongpress"
+            />
           </div>
-          <FundGridItem
-            v-for="fund in observeHoldings"
-            :key="fund.code"
-            :fund="fund"
-            :ui-mode="uiMode"
-            :trading-session="tradingSession"
-            @click="router.push(`/detail/${fund.code}`)"
-            @open-top-holdings="openTopHoldings(fund, $event)"
-            @open-intraday-modal="openIntradayModal(fund, $event)"
-            @longpress="handleFundLongpress"
-          />
         </div>
       </div>
             <!-- 大盘指数概览 - 交易终端风格 -->
@@ -2687,6 +2668,203 @@ function handleNameClick(code: string, name: string) {
   color: #999;
 }
 
+/* [WHAT] 手机版首页持仓新布局：全局单行 + 账户分块（参考全景大屏） */
+.m-holding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.m-holding-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.m-holding-bar .live-dot {
+  flex-shrink: 0;
+}
+.m-bar-profit {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.m-bar-profit.up { color: var(--color-up); }
+.m-bar-profit.down { color: var(--color-down); }
+.m-bar-profit.closed { color: #999; }
+/* 更新进度条推到最右侧（与星标互换位置后） */
+.m-holding-bar .m-update-progress {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.m-account-block {
+  margin-bottom: 14px;
+}
+.m-account-block:last-child {
+  margin-bottom: 0;
+}
+
+.m-account-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.m-account-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.m-account-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.m-account-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.m-account-cash {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--primary-color, #6366f1);
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.m-cash-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+/* [WHAT] 账户持仓市值占比进度条（现金图标右侧）：轨道=总仓位(现金+市值)，填充=持仓市值，空白=闲置现金 */
+.m-account-position {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.m-pos-track {
+  position: relative;
+  width: 64px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.10));
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10);
+  flex-shrink: 0;
+}
+.m-pos-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary-color, #6366f1) 0%, #8b5cf6 100%);
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.45);
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.m-pos-label {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--primary-color, #6366f1);
+  min-width: 34px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.m-account-position-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* [WHAT] 基金更新进度条（与全景大屏 update-progress 同视觉）：交易中呼吸绿点，仅「更新中」显示进度条 */
+.m-update-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.m-update-progress.not-updated { color: var(--text-secondary); background: rgba(158, 158, 158, 0.1); }
+.m-update-progress.not-updated .m-update-fill { background: var(--text-muted); }
+.m-update-progress.updating { color: #4caf50; background: rgba(76, 175, 80, 0.1); }
+.m-update-progress.updating .m-update-fill { background: #4caf50; }
+.m-update-progress.updated { color: #4caf50; background: rgba(76, 175, 80, 0.1); }
+.m-update-progress.updated .m-update-fill { background: #4caf50; }
+.m-update-progress.closed { color: var(--text-secondary); background: rgba(158, 158, 158, 0.1); }
+.m-update-progress.closed .m-update-fill { background: var(--text-muted); }
+.m-update-progress.in-trading {
+  padding: 2px 8px;
+  background: rgba(76, 175, 80, 0.12);
+  color: #4caf50;
+  border-radius: 12px;
+}
+.m-up-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4caf50;
+  box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+  animation: m-breath-dot 1.8s ease-in-out infinite;
+}
+@keyframes m-breath-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.6); opacity: 1; }
+  50% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); opacity: 0.7; }
+}
+.m-update-bar {
+  width: 36px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.m-update-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s;
+}
+.m-update-text {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+.m-account-spacer {
+  flex: 1;
+  min-width: 6px;
+}
+.m-account-mv {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
 /* [WHAT] 手机版星标K线入口：跟在盈亏后面，44px 触控区，不挤占布局
    [WHY] 触屏点击目标太小容易点空，用负 margin 把视觉尺寸和点击区分离 */
 .mobile-star-entry {
@@ -3081,6 +3259,13 @@ function handleNameClick(code: string, name: string) {
   font-size: 10px;
   color: var(--text-muted);
   font-family: var(--font-number);
+}
+
+/* [WHAT] 持仓趋势头部右上角：时间 + 已收盘 横排单行，节省上下空间（与下方竖排的 .trading-status 区分） */
+.trading-status.m-status-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 .holding-stats {
