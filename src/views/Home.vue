@@ -1204,23 +1204,24 @@ const normalHoldings = computed(() => {
 // [WHAT] 观察账户基金，始终显示，不受来源筛选影响
 const observeHoldings = computed(() => {
   const funds = holdingStore.holdings.filter(fund => fund.source === 'observe')
-  
+
   // 计算总市值（用于占比计算）
   const totalValue = funds.reduce((total, fund) => {
     const currentValue = fund.currentValue || 0
     const shares = fund.shares || 0
     return total + (currentValue * shares)
   }, 0)
-  
-  // 为每个基金添加占比
+
+  // 为每个基金添加占比（marketValue 一并带上：手机首页金额模式 badge 用）
   return sortFunds(funds).map(fund => {
     const currentValue = fund.currentValue || 0
     const shares = fund.shares || 0
     const marketValue = currentValue * shares
     const ratio = totalValue > 0 ? (marketValue / totalValue) * 100 : 0
-    
+
     return {
       ...fund,
+      marketValue,
       ratio: ratio
     }
   })
@@ -1719,8 +1720,147 @@ function handleNameClick(code: string, name: string) {
     >
 
       
-      <!-- 持仓趋势（手机版：参考全景大屏，按账户从上到下分块；持仓趋势四字/调试/排序/简全已隐藏） -->
+      <!-- 持仓趋势（桌面/移动双版本：桌面=改版前原版布局，移动=账户分块改版；见 .home-holdings-desktop/.home-holdings-mobile 切换） -->
       <div class="market-overview" v-if="holdingStore.holdings.length > 0">
+        <!-- ===== 桌面端：恢复改版前原版布局（排序/简全/账户筛选/全景面板/星标K线入口 + 利润率/今日盈亏/交易状态 + 原基金网格） ===== -->
+        <div class="home-holdings-desktop">
+          <div class="overview-title">
+            <div class="title-left">
+              <span class="live-dot" :class="tradingStatus.class"></span>
+              <span>持仓趋势</span>
+              <!-- 网页端：按钮在第一行 -->
+              <div class="sort-buttons web-only">
+                <img
+                  :src="riseW"
+                  class="sort-web-icon"
+                  :class="{ active: sortDirection === 'up' }"
+                  @click="handleSort('up')"
+                  alt="升序"
+                />
+                <img
+                  :src="downW"
+                  class="sort-web-icon"
+                  :class="{ active: sortDirection === 'down' }"
+                  @click="handleSort('down')"
+                  alt="降序"
+                />
+              </div>
+              <div class="source-buttons web-only">
+                <div class="ui-mode-toggle">
+                  <span
+                    class="ui-mode-btn"
+                    :class="{ active: uiMode === 'simple' }"
+                    @click="uiMode = 'simple'"
+                  >简</span>
+                  <span
+                    class="ui-mode-btn"
+                    :class="{ active: uiMode === 'full' }"
+                    @click="uiMode = 'full'"
+                  >全</span>
+                </div>
+                <van-button
+                  size="small"
+                  class="source-button"
+                  :class="{ active: currentSourceFilter === 'ali' }"
+                  @click="filterBySource('ali')"
+                >
+                  <img src="@/assets/ali.jpg" class="source-icon" alt="支付宝" />
+                </van-button>
+                <van-button
+                  size="small"
+                  class="source-button"
+                  :class="{ active: currentSourceFilter === 'TX' }"
+                  @click="filterBySource('TX')"
+                >
+                  <img src="@/assets/TX.jpg" class="source-icon" alt="腾讯" />
+                </van-button>
+                <van-button
+                  size="small"
+                  class="source-button"
+                  :class="{ active: currentSourceFilter === 'JD' }"
+                  @click="filterBySource('JD')"
+                >
+                  <img src="@/assets/JD.jpg" class="source-icon" alt="京东" />
+                </van-button>
+                <span v-if="jdUpdateStatus" class="jd-update-status" :class="jdUpdateStatus.class">
+                  {{ jdUpdateStatus.text }}
+                </span>
+                <van-button
+                  size="small"
+                  class="source-button portfolio-btn"
+                  @click="openPortfolio"
+                >
+                  <span class="panorama-text">全景面板</span>
+                </van-button>
+                <van-button
+                  size="small"
+                  class="source-button portfolio-btn"
+                  @click="openStarKline"
+                >
+                  <span class="panorama-text">★星标K线</span>
+                </van-button>
+              </div>
+            </div>
+            <div class="holding-stats">
+              <div class="profit-section">
+                <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
+                  <span class="profit-label">利润率</span>
+                  <span class="profit-percent" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
+                    {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
+                  </span>
+                </div>
+                <div class="profit-divider"></div>
+                <div class="profit-item" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
+                  <span class="profit-label">今日盈亏</span>
+                  <span class="profit-value">{{ isWeekend ? '休市' : ((totalTodayProfit >= 0 ? '+' : '') + totalTodayProfit.toFixed(2) + '元') }}</span>
+                </div>
+              </div>
+              <div class="trading-status" :class="tradingStatus.class">
+                <span class="status-text">{{ tradingStatus.text }}</span>
+                <span class="status-time">{{ tradingStatus.subText }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="index-grid">
+            <FundGridItem
+              v-for="fund in normalHoldings"
+              :key="fund.code"
+              :fund="fund"
+              :ui-mode="uiMode"
+              :trading-session="tradingSession"
+              @click="router.push(`/detail/${fund.code}`)"
+              @open-top-holdings="openTopHoldings(fund, $event)"
+              @open-intraday-modal="openIntradayModal(fund, $event)"
+              @longpress="handleFundLongpress"
+            />
+            <div v-if="observeHoldings.length > 0" class="observe-divider">
+              <div class="observe-divider-line"></div>
+              <span class="observe-divider-text">量化观察</span>
+              <span
+                class="observe-profit-badge"
+                :class="isWeekend ? 'closed' : (observeTodayProfitPercent >= 0 ? 'up' : 'down')"
+                v-if="observeHoldings.length > 0"
+              >
+                {{ isWeekend ? '休市' : ((observeTodayProfitPercent >= 0 ? '+' : '') + observeTodayProfitPercent.toFixed(2) + '%') }}
+              </span>
+              <div class="observe-divider-line"></div>
+            </div>
+            <FundGridItem
+              v-for="fund in observeHoldings"
+              :key="fund.code"
+              :fund="fund"
+              :ui-mode="uiMode"
+              :trading-session="tradingSession"
+              @click="router.push(`/detail/${fund.code}`)"
+              @open-top-holdings="openTopHoldings(fund, $event)"
+              @open-intraday-modal="openIntradayModal(fund, $event)"
+              @longpress="handleFundLongpress"
+            />
+          </div>
+        </div>
+
+        <!-- ===== 手机端：账户分块改版（m-holding-header + 按账户从上到下分块） ===== -->
+        <div class="home-holdings-mobile">
         <!-- 持仓趋势模块头部：左=全局单行(绿点+盈亏+更新进度+星标)，右=交易状态(已收盘/时间，原有逻辑不变) -->
         <div class="m-holding-header">
           <div class="m-holding-bar">
@@ -1794,6 +1934,8 @@ function handleNameClick(code: string, name: string) {
                 :fund="fund"
                 :ui-mode="uiMode"
                 :trading-session="tradingSession"
+                value-display="amount"
+                account-grouped
                 @click="router.push(`/detail/${fund.code}`)"
                 @open-top-holdings="openTopHoldings(fund, $event)"
                 @open-intraday-modal="openIntradayModal(fund, $event)"
@@ -1819,6 +1961,8 @@ function handleNameClick(code: string, name: string) {
               :fund="fund"
               :ui-mode="uiMode"
               :trading-session="tradingSession"
+              value-display="amount"
+              account-grouped
               @click="router.push(`/detail/${fund.code}`)"
               @open-top-holdings="openTopHoldings(fund, $event)"
               @open-intraday-modal="openIntradayModal(fund, $event)"
@@ -1826,6 +1970,7 @@ function handleNameClick(code: string, name: string) {
             />
           </div>
         </div>
+        </div><!-- /.home-holdings-mobile -->
       </div>
             <!-- 大盘指数概览 - 交易终端风格 -->
       <div class="market-overview" v-if="combinedIndices.length > 0">
@@ -2863,6 +3008,16 @@ function handleNameClick(code: string, name: string) {
   font-family: 'SF Mono', Consolas, monospace;
   color: var(--text-primary);
   flex-shrink: 0;
+}
+
+/* [WHAT] 持仓趋势桌面/移动双版本切换容器（.home-holdings-desktop / .home-holdings-mobile）
+   [WHY] 手机端改版后电脑端一度和手机端一模一样（丢了排序/简全/账户筛选/全景面板入口）。
+         外层不复用 .web-only：桌面端 .web-only.web-only 规则会把容器强制 display:flex 破坏块级布局 */
+@media (min-width: 768px) {
+  .home-holdings-mobile { display: none !important; }
+}
+@media (max-width: 767px) {
+  .home-holdings-desktop { display: none !important; }
 }
 
 /* [WHAT] 手机版星标K线入口：跟在盈亏后面，44px 触控区，不挤占布局

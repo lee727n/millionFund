@@ -25,6 +25,7 @@ import { getCalendarDateStr } from '@/utils/navDate'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import BackupActions from '@/components/BackupActions.vue'
 import FundName from '@/components/FundName.vue'
+import AccountReturnCurve from '@/components/AccountReturnCurve.vue'
 import { useTabbar } from '@/composables/useTabbar'
 
 const router = useRouter()
@@ -1489,6 +1490,8 @@ const aiLiveIsNavMap = computed(() => {
                   <span class="pos-label">{{ fmtPct(acc.posPct) }}</span>
                 </div>
                 <span v-else class="account-position-empty">—</span>
+                <!-- [WHAT] 当日收益曲线：画在持仓进度条和市值之间，小示意图 -->
+                <AccountReturnCurve :account-key="acc.key" />
                 <div class="account-spacer"></div>
                 <span class="account-stat">{{ fmtMoney(acc.stats.marketValue) }}</span>
                 <span

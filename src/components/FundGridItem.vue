@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import eyeIcon from '@/assets/eye.png'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
-const props = defineProps<{
+// [NOTE] valueDisplay 默认 'ratio'（保持原行为）：桌面端首页/持仓页不传即不变；
+//        手机首页传 'amount' 才把右上角 badge 从「占比%」切成「持仓金额（万，2位小数）」。
+//        占比背景色（浅→深）逻辑不删，两种模式下都按 fund.ratio 计算。
+// [NOTE] accountGrouped 默认 false：手机首页按账户分块展示后，卡片内第一行的账户图标冗余，
+//        传 true 隐藏第一行来源图标，并把 QD 标签挪到第二行 code 左侧；持仓页等不传=原样。
+const props = withDefaults(defineProps<{
   fund: any
   uiMode: 'simple' | 'full'
   tradingSession?: string
   displayMode?: 'home' | 'portfolio'
-}>()
+  valueDisplay?: 'ratio' | 'amount'
+  accountGrouped?: boolean
+}>(), {
+  valueDisplay: 'ratio',
+  accountGrouped: false
+})
 
 const emit = defineEmits<{
   click: []
@@ -144,6 +154,22 @@ function getRatioStyle(ratio: number) {
     color: '#fff' // 统一使用白色文字
   }
 }
+
+// [WHAT] 右上角 badge 文案：金额模式=持仓金额转「万」保留2位小数、带「万」字（154600 → 15.46万）；默认=占比%
+const badgeLabel = computed(() => {
+  if (props.valueDisplay === 'amount') {
+    const mv = Number(props.fund?.marketValue || 0)
+    return mv > 0 ? (mv / 10000).toFixed(2) + '万' : '--'
+  }
+  const ratio = Number(props.fund?.ratio || 0)
+  return ratio > 0 ? ratio.toFixed(1) + '%' : '--'
+})
+
+// [WHAT] badge 可见性：金额模式看 marketValue，占比模式看 ratio（口径与原 v-if 一致）
+const badgeVisible = computed(() => {
+  if (props.valueDisplay === 'amount') return Number(props.fund?.marketValue || 0) > 0
+  return !!props.fund?.ratio && props.fund.ratio > 0
+})
 </script>
 
 <template>
@@ -179,8 +205,8 @@ function getRatioStyle(ratio: number) {
             :class="getFundNameClass(fund, tradingSession)"
             @click.stop="emit('openTopHoldings', $event)"
           >{{ fund.name }}</div>
-          <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
-            {{ fund.ratio.toFixed(1) }}%
+          <div class="fund-ratio-badge" v-if="badgeVisible" :style="getRatioStyle(fund.ratio)">
+            {{ badgeLabel }}
           </div>
         </div>
       </div>
@@ -212,8 +238,8 @@ function getRatioStyle(ratio: number) {
             @click.stop="emit('openTopHoldings', $event)"
           >{{ fund.name }}</div>
           <span v-if="fund.fundScore" class="score-level score-inline" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
-          <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
-            {{ fund.ratio.toFixed(1) }}%
+          <div class="fund-ratio-badge" v-if="badgeVisible" :style="getRatioStyle(fund.ratio)">
+            {{ badgeLabel }}
           </div>
         </div>
       </div>
@@ -267,27 +293,30 @@ function getRatioStyle(ratio: number) {
     <div class="mobile-item-layout mobile-only">
       <div class="mobile-item-row mobile-item-row-1">
         <div class="fund-name-content">
-          <div class="fund-name-left">
+          <!-- [WHAT] accountGrouped（手机首页按账户分块）时隐藏来源图标，节省横向空间 -->
+          <div v-if="!accountGrouped" class="fund-name-left">
             <img v-if="fund.source === 'ali'" src="@/assets/ali.jpg" class="source-icon-small" alt="支付宝" />
             <img v-else-if="fund.source === 'TX'" src="@/assets/TX.jpg" class="source-icon-small" alt="腾讯" />
             <img v-else-if="fund.source === 'JD'" src="@/assets/JD.jpg" class="source-icon-small" alt="京东" />
             <img v-else-if="fund.source === 'observe'" :src="eyeIcon" class="source-icon-small" alt="观察" />
           </div>
-          <div class="fund-name-middle">
+          <div v-if="!accountGrouped" class="fund-name-middle">
             <span v-if="fund.isQDII" class="qdii-tag">QD</span>
           </div>
-          <div 
-          class="fund-name-right" 
+          <div
+          class="fund-name-right"
           :class="getFundNameClass(fund, tradingSession)"
           @click.stop="emit('openTopHoldings', $event)"
         >{{ fund.name }}</div>
-          <div class="fund-ratio-badge" v-if="fund.ratio && fund.ratio > 0" :style="getRatioStyle(fund.ratio)">
-            {{ fund.ratio.toFixed(1) }}%
+          <div class="fund-ratio-badge" v-if="badgeVisible" :style="getRatioStyle(fund.ratio)">
+            {{ badgeLabel }}
           </div>
         </div>
       </div>
       <div class="mobile-item-row mobile-item-row-2">
         <div class="fund-code-wrapper">
+          <!-- [WHAT] accountGrouped 时 QD 标签挪到第二行、紧贴 code 左侧 -->
+          <span v-if="accountGrouped && fund.isQDII" class="qdii-tag qdii-tag-row2">QD</span>
           <div class="fund-code">{{ fund.code }}</div>
           <span v-if="fund.fundScore" class="score-level" :class="'level-' + fund.fundScore.level">{{ fund.fundScore.level }}</span>
         </div>
@@ -696,6 +725,13 @@ function getRatioStyle(ratio: number) {
   line-height: 1;
   vertical-align: middle;
   margin-bottom: 0;
+}
+/* [WHAT] accountGrouped 时第二行的 QD 标签（紧贴 code 左侧，尺寸与第一行原样式一致） */
+.mobile-item-row-2 .qdii-tag-row2 {
+  font-size: 8px;
+  padding: 1px 3px;
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .mobile-item-row-3 { justify-content: center; min-height: 14px; padding: 0px 0; }

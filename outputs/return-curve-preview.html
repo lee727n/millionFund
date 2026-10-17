@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>账户收益曲线 · 示意图预览</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e6e8eb;
+    --text: #1f2430;
+    --muted: #8a93a3;
+    --up: #e54545;   /* 涨=红（中国配色） */
+    --down: #18a058; /* 跌=绿 */
+    --track: #eceef2;
+    --accent: #6366f1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.6; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px dashed var(--border);
+  }
+  .row:last-child { border-bottom: none; }
+  .name { font-size: 14px; font-weight: 600; width: 64px; flex-shrink: 0; }
+  .count { font-size: 11px; color: var(--muted); width: 34px; flex-shrink: 0; }
+  .pos { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .pos-track { width: 70px; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; position: relative; }
+  .pos-fill { position: absolute; left:0; top:0; bottom:0; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), #8b5cf6); }
+  .pos-label { font-size: 11px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 34px; }
+  .spacer { flex: 1; min-width: 8px; }
+  .mv { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .pnl { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; width: 84px; text-align: right; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.7; }
+  .note b { color: var(--text); }
+  .gap-tag { font-size: 10px; color: #b06; background: #fde7ef; padding: 1px 6px; border-radius: 4px; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+  <h1>每个账户的「当日收益曲线」</h1>
+  <p class="sub">放在 <b>持仓进度条</b> 与 <b>市值</b> 之间，小示意图，不占空间。<br>
+  红色=当日收益为正，绿色=为负（中国股市配色）。虚线为零基线。</p>
+
+  <div class="card" id="card"></div>
+
+  <p class="note">
+    <b>关于「没开系统那段时间的数据」：</b><br>
+    当前实现在 <b>系统开启并刷新</b> 时按分钟采样账户收益率，画进曲线。所以 11:00 才打开，
+    9:30–11:00 这段就是空白（上面京东那条就是「11:00 才开 → 曲线从中间开始」的示意）。<br>
+    想做到「不开系统也能拿到分钟级数据」，本质上需要一台 <b>一直在跑的采集服务</b>：
+    <br>① <b>后端定时采集（最准）</b>：云端函数/定时任务每个交易日 9:30–15:00 每分钟拉一次估值写进时序库，App 直接读——彻底覆盖未开机时段；
+    <br>② <b>指数反推（零后端·示意图足够）</b>：用基金对标指数（如沪深300）的分钟级历史行情，按基金当日真实涨跌缩放，重建出近似当日曲线，任何一天都能补，但是「指数形状」不是基金精确净值路径；
+    <br>③ 保持 App/设备常驻 + 自动刷新（最简单，但设备得一直开着）。
+  </p>
+
+<script>
+  // 模拟账户数据：t = 距零点分钟(9:30=570,15:00=900)，v = 当日收益率(%)
+  const W = 64, H = 20, PAD = 1.5, T_START = 570, T_END = 900
+  const accounts = [
+    { name: '支付宝', count: '6只', pos: 82, mv: '128,400', pnl: '+1,204', up: true,
+      samples: gen(570, 900, [0, .3, -.2, .6, .9, .4, 1.1, 1.4, .8, 1.2, 1.0]) },
+    { name: '腾讯', count: '3只', pos: 64, mv: '53,900', pnl: '-312', up: false,
+      samples: gen(570, 900, [0, -.4, -.1, -.6, -.3, -.8, -.5, -.9, -1.1, -.7, -.6]) },
+    { name: '京东', count: '4只', pos: 71, mv: '76,200', pnl: '+540', up: true, gap: true,
+      // 11:00(=660)才开 → 只从 660 开始采样
+      samples: gen(660, 900, [null, null, null, null, null, null, .2, .5, .9, .7, 1.1]) },
+  ]
+
+  // 把「每天一个点」的概要值插值成若干分钟采样，方便演示曲线形状
+  function gen(t0, t1, vals) {
+    const n = vals.length
+    const pts = []
+    for (let i = 0; i < n; i++) {
+      const v = vals[i]
+      if (v === null) continue
+      const t = Math.round(t0 + (t1 - t0) * i / (n - 1))
+      pts.push({ t, v })
+    }
+    return pts
+  }
+
+  function sparkline(pts, up) {
+    if (pts.length < 2) return '<span style="width:'+W+'px;height:'+H+'px;display:inline-block;background:#eee;opacity:.4;border-radius:2px"></span>'
+    const ts = pts.map(p => p.t)
+    const tLo = Math.min(...ts, T_START)
+    const tHi = Math.max(...ts, T_END)
+    const tSpan = tHi - tLo || 1
+    const vs = pts.map(p => p.v)
+    const vMin = Math.min(...vs, 0), vMax = Math.max(...vs, 0)
+    const vSpan = vMax - vMin || 1
+    const x = t => PAD + (t - tLo) / tSpan * (W - 2*PAD)
+    const y = v => PAD + (1 - (v - vMin) / vSpan) * (H - 2*PAD)
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' ')
+    const baseY = y(0)
+    const color = up ? 'var(--up)' : 'var(--down)'
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+      <line x1="1" y1="${baseY.toFixed(1)}" x2="${W-1}" y2="${baseY.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2 2"/>
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`
+  }
+
+  const card = document.getElementById('card')
+  card.innerHTML = accounts.map(a => `
+    <div class="row">
+      <span class="name">${a.name}</span>
+      <span class="count">${a.count}</span>
+      <span class="pos">
+        <span class="pos-track"><span class="pos-fill" style="width:${a.pos}%"></span></span>
+        <span class="pos-label">${a.pos}%</span>
+      </span>
+      ${sparkline(a.samples, a.up)}
+      <span class="spacer"></span>
+      <span class="mv">¥${a.mv}</span>
+      <span class="pnl" style="color:${a.up?'var(--up)':'var(--down)'}">${a.up?'+':'-'}${a.pnl.replace(/[+-]/,'')}</span>
+      ${a.gap ? '<span class="gap-tag">11:00才开·前段留白</span>' : ''}
+    </div>
+  `).join('')
+</script>
+</body>
+</html>

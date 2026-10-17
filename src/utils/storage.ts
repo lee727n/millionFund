@@ -17,6 +17,8 @@ export const STORAGE_KEYS = {
   PANORAMA_ACCOUNT_ORDER: 'panorama_account_order',
   PANORAMA_ACCOUNT_HEIGHTS: 'panorama_account_heights',
   PANORAMA_ACCOUNT_CASH: 'panorama_account_cash',
+  // [WHAT] 每个账户「当日收益曲线」分钟级采样序列（中性命名，不带 fund_/api_/market_/estimate_ 前缀，版本清理不会误删）
+  INTRADAY_RETURN_SERIES: 'intraday_return_series',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
   CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
@@ -54,7 +56,8 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.PANORAMA_COL_WIDTHS,
       STORAGE_KEYS.PANORAMA_ACCOUNT_ORDER,
       STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS,
-      STORAGE_KEYS.PANORAMA_ACCOUNT_CASH
+      STORAGE_KEYS.PANORAMA_ACCOUNT_CASH,
+      STORAGE_KEYS.INTRADAY_RETURN_SERIES
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)

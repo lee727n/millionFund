@@ -6,6 +6,8 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useTabbar } from '@/composables/useTabbar'
+// [WHAT] 屏幕尺寸判定：与 CSS 断点一致（768px），决定「趋势行情」tab 的跳转目标
+import { isLargeScreen } from '@/utils/platform'
 
 // [WHAT] 水印文字
 const watermarkText = '软件AI百万实盘NEW'
@@ -59,6 +61,17 @@ onUnmounted(() => {
   }
 })
 
+// [WHAT] 电脑端启动页 = 全景大屏：首次加载若落在首页且视口 ≥768px，replace 到 /panorama
+// [WHY] 用户要求电脑端默认进全景大屏；手机端启动页仍是首页。
+// [NOTE] 只在「启动首次导航」时替换（不留历史记录）；之后代码里显式跳 '/'（如持仓页的
+//        goHome 按钮）仍正常进电脑端首页，不被劫持。
+onMounted(async () => {
+  await router.isReady()
+  if (route.name === 'home' && isLargeScreen()) {
+    router.replace('/panorama')
+  }
+})
+
 // [WHAT] 当前激活的 tab
 const activeTab = ref('home')
 
@@ -89,7 +102,9 @@ watch(
       home: 'home',
       holding: 'holding',
       'ai-tracking': 'ai',
-      'trade-center': 'trader'
+      'trade-center': 'trader',
+      // [WHAT] 电脑端「趋势行情」跳全景大屏：全景页时右侧 tab 也亮起（tabbar 默认隐藏，强制显示时可见）
+      panorama: 'home'
     }
     if (name && tabMap[name as string]) {
       activeTab.value = tabMap[name as string]
@@ -102,8 +117,19 @@ function goToHolding() {
   router.push('/holding')
 }
 
+/**
+ * [WHAT] 右侧「趋势行情」tab 的跳转目标（桌面/移动分开处理）
+ * [WHY] 电脑端首页即全景大屏的入口场景：桌面端直接跳 /panorama；
+ *       手机端保持跳首页 /（手机有自己的全景入口逻辑，不占用 tab）。
+ * [NOTE] 用视口宽度(≥768px)判定而非 Capacitor 平台——与全站桌面/移动 CSS 断点一致，
+ *        手机浏览器窄屏也走「手机端」分支。
+ */
 function goToHome() {
-  router.push('/')
+  if (isLargeScreen()) {
+    router.push('/panorama')
+  } else {
+    router.push('/')
+  }
 }
 
 function goToAITracking() {

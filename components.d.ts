@@ -8,6 +8,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AccountReturnCurve: typeof import('./src/components/AccountReturnCurve.vue')['default']
     AppUpdateDialog: typeof import('./src/components/AppUpdateDialog.vue')['default']
     BackupActions: typeof import('./src/components/BackupActions.vue')['default']
     FundCard: typeof import('./src/components/FundCard.vue')['default']

@@ -18,6 +18,7 @@
 - **两个「今天」必须分开**（共用 `isNavUpToDate`，传不同 `today`）：
   - `getCalendarDateStr()`：自然日（默认）——估值取值/交易守卫/缓存新鲜度。
   - `getProgressDateStr()`：**仅进度条专用**，9点前归属上一工作日（净值半夜才更新完的宽限期）。误用→09:00 前守卫失效→今天单被 T-1 净值确认、份额算错。净值缓存窗口已放宽到 `hour<18`。
+  - **[FIX 2026-10-17] 非交易日（周末/节假日）`getProgressDateStr()` 也归属上一工作日**（新增 `isWorkday()` 借 `isHolidaySync` 判定）。否则周六等休息日返回当天→`isUpdated` 误判 false→基金名/进度条整片显示「未更新」灰（AI追踪曾因此「都显示净但颜色不一」）。交易日口径不变。
 
 ## 刷新短路（数据不对先查这）
 1. **`isUpdated` 粘性布尔陷阱（2026-09-15/16）**：被置 true 后不因日历日推进复位。两处跳过条件改为 `holdingNavIsCurrent(h)`（`isNavUpToDate({nav:h.currentValue,navDate:h.valueDate,isQDII})`），**必须不传 `today`（默认自然日），不能用 `getProgressDateStr()`**（QDII 在 09:00 前恒 true 致不重拉）。`isUpdated` 字段保留但不再当跳过闸门；快路径须按进度条口径重算写回 `isUpdated`（否则绿名/进度条「未更新」错显）。
@@ -53,7 +54,15 @@
 - 交易记录时间过滤按「实际有交易的自然日」倒序取前 N（见 `tradeDateStats`），勿用 `Date.now()-N*86400000`。
 - 第二列星标K线传 `:live-data="liveFundData"`（口径与持仓/交易一致、不重复请求）。
 
+## 账户收益曲线（2026-10-17 新增）
+- **位置**：每个账户头部，持仓进度条(`account-position`/`m-account-position`)与市值(`account-stat`/`m-account-mv`)之间，放一条小 sparkline（默认 58×18 全景 / 46×16 手机）。
+- **组件**：`src/components/AccountReturnCurve.vue`，props `{ accountKey, width?, height? }`，读 `getIntradaySeries(todayKey, accountKey)` 画 SVG，涨红跌绿（中国配色），含 0 基线虚线；<2 点显示占位块不画。
+- **数据层**：`src/utils/intradayReturn.ts`。`recordIntradaySamples(samples)` 仅在**交易时段**（工作日 9:30=570 ~ 15:00=900 分钟）落盘，存 `localStorage['intraday_return_series']`（中性 key，无 `fund_/api_/market_/estimate_` 前缀，已登记进 `preservedKeys`）。每天每账户封顶 320 点，保留最近 5 天。模块级 `intradayTick` ref 在每次采样后 +1，组件 `watch` 它重绘。
+- **采样钩子**：`stores/holding.ts` 的 `refreshEstimates()` finally 块调 `recordAccountReturnSamples()`（聚合 ali/TX/JD/other 的 `marketValue`/`todayProfit`，profitPercent=今日盈亏/昨日市值，与首页/全景同口径；observe 跳过不计入 other）。集中一处，首页/全景/持仓页刷新都覆盖。
+- **数据缺口铁律**：估值 API 只返回「当前」估值，无历史分钟序列 → **系统没开的那段交易时间就没有采样**，曲线左侧留白即缺口（如 11:00 才开，9:30–11:00 为空）。要「不开系统也拿分钟数据」只能上后端定时采集，或指数反推近似（见用户问答）。
+
 ## 通用坑
+- **Home.vue 桌面/移动是两套 UI（2026-10-17 事故铁律）**：手机改版曾把桌面端「持仓趋势」整段覆盖成手机布局（丢全景面板/星标入口/排序/简全/账户筛选）。现结构=`.home-holdings-desktop`（改版前原版布局）+ `.home-holdings-mobile`（手机账户分块改版），各自由媒体查询切换（min-768/max-767）。**改 Home 手机端绝不能动桌面段；反之亦然**。外层切换容器勿复用 `.web-only`/`.mobile-only`（`.web-only.web-only{display:flex}` 会命中所有 .web-only 元素强制 flex）。
 - 构建：`npm run build` 失败 `Cannot find module '@rollup/rollup-darwin-arm64'`（arm64 只装 x64 rollup），与代码无关；验证用 `npx vue-tsc -b`（退出码 0 即通过）。
 - Vue3 Boolean prop：`defineProps<{x?:boolean}>()` 不带 `withDefaults` → 未传入解析为 **false** 非 undefined；「默认 true」必须 `withDefaults(...,{x:true})`。
 - 父级 scoped CSS 写子组件内部必须 `:deep()`。

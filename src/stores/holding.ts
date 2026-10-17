@@ -14,6 +14,8 @@ import { updateFundNetValue } from '@/utils/storage'
 import { fetchFundAccurateData, type FundAccurateData, clearHoldingsCache as clearFundHoldingsCache } from '@/api/fundFast'
 import { fetchNetValueHistoryFast } from '@/api/fundFast'
 import { predictTrend, calculateReturnAnalysis, calculateFundScore, type TrendPrediction, type FundScore } from '@/utils/statistics'
+// [WHAT] 当日收益曲线：估值刷新完成后按账户聚合采样，落盘到 localStorage 供账户头部小曲线绘制
+import { recordIntradaySamples } from '@/utils/intradayReturn'
 
 /** 持仓项（包含实时估值和收益计算） */
 export interface HoldingWithProfit extends HoldingRecord {
@@ -366,9 +368,37 @@ export const useHoldingStore = defineStore('holding', () => {
         }
       })
       if (holdingChanged) saveHoldings(holdings.value as any[])
+
+      // [WHAT] 估值刷新完成 → 按账户聚合当日收益率，采样进「当日收益曲线」序列
+      // [WHY] 集中在这里落盘，首页/全景/持仓页所有刷新入口都只走这一处，不重复
+      recordAccountReturnSamples()
     } finally {
       isRefreshing.value = false
     }
+  }
+
+  /**
+   * [WHAT] 把当前 holdings 按账户（ali / TX / JD / other）聚合出当日收益率，记录一条采样
+   * [WHY] 与首页/全景 accountSections 的 calcAccountStats 同口径：profitPercent = 今日盈亏 / 昨日市值
+   * [SCOPE] 量化观察(source==='observe')不在持仓列账户块里，跳过不计入 other
+   */
+  function recordAccountReturnSamples(): void {
+    const groups: Record<string, { mv: number; tp: number }> = {}
+    for (const h of holdings.value) {
+      if (h.source === 'observe') continue
+      const key = h.source === 'ali' ? 'ali' : h.source === 'TX' ? 'TX' : h.source === 'JD' ? 'JD' : 'other'
+      const mv = (h.currentValue || 0) * (h.shares || 0)
+      const tp = typeof h.todayProfit === 'number' ? h.todayProfit : parseFloat(String(h.todayProfit || '0'))
+      const g = (groups[key] ||= { mv: 0, tp: 0 })
+      g.mv += mv
+      g.tp += tp
+    }
+    const samples = Object.entries(groups).map(([key, g]) => {
+      const prev = g.mv - g.tp
+      const profitPercent = prev > 0 ? (g.tp / prev) * 100 : 0
+      return { key, profitPercent }
+    })
+    recordIntradaySamples(samples)
   }
 
   /**

@@ -2,7 +2,15 @@
 // [WHAT] 「这一期净值是不是当前该拿到的那一期」全项目只应有这一个实现
 // [DEPS] 依赖 holiday 的节假日表
 
-import { getPrevWorkdaySync } from './holiday'
+import { getPrevWorkdaySync, isHolidaySync } from './holiday'
+
+/** 该日期是否是交易日（非周末且非节假日）。用于「当前所处交易日」判定。 */
+function isWorkday(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  if (day === 0 || day === 6) return false
+  return !isHolidaySync(dateStr)
+}
 
 /**
  * 获取本地日历日字符串（YYYY-MM-DD），不做任何交易日位移
@@ -30,6 +38,13 @@ export function getCalendarDateStr(date: Date = new Date()): string {
  */
 export function getProgressDateStr(date: Date = new Date()): string {
   const calendarDate = getCalendarDateStr(date)
+  // [FIX 2026-10-17] 周末/节假日不是交易日，「当前所处交易日」应直接归属上一工作日，
+  // 否则 getProgressDateStr 会返回当天（如周六），导致 isNavUpToDate 把「上一交易日净值」
+  // 误判为「不是当前该拿到的那一期」——表现就是休息日基金名/进度条整片显示「未更新」（灰）。
+  if (!isWorkday(calendarDate)) {
+    return getPrevWorkdaySync(calendarDate)
+  }
+  // 交易日：9 点前归属上一工作日（净值半夜才更新完的宽限期），9 点起即为当天
   if (date.getHours() >= 9) return calendarDate
   return getPrevWorkdaySync(calendarDate)
 }
