@@ -394,15 +394,25 @@ const accountSections = computed(() => {
   // [NOTE] 顺序即 accountOrder；空的账户整段不渲染（和原来的 v-if 行为一致）
   return accountOrder.value
     .filter(key => fundsOf[key]?.length > 0)
-    .map(key => ({
-      key,
-      label: meta[key].label,
-      icon: meta[key].icon,
-      fallback: meta[key].fallback || '',
-      cls: meta[key].cls,
-      funds: fundsOf[key],
-      stats: statsOf[key]
-    }))
+    .map(key => {
+      // [WHAT] 持仓占比 = 市值 / (现金 + 市值)。总仓位=现金+市值；轨道=总仓位，填充=持仓市值，空白=闲置现金
+      const cash = getAccountCash(key)
+      const mv = statsOf[key].marketValue
+      const totalPosition = cash + mv
+      const posPct = totalPosition > 0 ? Math.min(100, (mv / totalPosition) * 100) : 0
+      return {
+        key,
+        label: meta[key].label,
+        icon: meta[key].icon,
+        fallback: meta[key].fallback || '',
+        cls: meta[key].cls,
+        funds: fundsOf[key],
+        stats: statsOf[key],
+        cash,
+        totalPosition,
+        posPct
+      }
+    })
 })
 
 // ---- 拖拽 1：按住标题左侧 ⋮⋮ 手柄，上下拖动换顺序 ----
@@ -1467,6 +1477,18 @@ const aiLiveIsNavMap = computed(() => {
                 >
                   <span class="account-cash-icon">💰</span>{{ fmtMoney(getAccountCash(acc.key)) }}
                 </span>
+                <!-- [WHAT] 现金图标右侧的持仓占比进度条：轨道=总仓位(现金+市值)，填充=持仓市值，空白=闲置现金 -->
+                <div
+                  v-if="acc.totalPosition > 0"
+                  class="account-position"
+                  :title="`持仓占比 ${fmtPct(acc.posPct)} · 市值 ${fmtMoney(acc.stats.marketValue)} / 总仓位 ${fmtMoney(acc.totalPosition)}（含现金 ${fmtMoney(acc.cash)}）`"
+                >
+                  <div class="pos-track">
+                    <div class="pos-fill" :style="{ width: acc.posPct + '%' }"></div>
+                  </div>
+                  <span class="pos-label">{{ fmtPct(acc.posPct) }}</span>
+                </div>
+                <span v-else class="account-position-empty">—</span>
                 <div class="account-spacer"></div>
                 <span class="account-stat">{{ fmtMoney(acc.stats.marketValue) }}</span>
                 <span
@@ -2748,6 +2770,63 @@ const aiLiveIsNavMap = computed(() => {
 }
 .account-cash:active { transform: scale(0.96); }
 .account-cash-icon { font-size: 11px; line-height: 1; }
+
+/* ============ 账户持仓进度条（现金图标右侧） ============ */
+/* [WHAT] 轨道=总仓位(现金+市值)，填充=持仓市值(渐变主色)，空白=闲置现金；右侧等宽百分比标签 */
+.account-position {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pos-track {
+  position: relative;
+  width: 76px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.10));
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+.pos-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary-color, #6366f1) 0%, #8b5cf6 100%);
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.45);
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* 顶部高光，让填充段更有质感 */
+.pos-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%);
+}
+.pos-label {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'SF Mono', Consolas, monospace;
+  color: var(--primary-color, #6366f1);
+  min-width: 34px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.account-position-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 76px;
+  text-align: center;
+}
+/* 窄屏收窄进度条，避免标题行溢出 */
+@media (max-width: 1280px) {
+  .pos-track { width: 56px; }
+  .account-position-empty { width: 56px; }
+}
 
 .fund-mini-grid {
   padding: 0;
