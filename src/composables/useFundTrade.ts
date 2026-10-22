@@ -76,7 +76,12 @@ export function createTrade(params: {
   if (params.adjustCash !== false && params.source) {
     const CASH_ACCOUNTS = ['ali', 'TX', 'JD'] as const
     if ((CASH_ACCOUNTS as readonly string[]).includes(params.source) && params.amount > 0) {
-      const delta = params.type === 'buy' ? -params.amount : params.type === 'sell' ? params.amount : 0
+      // [WHAT] 买入(buy)与定投(auto_invest)都扣减账户现金；卖出(sell)回款；其余(分红)不动
+      const delta = params.type === 'buy' || params.type === 'auto_invest'
+        ? -params.amount
+        : params.type === 'sell'
+          ? params.amount
+          : 0
       if (delta !== 0) {
         const cash = getPanoramaAccountCash()
         cash[params.source] = (cash[params.source] || 0) + delta
@@ -125,6 +130,11 @@ export function getTodayFirstBuyCorrection(
   const buys = trades.filter(t => t.type === 'buy')
   if (buys.length !== 1) return null                 // 多笔买入（加仓过）的不动
   if (trades.some(t => t.type === 'sell')) return null // 减仓过的不动
+  // [FIX] 当天有定投(auto_invest) 时必须放弃纠正。
+  //       本函数返回的 shares 会**整体覆盖** holding.shares（只按那唯一一笔 buy 的金额重算），
+  //       而定投的份额是执行时单独累加上去的 → 不挡住的话，晚上净值公布后定投份额被抹掉，
+  //       表现为「定投记录还在、份额却回到没定投之前」。
+  if (trades.some(t => t.type === 'auto_invest')) return null
   const buy = buys[0]
   if (!buy.amount) return null
   // [WHAT] 只有「用盘中估值建的单」才需要晚上重算（estimateAtTrade 在 createTrade 里仅 estimated 时写入）。

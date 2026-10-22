@@ -1181,7 +1181,9 @@ function drawTradeMarkers(
   colors: ReturnType<typeof getThemeColors>,
   mode: 'performance' | 'normal'
 ) {
-  const trades = props.trades || []
+  // [FIX] 定投(auto_invest) **不画**买卖点（用户明确要求：定投资金 K线上不要添加买入点）。
+  //       不过滤的话定投会命中 isBuy=false 分支被画成绿色卖点，与需求相反。
+  const trades = (props.trades || []).filter(t => t.type === 'buy' || t.type === 'sell')
   const tTrades = props.tTrades || []
 
   // [WHAT] 买入金额区间，用于把买入点按金额深浅着色（浅=少，深=多）

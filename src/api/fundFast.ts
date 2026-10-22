@@ -2043,6 +2043,129 @@ export async function fetchMarketIndicesFast(): Promise<MarketIndexSimple[]> {
   }
 }
 
+// ========== 指数分时数据 API ==========
+// [WHY] 全景大屏顶部指数块点击展开后需展示当天分时曲线。基金分时接口(fundgz)只适用基金，
+//       不适用指数；改用东方财富 trends2(push2his) 接口，支持 cb JSONP（规避跨域），
+//       单次请求即可拿到 时间/开/收/高/低/量/额/均价。昨收基准线由调用方用 当前价/(1+涨跌幅) 推算。
+// [WHAT] 仅 A 股指数有分时数据，这里维护 指数代码(去市场前缀) -> 东方财富 secid 映射。
+
+export interface IndexTimeSharePoint {
+  time: string      // "09:30"
+  price: number     // 收盘价（分时主线）
+  avgPrice: number  // 均价（均价线）
+}
+
+export interface IndexTimeShare {
+  code: string
+  name: string
+  preClose: number
+  points: IndexTimeSharePoint[]
+}
+
+const INDEX_SECID_MAP: Record<string, string> = {
+  '000001': '1.000001', // 上证指数
+  '000300': '1.000300', // 沪深300
+  '399006': '0.399006', // 创业板指
+  '399001': '0.399001', // 深证成指
+  '000688': '1.000688', // 科创50
+}
+
+/** 指数代码(去市场前缀) -> 东方财富 secid；非 A 股指数返回 null（无分时数据） */
+export function getIndexSecid(code: string): string | null {
+  return INDEX_SECID_MAP[code] ?? null
+}
+
+const indexTimeShareCache: Map<string, { data: IndexTimeShare; ts: number }> = new Map()
+const indexTimeShareInflight: Map<string, Promise<IndexTimeShare>> = new Map()
+
+/**
+ * 单次 JSONP 请求（东方财富 trends2）。失败/无数据返回空 points。
+ */
+function requestIndexTimeShare(secid: string, code: string, name: string, preClose: number): Promise<IndexTimeShare> {
+  const empty: IndexTimeShare = { code, name, preClose, points: [] }
+  return new Promise((resolve) => {
+    const callbackName = `idx_ts_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const timeout = setTimeout(() => { cleanup(); resolve(empty) }, 10000)
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      delete (window as any)[callbackName]
+      const s = document.getElementById(callbackName)
+      if (s && s.parentNode) s.parentNode.removeChild(s)
+    }
+
+    ;(window as any)[callbackName] = (data: any) => {
+      cleanup()
+      const trends: string[] | undefined = data?.data?.trends
+      if (!Array.isArray(trends)) { resolve(empty); return }
+      // 字段顺序(fields2)：时间,开,收,高,低,成交量,成交额,均价
+      const points: IndexTimeSharePoint[] = trends.map((row: string) => {
+        const parts = row.split(',')
+        const ts = parts[0] ?? ''                  // "2026-10-19 09:30"
+        const t = ts.length >= 16 ? ts.slice(11, 16) : ''  // "09:30"
+        return {
+          time: t,
+          price: parseFloat(parts[2]) || 0,        // f53 收盘
+          avgPrice: parseFloat(parts[7]) || 0      // f58 均价
+        }
+      }).filter(p => p.price > 0)
+      resolve({ code, name, preClose, points })
+    }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    // [DEPS] 东方财富分时接口（push2his），cb 参数走 JSONP，规避跨域
+    script.src = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1&cb=${callbackName}`
+    script.onerror = () => { cleanup(); resolve(empty) }
+    document.head.appendChild(script)
+  })
+}
+
+/**
+ * 获取指数当日分时数据（带 15s 缓存 + 失败重试 + 并发去重）
+ * [WHY] 东方财富接口偶发失败；并发去重避免刷新与点击同时发请求，重试抵消瞬时失败，
+ *       调用方在刷新时「保留旧曲线、仅在拿到非空数据才更新」，从而避免空白闪烁。
+ * @param code 指数代码（如 000001）
+ * @param name 指数名称
+ * @param preClose 昨收价（用于分时图基准线；调用方用 当前价/(1+涨跌幅) 推算）
+ */
+export async function fetchIndexTimeShare(
+  code: string,
+  name: string,
+  preClose: number
+): Promise<IndexTimeShare> {
+  const secid = getIndexSecid(code)
+  const empty: IndexTimeShare = { code, name, preClose, points: [] }
+  if (!secid) return empty
+
+  const cached = indexTimeShareCache.get(secid)
+  if (cached && Date.now() - cached.ts < 15000) return cached.data
+
+  // 同一 secid 同时只发一次请求，其余调用复用该 Promise
+  const inflight = indexTimeShareInflight.get(secid)
+  if (inflight) return inflight
+
+  const run = async (): Promise<IndexTimeShare> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await requestIndexTimeShare(secid, code, name, preClose)
+      if (res.points.length > 0) {
+        indexTimeShareCache.set(secid, { data: res, ts: Date.now() })
+        return res
+      }
+      if (attempt < 2) await new Promise(r => setTimeout(r, 700)) // 失败重试
+    }
+    return empty
+  }
+
+  const p = run()
+  indexTimeShareInflight.set(secid, p)
+  try {
+    return await p
+  } finally {
+    indexTimeShareInflight.delete(secid)
+  }
+}
+
 // ========== 基金排行榜（新接口） ==========
 
 export interface FundRankItemSimple {

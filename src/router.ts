@@ -74,6 +74,13 @@ const router = createRouter({
       meta: { title: '交易中心' }
     },
     {
+      // [WHAT] 定投管理页（桌面端独立页面，从全景「定投」按钮新开浏览器 tab 进入）
+      path: '/dca',
+      name: 'dca',
+      component: () => import('@/views/DCAPage.vue'),
+      meta: { title: '定投管理' }
+    },
+    {
       path: '/ai-tracking/detail/:sellCode/:sellName/:buyCode/:buyName/:sellNav/:buyNav/:sellPrice/:buyPrice/:sellChange/:buyChange/:date/:sellNavEstimated/:buyNavEstimated',
       name: 'ai-tracking-detail',
       component: () => import('@/views/AITrackingDetail.vue'),

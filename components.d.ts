@@ -14,6 +14,7 @@ declare module 'vue' {
     FundCard: typeof import('./src/components/FundCard.vue')['default']
     FundGridItem: typeof import('./src/components/FundGridItem.vue')['default']
     FundName: typeof import('./src/components/FundName.vue')['default']
+    IndexTimeShareChart: typeof import('./src/components/IndexTimeShareChart.vue')['default']
     MiniKLineChart: typeof import('./src/components/MiniKLineChart.vue')['default']
     OKXChart: typeof import('./src/components/OKXChart.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

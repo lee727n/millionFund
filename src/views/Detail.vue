@@ -25,6 +25,7 @@ import { getFundNetValue, getTradesByCode, updateTradesByCode, removeTrade, getT
 import { createTrade } from '@/composables/useFundTrade'
 import { fetchNetValueHistoryFast, fetchSimpleKLineData } from '@/api/fundFast'
 import type { TradeRecord, TradeType, TTradeRecord } from '@/types/fund'
+import { tradeTypeLabel, isBuySide } from '@/types/fund'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 
@@ -153,14 +154,16 @@ function handleDeleteTrade(tradeId: string) {
 
   showConfirmDialog({
     title: '确认删除',
-    message: `删除此${trade.type === 'buy' ? '加仓' : '减仓'}记录将同时回滚持仓变化，确认吗？`,
+    message: `删除此${tradeTypeLabel(trade.type)}记录将同时回滚持仓变化，确认吗？`,
   })
     .then(() => {
       // 回滚持仓
       const holding = holdingStore.holdings.find(h => h.code === trade.code)
       if (holding) {
-        if (trade.type === 'buy') {
-          // 加仓回滚 = 减份额
+        // [FIX] 定投(auto_invest) 也是买入方向，回滚同样要减份额；
+        //       原写法只判 buy/sell，删定投记录会「只删记录不回滚份额」→ 持仓虚高。
+        if (isBuySide(trade.type)) {
+          // 买入/定投回滚 = 减份额
           holding.shares = (holding.shares || 0) - trade.shares
         } else if (trade.type === 'sell') {
           // 减仓回滚 = 加份额
@@ -463,7 +466,7 @@ async function submitTrade() {
     showTradeDialog.value = false
     loadTrades()
     showToast({
-      message: `${type === 'buy' ? '加仓' : '减仓'}成功`,
+      message: `${tradeTypeLabel(type)}成功`,
       duration: 2000
     })
   } catch (error) {
@@ -1231,7 +1234,7 @@ function formatPercent(num: number): string {
         >
           <div class="trade-record-main">
             <span class="trade-type-badge" :class="trade.type">
-              {{ trade.type === 'buy' ? '加仓' : '减仓' }}
+              {{ tradeTypeLabel(trade.type) }}
             </span>
             <span class="trade-date">{{ trade.date }}</span>
             <span class="trade-amount">{{ trade.amount.toFixed(0) }}元</span>
@@ -2003,7 +2006,7 @@ function formatPercent(num: number): string {
 
         <div class="dialog-footer">
           <van-button @click="showTradeDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
+          <van-button type="primary" @click="submitTrade">确认{{ tradeTypeLabel(tradeFormData.type) }}</van-button>
         </div>
       </div>
     </van-popup>
@@ -2364,6 +2367,10 @@ function formatPercent(num: number): string {
   border-left-color: #0ecb81;
 }
 
+.trade-record-item.auto_invest {
+  border-left-color: #1989fa;
+}
+
 .trade-record-main {
   display: flex;
   align-items: center;
@@ -2388,6 +2395,17 @@ function formatPercent(num: number): string {
 .trade-type-badge.sell {
   background: rgba(14, 203, 129, 0.15);
   color: #0ecb81;
+}
+
+/* 定投：买入方向但独立配色（蓝），避免与普通加仓混淆 */
+.trade-type-badge.auto_invest {
+  background: rgba(25, 137, 250, 0.15);
+  color: #1989fa;
+}
+
+.trade-type-badge.dividend {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
 }
 
 .trade-type-badge.t-badge {

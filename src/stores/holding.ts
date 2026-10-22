@@ -260,8 +260,10 @@ export const useHoldingStore = defineStore('holding', () => {
 
     for (const h of holdings.value) {
       if (!h) continue
-      // 已有 buy 交易 → 买点已在，跳过（加仓/减仓过的也在此跳过，绝不重复创建或覆盖）
-      if (allTrades.some(t => t.code === h.code && t.type === 'buy')) continue
+      // 已有 buy / auto_invest 交易 → 成本基数交易已在，跳过买点补齐
+      // [WHY] 定投(auto_invest)基金也不应被补齐出「买入点」（用户要求定投资金 K 线不显示买入点）；
+      //       有 auto_invest 即视为已有成本基数来源，无需再补一笔 buy 买点。
+      if (allTrades.some(t => t.code === h.code && (t.type === 'buy' || t.type === 'auto_invest'))) continue
 
       // 买入净值：优先持仓记录的买入净值，兜底用当前净值（保证交易记录有合法价格）
       const buyNet = h.buyNetValue > 0 ? h.buyNetValue : (h.currentValue || 0)
@@ -396,7 +398,7 @@ export const useHoldingStore = defineStore('holding', () => {
     const samples = Object.entries(groups).map(([key, g]) => {
       const prev = g.mv - g.tp
       const profitPercent = prev > 0 ? (g.tp / prev) * 100 : 0
-      return { key, profitPercent }
+      return { key, profitPercent, amount: g.tp }
     })
     recordIntradaySamples(samples)
   }
@@ -644,6 +646,7 @@ export const useHoldingStore = defineStore('holding', () => {
     initHoldings,
     refreshEstimates,
     updateHoldingWithAccurateData,
+    recordAccountReturnSamples,
     addOrUpdateHolding,
     removeHolding,
     hasHolding,

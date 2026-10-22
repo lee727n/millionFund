@@ -2,6 +2,7 @@
 // [WHAT] 只分析Trader页面的交易记录，不依赖持仓数据
 
 import type { TradeRecord } from '@/types/fund'
+import { isBuySide } from '@/types/fund'
 
 export type SignalType = 'take_profit' | 'buy_back' | 'cut_loss' | 'add_on_dip' | 'observe'
 
@@ -105,13 +106,17 @@ export function analyzeTrades(
       const returnRate = ((currentValue - trade.netValue) / trade.netValue) * 100
       const holdingDays = daysBetween(trade.date, new Date().toISOString().slice(0, 10))
 
-      if (trade.type === 'buy') {
+      // [FIX] 定投(auto_invest) 也是买入：必须计入 totalBuy / 盈亏，否则 AI 分析把定投的钱当没投。
+      // 但**不**为定投生成止盈/回补信号 —— 定投是机械重复买入，天天刷同一信号是噪音。
+      if (isBuySide(trade.type)) {
         totalBuy += trade.amount
         if (returnRate > bestBuyReturn) bestBuyReturn = returnRate
         if (returnRate < worstBuyReturn) worstBuyReturn = returnRate
 
-        const signal = analyzeBuyTrade(trade, returnRate, holdingDays, currentValue, name)
-        if (signal) allSignals.push(signal)
+        if (trade.type === 'buy') {
+          const signal = analyzeBuyTrade(trade, returnRate, holdingDays, currentValue, name)
+          if (signal) allSignals.push(signal)
+        }
       } else if (trade.type === 'sell') {
         totalSell += trade.amount
 
@@ -120,7 +125,7 @@ export function analyzeTrades(
       }
     })
 
-    const buyCount = fundTrades.filter(t => t.type === 'buy').length
+    const buyCount = fundTrades.filter(t => isBuySide(t.type)).length
     const sellCount = fundTrades.filter(t => t.type === 'sell').length
 
     fundSummaries.push({
@@ -147,7 +152,7 @@ export function analyzeTrades(
   })
 
   // 汇总
-  const allBuyTrades = trades.filter(t => t.type === 'buy')
+  const allBuyTrades = trades.filter(t => isBuySide(t.type))
   const allSellTrades = trades.filter(t => t.type === 'sell')
 
   const takeProfitCount = allSignals.filter(s => s.signal === 'take_profit').length
@@ -167,7 +172,7 @@ export function analyzeTrades(
     const cv = getCurrentValue(fd)
     if (cv <= 0 || t.netValue <= 0) return
     const pnl = (cv - t.netValue) / t.netValue * t.amount / 100
-    if (t.type === 'buy') totalPnL += pnl
+    if (isBuySide(t.type)) totalPnL += pnl
     else totalPnL -= pnl
   })
 

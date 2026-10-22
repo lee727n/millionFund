@@ -23,6 +23,7 @@ import {
   getPanoramaAccountCash,
   savePanoramaAccountCash,
 } from '@/utils/storage'
+import { getDCAPlans, saveDCAPlans } from '@/utils/dca'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { clearFundCache } from '@/api/fundFast'
 import {
@@ -158,6 +159,8 @@ function buildBackupPayload(withNetValues: boolean) {
     // [WHY] 不备份的话，恢复后现金为 0、占比进度条全部归零，看不到真实的全局资金视图
     // [NOTE] 老备份无此字段，恢复时会跳过（不写空），不会清掉当前手机上已有的现金数
     panoramaAccountCash: getPanoramaAccountCash(),
+    // [WHAT] 定投计划：与持仓同级的用户圈选数据，丢了得一只只重新设
+    dcaPlans: getDCAPlans(),
   }
 
   if (withNetValues) {
@@ -220,6 +223,11 @@ function applyBackupData(jsonData: any): boolean {
   //       连带首页/全景的「持仓市值占比进度条」一起归零。
   if (jsonData.panoramaAccountCash && typeof jsonData.panoramaAccountCash === 'object') {
     savePanoramaAccountCash(jsonData.panoramaAccountCash)
+  }
+
+  // [WHY] 老版本备份文件里没有这个字段时「跳过」而非写空，避免清掉当前已有的定投计划
+  if (Array.isArray(jsonData.dcaPlans)) {
+    saveDCAPlans(jsonData.dcaPlans)
   }
 
   emit('restored')

@@ -411,7 +411,9 @@ function handleCanvasClick(e: MouseEvent) {
   const toX = (i: number) => padding.left + (chartWidth / Math.max(extendedPerfData.length - 1, 1)) * i
 
   // 获取交易记录
-  const trades = getTradesByCode(props.fundCode)
+  // [FIX] 定投(auto_invest) **不画**买卖点（用户明确要求：定投资金 K线上不要添加买入点）。
+  //       原代码不过滤类型，定投会被当成「非 buy」→ 画成绿色卖点，与需求相反。
+  const trades = getTradesByCode(props.fundCode).filter(t => t.type === 'buy' || t.type === 'sell')
   const tTrades = getTTradesByCode(props.fundCode)
 
   // 检测是否点击了交易标记点
@@ -809,7 +811,8 @@ function drawChart() {
   }
 
   // ========== 交易点标记 ==========
-  const trades = getTradesByCode(props.fundCode)
+  // [FIX] 定投不画买卖点，理由/口径同上方 handleCanvasClick（两处必须一致，否则画出来的点点不中）
+  const trades = getTradesByCode(props.fundCode).filter(t => t.type === 'buy' || t.type === 'sell')
   const tTrades = getTTradesByCode(props.fundCode)
 
   // 获取今天的日期字符串

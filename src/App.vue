@@ -78,7 +78,7 @@ const activeTab = ref('home')
 // [WHAT] 需要隐藏底部导航的页面
 // [NOTE] panorama 默认隐藏以腾出纵向空间，页面顶部有开关按钮可以手动调出来
 // [NOTE] mobile-star-kline 是手机版专属页，整页都是 K 线，同样隐藏以腾出纵向空间
-const hiddenTabbarPages = ['search', 'detail', 'trades', 'panorama', 'mobile-star-kline']
+const hiddenTabbarPages = ['search', 'detail', 'trades', 'panorama', 'mobile-star-kline', 'dca']
 const { tabbarForceShow, setTabbarForceShow } = useTabbar()
 const showTabbar = computed(
   () => tabbarForceShow.value || !hiddenTabbarPages.includes(route.name as string)

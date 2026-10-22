@@ -19,6 +19,7 @@ import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant
 import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund, getPanoramaAccountCash } from '@/utils/storage'
 import { createTrade } from '@/composables/useFundTrade'
 import type { TradeType } from '@/types/fund'
+import { tradeTypeLabel } from '@/types/fund'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import FundCard from '@/components/FundCard.vue'
@@ -772,7 +773,7 @@ async function submitTrade() {
 
     closeToast()
     showToast({
-      message: `${isClear ? '清仓' : type === 'buy' ? '加仓' : '减仓'}成功`,
+      message: `${isClear ? '清仓' : tradeTypeLabel(type)}成功`,
       duration: 2000
     })
     showTradeDialog.value = false
@@ -2552,7 +2553,7 @@ function handleNameClick(code: string, name: string) {
 
         <div class="dialog-footer">
           <van-button @click="showTradeDialog = false">取消</van-button>
-          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.isClear ? '清仓' : tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</van-button>
+          <van-button type="primary" @click="submitTrade">确认{{ tradeFormData.isClear ? '清仓' : tradeTypeLabel(tradeFormData.type) }}</van-button>
         </div>
       </div>
     </van-popup>

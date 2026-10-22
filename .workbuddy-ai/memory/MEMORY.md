@@ -9,6 +9,13 @@
 ## 数据结构
 - 普通交易 `fund_trades`；做T记录 `fund_t_trades`（一买一卖配对归档，原两条从 `fund_trades` 移除）。做T由 Detail「标记T」生成，TradeCenter/Detail「恢复」可还原成普通交易。
 
+## TradeType 铁律（4 个值，禁止三元判断）
+- `TradeType = 'buy' | 'sell' | 'dividend' | 'auto_invest'`。**绝不能写 `type === 'buy' ? A : B`** —— 会把定投和分红一起错判（2026-10-21 定投上线首日，10 笔定投在交易记录全显示「减仓」）。
+- 展示一律用 `tradeTypeLabel(type)`（`src/types/fund.ts` 导出）；资金/份额方向判断（扣现金、删记录回滚份额、AI 统计买入额）一律用 `isBuySide(type)`（= buy || auto_invest）。
+- **例外**：「K线画不画买卖点」要精确白名单 `type==='buy'||type==='sell'`，因为定投按需求**不画**买点；且 MiniKLineChart(drawChart+handleCanvasClick 两处) / OKXChart(props.trades 一处) 遍历 trades 时**默认不过滤类型**，不显式加白名单，定投会被画成绿色卖点。
+- 定投执行：全景/定投页刷新时 `executeDueDCAs(today)` 建 `auto_invest` 交易+扣现金+累加份额，`lastExecutedDate` 防同日重扣；**只在网页打开且刷新时跑**，过去交易日不补买。
+- 隐患：`getTodayFirstBuyCorrection` 的返回值会**整体覆盖 holding.shares**（只按唯一那笔 buy 重算），当天有定投时已被守卫挡掉（`if (trades.some(t=>t.type==='auto_invest')) return null`），改这个函数务必保留该守卫。
+
 ## 估值架构与字段语义
 - `useFundValuation` = 估值层（拉取/缓存 `liveFundData`/`calcPostReturn`）；`holdingStore.updateHoldingWithAccurateData` = 收益层（重算市值盈亏+落盘）。需估值页面复用 composable，勿内联。
 - `fetchFundAccurateData` 字段：

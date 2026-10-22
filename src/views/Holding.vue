@@ -357,8 +357,9 @@ async function submitForm() {
 
     // [FIX] 全新添加（此前无持仓，常见于「删除持仓后又重加」）时，清掉上一轮删除持仓遗留的孤儿买入交易，
     //       否则 removeHolding 不级联删交易 → 重加会出现重复买点（如 9.18 + 9.21 两个点都画在星标K线）。
+    //       定投(auto_invest) 同样是买入记录，一并清掉，否则重加后残留孤儿定投单。
     getTradesByCode(formData.value.code)
-      .filter(t => t.type === 'buy')
+      .filter(t => t.type === 'buy' || t.type === 'auto_invest')
       .forEach(t => removeTrade(t.id))
   }
 

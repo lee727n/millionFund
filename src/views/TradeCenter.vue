@@ -7,6 +7,7 @@ import { fetchFundAccurateData, clearFundCache } from '@/api/fundFast'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
 import type { TradeRecord, TTradeRecord } from '@/types/fund'
+import { tradeTypeLabel } from '@/types/fund'
 // 账户图标 - 通过 import 让 Vite 正确处理资源路径
 // @ts-ignore
 import aliIcon from '@/assets/ali.jpg'
@@ -402,7 +403,7 @@ async function deleteTrade(trade: TradeRecord) {
   try {
     await showConfirmDialog({
       title: '确认删除',
-      message: `确定删除这笔${trade.type === 'buy' ? '加仓' : '减仓'}记录吗？\n${trade.name} ${trade.amount}元`,
+      message: `确定删除这笔${tradeTypeLabel(trade.type)}记录吗？\n${trade.name} ${trade.amount}元`,
     })
     
     removeTrade(trade.id)
@@ -775,7 +776,7 @@ onMounted(() => {
           >
             <div class="trade-record-main">
               <span class="trade-type-badge" :class="trade.type">
-                {{ trade.type === 'buy' ? '加仓' : '减仓' }}
+                {{ tradeTypeLabel(trade.type) }}
               </span>
               <span class="trade-date">{{ trade.date }}</span>
               <span class="trade-amount">{{ trade.amount.toFixed(0) }}元</span>
@@ -1245,6 +1246,10 @@ onMounted(() => {
   border-left-color: #0ecb81;
 }
 
+.trade-record-item.auto_invest {
+  border-left-color: #1989fa;
+}
+
 .trade-record-main {
   display: flex;
   align-items: center;
@@ -1269,6 +1274,17 @@ onMounted(() => {
 .trade-type-badge.sell {
   background: rgba(14, 203, 129, 0.15);
   color: #0ecb81;
+}
+
+/* 定投：买入方向但独立配色（蓝），避免与普通加仓混淆 */
+.trade-type-badge.auto_invest {
+  background: rgba(25, 137, 250, 0.15);
+  color: #1989fa;
+}
+
+.trade-type-badge.dividend {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
 }
 
 .trade-date {

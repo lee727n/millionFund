@@ -8,11 +8,18 @@
 
 import { ref } from 'vue'
 
-/** 单个采样点：t = 距零点分钟数（如 9:30 = 570），v = 账户当日收益率(%) */
+/** 单个采样点：t = 距零点分钟数（如 9:30 = 570），v = 账户当日收益率(%)，a = 当日盈亏金额(元) */
 export interface ReturnSample {
   t: number
   v: number
+  a?: number
 }
+
+/**
+ * [FEATURE FLAG] 账户「当日收益曲线」(arc-svg) 总开关。
+ * false = 彻底关闭：既不采样落盘，也不展示。需要恢复时改为 true 即可（显示侧在 PanoramaDashboard 同步判此开关）。
+ */
+export const ACCOUNT_RETURN_CURVE_ENABLED = false
 
 const STORAGE_KEY = 'intraday_return_series'
 
@@ -64,7 +71,8 @@ function isTradingMinute(mins: number, day: number): boolean {
  * [NOTE] 仅在交易时段内采样；非交易时段（含午休、收盘后、周末）直接跳过，
  *       避免把「收盘后不变的净值」或「昨收基线」画进当天曲线。
  */
-export function recordIntradaySamples(samples: { key: string; profitPercent: number }[]): void {
+export function recordIntradaySamples(samples: { key: string; profitPercent: number; amount: number }[]): void {
+  if (!ACCOUNT_RETURN_CURVE_ENABLED) return
   if (!samples.length) return
   const now = new Date()
   const mins = now.getHours() * 60 + now.getMinutes()
@@ -78,8 +86,9 @@ export function recordIntradaySamples(samples: { key: string; profitPercent: num
     const arr = (dayMap[s.key] ||= [])
     if (arr.length && arr[arr.length - 1].t === mins) {
       arr[arr.length - 1].v = s.profitPercent // 同一分钟重复刷新：覆盖不追加
+      arr[arr.length - 1].a = s.amount
     } else {
-      arr.push({ t: mins, v: s.profitPercent })
+      arr.push({ t: mins, v: s.profitPercent, a: s.amount })
     }
     if (arr.length > MAX_POINTS) arr.splice(0, arr.length - MAX_POINTS)
   }

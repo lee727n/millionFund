@@ -201,6 +201,32 @@ export const TRADE_TYPE_CONFIG = {
 } as const
 
 /**
+ * 交易类型的中文标签（交易记录列表用）
+ * [BUG-铁律] 绝不要写 `type === 'buy' ? '加仓' : '减仓'` 这种二元判断！
+ *       TradeType 有 4 个值（buy/sell/dividend/auto_invest），三元表达式会把
+ *       定投(auto_invest) 和 分红(dividend) 一起错显成「减仓」（2026-10-21 定投上线首日全错）。
+ *       新增交易类型时同样必须走这里。
+ */
+export function tradeTypeLabel(type?: TradeType): string {
+  if (type === 'auto_invest') return '定投'
+  if (type === 'buy') return '加仓'
+  if (type === 'sell') return '减仓'
+  if (type === 'dividend') return '分红'
+  return '交易'
+}
+
+/**
+ * 是否属于「买入方向」（买入 / 定投）。
+ * [WHY] 定投在资金流、持仓份额、成本、T交易配对等语义上完全等同买入，
+ *       凡是需要判断「钱是流出还是流入 / 份额是增还是减」的地方都要用本函数，
+ *       否则定投会被当成卖出处理（删记录不回滚份额、AI 统计漏算买入额等）。
+ * [NOTE] 「K线画不画点」是另一回事，按需求定投**不画**买点，用 type === 'buy' 精确匹配。
+ */
+export function isBuySide(type?: TradeType): boolean {
+  return type === 'buy' || type === 'auto_invest'
+}
+
+/**
  * T交易归档记录
  * [WHY] 将配对的买入+卖出记录归档为T交易，从交易列表移除但K线保留标记
  */

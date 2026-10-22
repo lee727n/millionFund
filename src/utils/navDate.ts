@@ -5,7 +5,7 @@
 import { getPrevWorkdaySync, isHolidaySync } from './holiday'
 
 /** 该日期是否是交易日（非周末且非节假日）。用于「当前所处交易日」判定。 */
-function isWorkday(dateStr: string): boolean {
+export function isWorkday(dateStr: string): boolean {
   const d = new Date(dateStr + 'T00:00:00')
   const day = d.getDay()
   if (day === 0 || day === 6) return false

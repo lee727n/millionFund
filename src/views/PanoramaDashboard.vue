@@ -16,16 +16,20 @@ import {
 } from '@/utils/storage'
 import StarKLinePanel from '@/components/StarKLinePanel.vue'
 import { analyzeTrades, type TradeAnalysisResult } from '@/utils/aiAnalyzer'
-import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, type MarketIndexSimple, type GlobalIndex, type HoldingStock } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, fetchFundAccurateData, fetchLatestNetValue, fetchNetValueHistoryFast, fetchTopHoldings, fetchIndexTimeShare, getIndexSecid, type MarketIndexSimple, type GlobalIndex, type HoldingStock, type IndexTimeShare } from '@/api/fundFast'
 import { useFundValuation } from '@/composables/useFundValuation'
 import { useFundUpdateStatus } from '@/composables/useFundUpdateStatus'
 import { createTrade } from '@/composables/useFundTrade'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
+import { ACCOUNT_RETURN_CURVE_ENABLED } from '@/utils/intradayReturn'
+import { executeDueDCAs } from '@/utils/dca'
+import { tradeTypeLabel } from '@/types/fund'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import BackupActions from '@/components/BackupActions.vue'
 import FundName from '@/components/FundName.vue'
 import AccountReturnCurve from '@/components/AccountReturnCurve.vue'
+import IndexTimeShareChart from '@/components/IndexTimeShareChart.vue'
 import { useTabbar } from '@/composables/useTabbar'
 
 const router = useRouter()
@@ -43,6 +47,44 @@ const { tabbarForceShow, toggleTabbar } = useTabbar()
 // ============ 基础状态 ============
 const indices = ref<MarketIndexSimple[]>([])
 const refreshing = ref(false)
+
+// ============ 指数分时展开 ============
+// [WHAT] 顶部指数（A 股）点击展开，右侧显示当天完整分时曲线
+// [WHY] 东方财富分时接口数据不稳定，暂时停用点击入口（代码保留，改 true 即可重新启用）
+const INDEX_TIMESHARE_ENABLED = false
+const selectedIndex = ref<MarketIndexSimple | null>(null)
+const timeShare = ref<IndexTimeShare | null>(null)
+const timeShareLoading = ref(false)
+
+function selectIndex(idx: MarketIndexSimple) {
+  // 临时停用：数据接口不稳定，关闭点击展开入口（代码保留）
+  if (!INDEX_TIMESHARE_ENABLED) return
+  // 非 A 股指数无分时数据，不可展开
+  if (!getIndexSecid(idx.code)) return
+  // 再次点击收起
+  if (selectedIndex.value && selectedIndex.value.code === idx.code) {
+    selectedIndex.value = null
+    timeShare.value = null
+    return
+  }
+  selectedIndex.value = idx
+  timeShare.value = null
+  loadIndexTimeShare(idx)
+}
+
+async function loadIndexTimeShare(idx: MarketIndexSimple) {
+  const preClose = idx.current > 0 ? idx.current / (1 + idx.changePercent / 100) : 0
+  // 首次加载才显示 loading；刷新时保留旧曲线，避免某次请求失败导致空白闪烁
+  const firstLoad = !timeShare.value || timeShare.value.points.length === 0
+  if (firstLoad) timeShareLoading.value = true
+  const data = await fetchIndexTimeShare(idx.code, idx.name, preClose)
+  // 异步回来时若已切换到别的指数，丢弃
+  if (selectedIndex.value && selectedIndex.value.code === idx.code) {
+    // 刷新拿到空数据时不覆盖已有曲线（只对非空结果更新）
+    if (data.points.length > 0) timeShare.value = data
+    timeShareLoading.value = false
+  }
+}
 let refreshTimer: number | undefined
 
 // [WHAT] 自动刷新倒计时 + 开关
@@ -370,6 +412,13 @@ function confirmCashEdit() {
 }
 function closeCashEdit() {
   cashEditDialog.open = false
+}
+
+// ============ 定投入口 ============
+// [WHAT] 持仓 panel 头部「定投」按钮：在新浏览器 tab 打开独立的定投管理页（/dca，桌面端专用）。
+//        [WHY] 用户要求定投不再用弹窗，而是独立页面（见 views/DCAPage.vue）。
+function openDCATab() {
+  window.open('/dca', '_blank')
 }
 
 // ============ 持仓列：账户区块顺序 + 高度（都能拖） ============
@@ -709,6 +758,18 @@ async function loadIndices() {
       .map(name => merged.find(m => m.name === name))
       .filter((x): x is MarketIndexSimple => !!x)
     indices.value = sorted
+
+    // 分时面板已展开时，用最新行情刷新（昨收基准 + 曲线）
+    if (selectedIndex.value) {
+      const cur = sorted.find(m => m.code === selectedIndex.value!.code)
+      if (cur) {
+        selectedIndex.value = cur
+        loadIndexTimeShare(cur)
+      } else {
+        selectedIndex.value = null
+        timeShare.value = null
+      }
+    }
   } catch (e) { /* 静默 */ }
 }
 
@@ -748,6 +809,21 @@ async function refreshAll(forceRefresh: boolean = false) {
       }
     })
     await loadFundData([...codes], forceRefresh, starQdii)
+
+    // [WHAT] 估值刷新完成后，按账户聚合当日收益率并采样进「当日收益曲线」序列。
+    // [WHY] 全景大屏原本只走 loadFundData（实时估值），不调 refreshEstimates，导致自身不连续采样；
+    //       这里在估值落地后补一次采样，使全景的 60s 自动刷新也能持续累积曲线（采样内部已按交易时段闸门，非交易时段不落盘）。
+    // [DISABLED] 该功能暂时隐藏 + 停止采集（ACCOUNT_RETURN_CURVE_ENABLED = false），恢复时改回 true 即可。
+    if (ACCOUNT_RETURN_CURVE_ENABLED) holdingStore.recordAccountReturnSamples()
+
+    // [WHAT] 估值刷新完成后，执行「今天到期」的定投计划（买入 auto_invest 交易 + 扣减账户现金 + 累加持仓份额）。
+    // [WHY] 此时持仓已带最新 currentValue（净值或估值），可直接作为买入价。定投仅在网页打开且触发刷新时执行，
+    //       过去的交易日不补买（没有历史每日净值，用今日净值回补过去日期在经济学上是错的）。
+    const dcaResult = executeDueDCAs(getCalendarDateStr())
+    if (dcaResult.executed.length) {
+      // [WHAT] 定投已改动现金余额与持仓份额，重新读回 ref 让顶栏/账户现金/市值即时刷新
+      accountCash.value = getPanoramaAccountCash()
+    }
 
     // AI 追踪的估值成本也在每次全景刷新时校正：
     // 添加当天先用估值并记录估值日期；晚间/次日拿到历史净值后替换为同一天的真实净值。
@@ -1037,7 +1113,7 @@ async function submitTrade() {
     // [WHAT] 交易已联动写入现金余额，重新读回 ref 让顶栏/账户现金即时刷新
     accountCash.value = getPanoramaAccountCash()
     closeToast()
-    showToast({ message: `${isClear ? '清仓' : type === 'buy' ? '加仓' : '减仓'}成功`, duration: 2000 })
+    showToast({ message: `${isClear ? '清仓' : tradeTypeLabel(type)}成功`, duration: 2000 })
     showTradeDialog.value = false
     selectedFundForAction.value = null
   } catch (e) {
@@ -1356,16 +1432,34 @@ const aiLiveIsNavMap = computed(() => {
       </div>
 
       <div class="top-indices" v-if="indices.length > 0">
-        <div 
-          v-for="idx in indices.slice(0, 6)" 
-          :key="idx.code" 
-          class="index-tile"
-          :class="idx.changePercent >= 0 ? 'up' : 'down'"
-        >
-          <span class="index-name">{{ idx.name }}</span>
-          <span class="index-value">{{ idx.current.toFixed(2) }}</span>
-          <span class="index-pct">{{ fmtIndexPct(idx.changePercent) }}</span>
-        </div>
+        <template v-for="idx in indices.slice(0, 6)" :key="idx.code">
+          <div 
+            class="index-tile"
+          :class="[
+            idx.changePercent >= 0 ? 'up' : 'down',
+            { clickable: INDEX_TIMESHARE_ENABLED && !!getIndexSecid(idx.code), active: INDEX_TIMESHARE_ENABLED && selectedIndex?.code === idx.code }
+          ]"
+            @click="selectIndex(idx)"
+          >
+            <span class="index-name">{{ idx.name }}</span>
+            <span class="index-value">{{ idx.current.toFixed(2) }}</span>
+            <span class="index-pct">{{ fmtIndexPct(idx.changePercent) }}</span>
+          </div>
+          <!-- 点击 A 股指数后，在它右侧插入同尺寸分时示意图方块 -->
+          <div
+            v-if="INDEX_TIMESHARE_ENABLED && selectedIndex && selectedIndex.code === idx.code"
+            class="index-timeshare-mini"
+            :class="idx.changePercent >= 0 ? 'up' : 'down'"
+          >
+            <IndexTimeShareChart
+              compact
+              :points="timeShare ? timeShare.points : []"
+              :pre-close="idx.current > 0 ? idx.current / (1 + idx.changePercent / 100) : 0"
+              :loading="timeShareLoading"
+            />
+            <button class="its-mini-close" @click.stop="selectedIndex = null; timeShare = null" title="收起">✕</button>
+          </div>
+        </template>
       </div>
 
       <div class="top-right">
@@ -1433,7 +1527,14 @@ const aiLiveIsNavMap = computed(() => {
         <div class="panel-header">
           <span class="panel-title">💼 Portfolio 持仓</span>
           <span class="panel-sub">共 {{ totalStats.count }} 只 · 市值 {{ fmtMoney(totalStats.marketValue) }}</span>
-          <span class="panel-link" @click="goPortfolio()">详情 →</span>
+          <!-- [WHAT] 定投入口：持仓 panel 头部唯一一个按钮，点击在新浏览器 tab 打开定投管理页（/dca） -->
+          <button
+            class="panel-dca-btn"
+            title="定投管理（新开页面）"
+            @click="openDCATab"
+          >
+            <span class="dca-icon">📅</span>定投
+          </button>
           <span class="panel-link" @click="resetAccountLayout" title="恢复账户区块的默认顺序与高度">复位</span>
           <!-- 更新进度 -->
           <div class="update-progress" :class="[updateProgress.class, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
@@ -1468,7 +1569,6 @@ const aiLiveIsNavMap = computed(() => {
                 >&#8942;&#8942;</span>
                 <img v-if="acc.icon" :src="acc.icon" class="account-icon" />
                 <span v-else class="account-icon-fallback">{{ acc.fallback }}</span>
-                <span class="account-name">{{ acc.label }}</span>
                 <span class="account-count">{{ acc.stats.count }} 只</span>
                 <span
                   v-if="acc.key !== 'other'"
@@ -1490,8 +1590,14 @@ const aiLiveIsNavMap = computed(() => {
                   <span class="pos-label">{{ fmtPct(acc.posPct) }}</span>
                 </div>
                 <span v-else class="account-position-empty">—</span>
-                <!-- [WHAT] 当日收益曲线：画在持仓进度条和市值之间，小示意图 -->
-                <AccountReturnCurve :account-key="acc.key" />
+                <!-- [WHAT] 当日收益曲线：画在持仓进度条和市值之间，小示意图
+                     base = 昨日市值（= 当前市值 - 当日盈亏），用于在老采样点缺 a 金额字段时由收益率反推盈亏金额
+                     [DISABLED] 暂时隐藏（ACCOUNT_RETURN_CURVE_ENABLED = false），恢复时改回 true 即可 -->
+                <AccountReturnCurve
+                  v-if="ACCOUNT_RETURN_CURVE_ENABLED"
+                  :account-key="acc.key"
+                  :base="Math.max(0, (acc.stats.marketValue || 0) - (acc.stats.todayProfit || 0))"
+                />
                 <div class="account-spacer"></div>
                 <span class="account-stat">{{ fmtMoney(acc.stats.marketValue) }}</span>
                 <span
@@ -1833,7 +1939,7 @@ const aiLiveIsNavMap = computed(() => {
                   :class="trade.type"
                 >
                   <span class="trade-type-badge" :class="trade.type">
-                    {{ trade.type === 'buy' ? '加仓' : '减仓' }}
+                    {{ tradeTypeLabel(trade.type) }}
                   </span>
                   <span class="trade-date">{{ trade.date }}</span>
                   <span class="trade-amount">{{ trade.amount?.toFixed(0) }}元</span>
@@ -1950,7 +2056,7 @@ const aiLiveIsNavMap = computed(() => {
       </div>
       <div class="pa-dialog-footer">
         <button class="pa-btn cancel" @click="showTradeDialog = false">取消</button>
-        <button class="pa-btn confirm" @click="submitTrade">确认{{ tradeFormData.isClear ? '清仓' : tradeFormData.type === 'buy' ? '加仓' : '减仓' }}</button>
+        <button class="pa-btn confirm" @click="submitTrade">确认{{ tradeFormData.isClear ? '清仓' : tradeTypeLabel(tradeFormData.type) }}</button>
       </div>
     </van-dialog>
 
@@ -2324,6 +2430,42 @@ const aiLiveIsNavMap = computed(() => {
 .index-tile.up .index-pct { color: var(--color-up); }
 .index-tile.down .index-value,
 .index-tile.down .index-pct { color: var(--color-down); }
+
+.index-tile.clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.index-tile.clickable:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+.index-tile.active { outline: 2px solid var(--primary-color, #6366f1); }
+
+/* ============ 指数分时示意图（内联小方块） ============ */
+.index-timeshare-mini {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 110px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  overflow: hidden;
+}
+.index-timeshare-mini.up { border-top: 2px solid var(--color-up); }
+.index-timeshare-mini.down { border-top: 2px solid var(--color-down); }
+.its-mini-close {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+}
+.its-mini-close:hover { color: var(--text-primary); }
 
 .top-right {
   display: flex;
@@ -2716,11 +2858,6 @@ const aiLiveIsNavMap = computed(() => {
   background: var(--bg-primary);
 }
 
-.account-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-
 .account-count {
   font-size: 10px;
   color: var(--text-muted);
@@ -2773,6 +2910,44 @@ const aiLiveIsNavMap = computed(() => {
 }
 .account-cash:active { transform: scale(0.96); }
 .account-cash-icon { font-size: 11px; line-height: 1; }
+
+/* [WHAT] 定投按钮：持仓 panel 头部唯一入口（panel-sub 右侧），进入定投管理弹窗 */
+.panel-dca-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-left: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.panel-dca-btn:hover { filter: brightness(1.08); }
+.panel-dca-btn:active { transform: scale(0.96); }
+.panel-dca-btn.has-plan {
+  background: linear-gradient(135deg, #1989fa, #21c1ff);
+}
+.dca-icon { font-size: 11px; line-height: 1; }
+.dca-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  margin-left: 1px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #6366f1;
+  background: #fff;
+  border-radius: 7px;
+}
 
 /* ============ 账户持仓进度条（现金图标右侧） ============ */
 /* [WHAT] 轨道=总仓位(现金+市值)，填充=持仓市值(渐变主色)，空白=闲置现金；右侧等宽百分比标签 */
@@ -3646,6 +3821,9 @@ const aiLiveIsNavMap = computed(() => {
 
 .trade-type-badge.buy { background: rgba(34, 197, 94, 0.15); color: var(--color-up); }
 .trade-type-badge.sell { background: rgba(239, 68, 68, 0.15); color: var(--color-down); }
+/* 定投：买入方向但独立配色（蓝），避免与普通加仓混淆 */
+.trade-type-badge.auto_invest { background: rgba(25, 137, 250, 0.15); color: #1989fa; }
+.trade-type-badge.dividend { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
 
 .trade-date {
   font-size: 10px;
@@ -3968,6 +4146,19 @@ const aiLiveIsNavMap = computed(() => {
   transition: border-color 0.15s;
 }
 .pa-field input:focus { border-color: #3b82f6; }
+.pa-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 14px;
+  outline: none;
+}
+
+/* ============ 定投（DCA）相关样式已移至 views/DCAPage.vue（独立页面，桌面端专用） ============ */
 
 .pa-tag {
   font-size: 10px;
