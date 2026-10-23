@@ -23,7 +23,7 @@ import { createTrade } from '@/composables/useFundTrade'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { ACCOUNT_RETURN_CURVE_ENABLED } from '@/utils/intradayReturn'
-import { executeDueDCAs } from '@/utils/dca'
+import { executeDueDCAs, getDCAPlans, planDailyRate } from '@/utils/dca'
 import { tradeTypeLabel } from '@/types/fund'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import BackupActions from '@/components/BackupActions.vue'
@@ -678,6 +678,67 @@ const accountIcons: Record<string, string> = { ali: aliIcon, TX: txIcon, JD: jdI
 function getSourceIconSrc(source?: string) {
   return source ? (accountIcons[source] || '') : ''
 }
+
+// ============ 顶部：QD 占比 + 定投概览模块 ============
+// [WHAT] 在「利润率」与「交易状态」之间展示：总 QDII 市值占 (现金+市值) 比例；
+//        三账户各自的 QD 占比、日均定投额、剩余可投天数。不额外增加顶栏高度。
+const QD_ACCOUNT_KEYS = ['ali', 'TX', 'JD'] as const
+const qdAccountMeta: Record<string, { label: string; icon: string }> = {
+  ali: { label: '支付宝', icon: aliIcon },
+  TX: { label: '腾讯', icon: txIcon },
+  JD: { label: '京东', icon: jdIcon }
+}
+const qdAccountHoldings: Record<string, any> = {
+  ali: aliHoldings,
+  TX: txHoldings,
+  JD: jdHoldings
+}
+
+// 三账户各自的 QD 占比 / 日均定投额 / 可投天数
+const qdDcaStats = computed(() => {
+  const plans = getDCAPlans()
+  const dcaByAcc: Record<string, { dailyRate: number; planCount: number }> = {}
+  for (const acc of QD_ACCOUNT_KEYS) dcaByAcc[acc] = { dailyRate: 0, planCount: 0 }
+  for (const p of plans) {
+    if (!(p.source in dcaByAcc)) continue
+    if (!p.active || !(p.amount > 0)) continue
+    dcaByAcc[p.source].dailyRate += planDailyRate(p)
+    dcaByAcc[p.source].planCount += 1
+  }
+  return QD_ACCOUNT_KEYS.map(acc => {
+    const cash = getAccountCash(acc)
+    const holdings = (qdAccountHoldings[acc] as any).value as any[]
+    const mv = holdings.reduce((t: number, f: any) => t + (f.marketValue || 0), 0)
+    const qdMv = holdings
+      .filter((f: any) => f.isQDII)
+      .reduce((t: number, f: any) => t + (f.marketValue || 0), 0)
+    // [WHAT] QD占比 = QDII 市值 / 该账户市值（不再计入现金余额）
+    const d = dcaByAcc[acc]
+    return {
+      key: acc,
+      label: qdAccountMeta[acc].label,
+      icon: qdAccountMeta[acc].icon,
+      cash,
+      mv,
+      qdMv,
+      qdPct: mv > 0 ? (qdMv / mv) * 100 : 0,
+      dailyRate: d.dailyRate,
+      planCount: d.planCount,
+      daysRemaining: d.dailyRate > 0 ? Math.floor(cash / d.dailyRate) : Infinity
+    }
+  })
+})
+
+// 总 QDII 市值 / 总市值（不再计入现金余额）
+const qdTotal = computed(() => {
+  const qdMv = qdDcaStats.value.reduce((t, a) => t + a.qdMv, 0)
+  const denom = totalStats.value.marketValue
+  return {
+    qdMv,
+    denom,
+    pct: denom > 0 ? (qdMv / denom) * 100 : 0
+  }
+})
 
 // AI 分析（使用 liveFundData 作为 fundDataMap）
 const aiAnalysis = computed<TradeAnalysisResult>(() => {
@@ -1352,6 +1413,10 @@ function fmtMoney(v: number) {
 function fmtPct(v: number) {
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
 }
+// QD 占比等"占比/比例"用，不带正负号（与涨跌幅的 + 区分）
+function fmtRatio(v: number) {
+  return v.toFixed(1) + '%'
+}
 function fmtIndexPct(v: number) {
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
 }
@@ -1424,6 +1489,34 @@ const aiLiveIsNavMap = computed(() => {
           <span class="stat-label">利润率</span>
           <span class="stat-value">{{ isWeekend ? '休市' : fmtPct(totalStats.profitPercent) }}</span>
         </div>
+        <!-- QD占比 / 定投概览（利润率 与 交易状态 之间，纵向窄列布局，横向不占空间） -->
+        <div class="qd-dca-panel">
+          <div class="qd-dca-total">
+            <span class="qd-dca-total-label">QD占比</span>
+            <span class="qd-dca-total-value">{{ fmtRatio(qdTotal.pct) }}</span>
+            <span class="qd-dca-total-sub">QD市值 {{ fmtMoney(qdTotal.qdMv) }}</span>
+          </div>
+          <div class="qd-dca-sep"></div>
+          <div class="qd-dca-accounts">
+            <div
+              v-for="a in qdDcaStats"
+              :key="a.key"
+              class="qd-dca-acc"
+              :class="{ 'no-dca': a.planCount === 0 }"
+              :title="`${a.label}：QD市值 ${fmtMoney(a.qdMv)} / 市值 ${fmtMoney(a.mv)}（占 ${fmtRatio(a.qdPct)}）；日均定投 ¥${Math.round(a.dailyRate)}，按当前现金可投 ${a.daysRemaining === Infinity ? '∞' : a.daysRemaining} 天`"
+            >
+              <img class="qd-dca-acc-icon" :src="a.icon" :alt="a.label" @error="onLogoError" />
+              <span class="qd-dca-acc-name">{{ a.label }}</span>
+              <span class="qd-dca-acc-qd">QD {{ fmtRatio(a.qdPct) }}</span>
+              <span class="qd-dca-acc-sep">·</span>
+              <template v-if="a.planCount > 0">
+                <span class="qd-dca-acc-dca">定投 ¥{{ Math.round(a.dailyRate) }}/天</span>
+                <span class="qd-dca-acc-days">可投 {{ a.daysRemaining === Infinity ? '∞' : a.daysRemaining }}天</span>
+              </template>
+              <span class="qd-dca-acc-dca none" v-else>未设定投</span>
+            </div>
+          </div>
+        </div>
         <div class="stat-block trading-status" :class="tradingStatus.class">
           <span class="stat-label">交易状态</span>
           <span class="stat-value"><span class="live-dot"></span>{{ tradingStatus.text }}</span>
@@ -1463,60 +1556,71 @@ const aiLiveIsNavMap = computed(() => {
       </div>
 
       <div class="top-right">
-        <!-- 主题切换（与 Holding 持仓页面同款） -->
-        <div class="theme-toggle">
-          <span 
-            class="theme-toggle-btn" 
-            :class="{ active: themeStore.actualTheme === 'light' }"
-            @click="themeStore.setTheme('light')"
-          >浅</span>
-          <span 
-            class="theme-toggle-btn" 
-            :class="{ active: themeStore.actualTheme === 'dark' }"
-            @click="themeStore.setTheme('dark')"
-          >深</span>
+        <!-- 第一行：深浅 · 备份组 · 底部导航开关 -->
+        <div class="top-row top-row-1">
+          <!-- 主题切换（与 Holding 持仓页面同款，自带连接分段样式） -->
+          <div class="theme-toggle">
+            <span
+              class="theme-toggle-btn"
+              :class="{ active: themeStore.actualTheme === 'light' }"
+              @click="themeStore.setTheme('light')"
+            >浅</span>
+            <span
+              class="theme-toggle-btn"
+              :class="{ active: themeStore.actualTheme === 'dark' }"
+              @click="themeStore.setTheme('dark')"
+            >深</span>
+          </div>
+
+          <!-- 备份 / 云备份 / 云恢复：连接成一段（与「我的持仓」页共用同一套逻辑） -->
+          <div class="seg top-backup-seg">
+            <BackupActions
+              class="top-backup-actions"
+              :show-local-restore="false"
+              button-class="top-text-btn"
+              @restored="() => refreshAll(true)"
+            />
+          </div>
+
+          <button
+            class="top-icon-btn"
+            :class="{ 'is-on': tabbarForceShow }"
+            @click="toggleTabbar"
+            :title="tabbarForceShow ? '隐藏底部导航' : '显示底部导航'"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <path d="M3 15h18"/>
+            </svg>
+          </button>
         </div>
-        <span class="clock">{{ currentTime }}</span>
 
-        <!-- 备份 / 云备份 / 云恢复（与「我的持仓」页共用同一套逻辑） -->
-        <BackupActions
-          class="top-backup-actions"
-          :show-local-restore="false"
-          button-class="top-text-btn"
-          @restored="() => refreshAll(true)"
-        />
-
-        <button class="top-icon-btn" @click="openStarKLine" title="星标K线">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
-        </button>
-        <button
-          class="top-icon-btn"
-          :class="{ 'is-on': tabbarForceShow }"
-          @click="toggleTabbar"
-          :title="tabbarForceShow ? '隐藏底部导航' : '显示底部导航'"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="16" rx="2"/>
-            <path d="M3 15h18"/>
-          </svg>
-        </button>
-        <button
-          class="top-icon-btn auto-refresh-toggle"
-          :class="{ 'is-on': autoRefreshEnabled }"
-          @click="toggleAutoRefresh"
-          :title="autoRefreshEnabled ? '关闭自动刷新' : '开启自动刷新'"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
-            <polyline points="21 3 21 9 15 9"/>
-          </svg>
-        </button>
-        <span class="refresh-countdown" :class="{ off: !autoRefreshEnabled }">
-          {{ autoRefreshEnabled ? countdown + 's' : '已停' }}
-        </span>
-        <button class="refresh-btn" :class="{ spinning: refreshing }" @click="() => refreshAll(true)" :disabled="refreshing" title="手动刷新">↻</button>
+        <!-- 第二行：时钟 · 操作组(星标/自动刷新/刷新) · 倒计时 -->
+        <div class="top-row top-row-2">
+          <span class="clock">{{ currentTime }}</span>
+          <div class="seg top-actions">
+            <button class="seg-btn" @click="openStarKLine" title="星标K线">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+            </button>
+            <button
+              class="seg-btn auto-refresh-toggle"
+              :class="{ 'is-on': autoRefreshEnabled }"
+              @click="toggleAutoRefresh"
+              :title="autoRefreshEnabled ? '关闭自动刷新' : '开启自动刷新'"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+                <polyline points="21 3 21 9 15 9"/>
+              </svg>
+            </button>
+            <button class="seg-btn refresh-btn" :class="{ spinning: refreshing }" @click="() => refreshAll(true)" :disabled="refreshing" title="手动刷新">↻</button>
+          </div>
+          <span class="refresh-countdown" :class="{ off: !autoRefreshEnabled }">
+            {{ autoRefreshEnabled ? countdown + 's' : '已停' }}
+          </span>
+        </div>
       </div>
     </header>
 
@@ -2268,12 +2372,12 @@ const aiLiveIsNavMap = computed(() => {
 .top-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 10px 20px;
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .top-left {
@@ -2383,6 +2487,92 @@ const aiLiveIsNavMap = computed(() => {
 .trading-status.closed .live-dot { background: var(--text-muted); animation: none; }
 .trading-status.noon .live-dot { background: #f0883e; }
 
+/* ============ 顶栏 QD占比 / 定投概览模块 ============
+   [WHAT] 插入在「利润率」与「交易状态」之间；高度与 stat-block 对齐，不额外撑高顶栏。 */
+.qd-dca-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 12px;
+  border-radius: 8px;
+  background: var(--bg-tertiary, rgba(99, 102, 241, 0.08));
+  border: 1px solid var(--border-light);
+}
+.qd-dca-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.qd-dca-total-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.qd-dca-total-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #f0883e;
+  line-height: 1.1;
+}
+.qd-dca-total-sub {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.qd-dca-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-light);
+  margin: 2px 0;
+}
+.qd-dca-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qd-dca-acc {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+.qd-dca-acc-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.qd-dca-acc-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+.qd-dca-acc-qd {
+  font-size: 10px;
+  color: #f0883e;
+  font-variant-numeric: tabular-nums;
+}
+.qd-dca-acc-sep {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.qd-dca-acc-dca {
+  font-size: 10px;
+  color: var(--primary-color, #6366f1);
+  font-variant-numeric: tabular-nums;
+}
+.qd-dca-acc-dca.none {
+  color: var(--text-muted);
+}
+.qd-dca-acc-days {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
@@ -2390,9 +2580,11 @@ const aiLiveIsNavMap = computed(() => {
 
 .top-indices {
   display: flex;
-  gap: 10px;
-  flex: 1;
-  justify-content: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .index-tile {
@@ -2467,25 +2659,99 @@ const aiLiveIsNavMap = computed(() => {
 }
 .its-mini-close:hover { color: var(--text-primary); }
 
+/* ============ 顶部右侧：紧凑双行工具栏 ============ */
 .top-right {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;            /* 两行之间的垂直间距 */
   flex-shrink: 0;
+  margin-left: auto;
 }
-
-/* 主题切换按钮（与 Holding.vue 同款） */
-.theme-toggle {
+.top-row {
   display: flex;
   align-items: center;
-  background: var(--bg-primary);
+  gap: 8px;            /* 逻辑分组之间的间距（组内按钮零间距、连接成段） */
+}
+/* 连接式分段控件：组内按钮共享 1px 边框、零内间距，仅两端圆角 */
+.seg {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+.seg > * {
+  height: 30px;
+  min-width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-right: 1px solid var(--border-light);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+}
+.seg > :last-child {
+  border-right: none;
+}
+.seg > :hover:not(.is-on) {
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+}
+.seg > .is-on {
+  background: var(--primary-color);
+  color: #fff;
+}
+.seg > .is-on:hover {
+  background: var(--primary-color);
+  color: #fff;
+}
+/* BackupActions 的 van-button 在 seg 内表现为连接的分段项（display:contents 让其成为 seg 直接子级） */
+.top-backup-seg > .top-backup-actions {
+  display: contents !important;
+}
+.top-backup-seg :deep(.van-button.top-text-btn) {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  border: none;
+  border-right: 1px solid var(--border-light);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.top-backup-seg :deep(.van-button.top-text-btn:last-child) {
+  border-right: none;
+}
+.top-backup-seg :deep(.van-button.top-text-btn:hover) {
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+}
+
+/* 主题切换按钮（与 Holding.vue 同款，自带连接分段样式，高度与 .seg 对齐） */
+.theme-toggle {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  box-sizing: border-box;
+  background: var(--bg-secondary);
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border-light);
 }
 
 .theme-toggle-btn {
-  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
@@ -2504,27 +2770,21 @@ const aiLiveIsNavMap = computed(() => {
 }
 
 .clock {
-  font-size: 12px;
-  font-family: 'SF Mono', Consolas, monospace;
-  color: var(--text-secondary);
-}
-
-.refresh-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
   font-size: 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  font-weight: 700;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-color, #6366f1);
+  line-height: 1;
 }
 
-.refresh-btn:hover { background: var(--bg-tertiary); }
+/* [NOTE] 刷新按钮现已位于 .seg 分段控件内，边框/圆角/背景由 .seg 统一提供，这里只保留字形与旋转动画 */
+.refresh-btn {
+  min-width: 30px;
+  font-size: 16px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
 .refresh-btn.spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

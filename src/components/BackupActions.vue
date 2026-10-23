@@ -22,8 +22,9 @@ import {
   saveWatchlist,
   getPanoramaAccountCash,
   savePanoramaAccountCash,
+  saveDCADailyRates,
 } from '@/utils/storage'
-import { getDCAPlans, saveDCAPlans } from '@/utils/dca'
+import { computeDCADailyRateMap } from '@/utils/dca'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { clearFundCache } from '@/api/fundFast'
 import {
@@ -159,8 +160,10 @@ function buildBackupPayload(withNetValues: boolean) {
     // [WHY] 不备份的话，恢复后现金为 0、占比进度条全部归零，看不到真实的全局资金视图
     // [NOTE] 老备份无此字段，恢复时会跳过（不写空），不会清掉当前手机上已有的现金数
     panoramaAccountCash: getPanoramaAccountCash(),
-    // [WHAT] 定投计划：与持仓同级的用户圈选数据，丢了得一只只重新设
-    dcaPlans: getDCAPlans(),
+    // [WHAT] 定投：只备份「每账户每日定投额」（元/交易日），不备份整套计划——
+    //       手机端无完整计划且无法同步执行，但靠这个每日额度即可展示 定投¥/天 与 可投天数；
+    //       QD占比、可投天数等其余数据都能由持仓/现金现算，不必备份。
+    dcaDailyRates: computeDCADailyRateMap(),
   }
 
   if (withNetValues) {
@@ -225,9 +228,9 @@ function applyBackupData(jsonData: any): boolean {
     savePanoramaAccountCash(jsonData.panoramaAccountCash)
   }
 
-  // [WHY] 老版本备份文件里没有这个字段时「跳过」而非写空，避免清掉当前已有的定投计划
-  if (Array.isArray(jsonData.dcaPlans)) {
-    saveDCAPlans(jsonData.dcaPlans)
+  // [WHY] 老版本备份文件里没有这个字段时「跳过」而非写空，避免清掉当前已有的每日定投额
+  if (jsonData.dcaDailyRates && typeof jsonData.dcaDailyRates === 'object') {
+    saveDCADailyRates(jsonData.dcaDailyRates)
   }
 
   emit('restored')

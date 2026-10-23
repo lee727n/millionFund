@@ -104,7 +104,24 @@
             <div v-for="plan in plansOf(a.key)" :key="plan.id" class="dca-plan" :title="plan.name + ' · 累计投入 ' + fmtMoney(plan.totalInvested) + ' · 已执行 ' + plan.executedCount + ' 次'">
               <div class="dca-plan-row">
                 <span class="dca-p-name">{{ plan.name }}<i class="dca-p-code">{{ plan.code }}</i></span>
-                <span class="dca-p-amt">{{ fmtMoney(plan.amount) }}/期</span>
+                <span
+                  v-if="editingId !== plan.id"
+                  class="dca-p-amt"
+                  title="点击编辑每期金额"
+                  @click="startEdit(plan)"
+                >{{ fmtMoney(plan.amount) }}/期</span>
+                <span v-else class="dca-p-edit">
+                  <input
+                    v-model="editAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="dca-edit-input"
+                    @keyup.enter="saveEdit"
+                  />
+                  <button class="dca-edit-save" @click="saveEdit">保存</button>
+                  <button class="dca-edit-cancel" @click="cancelEdit">取消</button>
+                </span>
                 <span class="dca-p-freq">{{ freqLabel(plan) }}</span>
                 <span class="dca-p-next">下次 {{ nextDate(plan).slice(5) }}</span>
                 <span class="dca-p-inv">累计{{ fmtMoney(plan.totalInvested) }}</span>
@@ -272,6 +289,31 @@ function remove(id: string) {
   removeDCAPlan(id)
   showToast('定投计划已删除')
   dcaRefreshKey.value++
+}
+
+// [WHAT] 行内编辑每期金额：点击金额 → 输入框 → 保存写回 plan.amount → 后续执行按新金额扣款
+// [WHY] 用户希望已添加的计划能直接改金额，而不必删除重建；updateDCAPlan 会持久化，executeDueDCAs 自然用新值
+const editingId = ref<string | null>(null)
+const editAmount = ref<number>(0)
+function startEdit(plan: DCAPlan) {
+  editingId.value = plan.id
+  editAmount.value = plan.amount
+}
+function saveEdit() {
+  const amt = parseFloat(String(editAmount.value))
+  if (isNaN(amt) || amt <= 0) {
+    showToast('请输入有效的每期金额')
+    return
+  }
+  if (editingId.value) {
+    updateDCAPlan(editingId.value, { amount: amt })
+    dcaRefreshKey.value++
+    showToast('每期金额已更新')
+  }
+  editingId.value = null
+}
+function cancelEdit() {
+  editingId.value = null
 }
 
 // ============ 刷新 + 执行 ============
@@ -487,7 +529,37 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 .dca-p-code { font-style: normal; font-size: 10px; color: #64748b; margin-left: 4px; }
-.dca-p-amt { color: #a5b4fc; }
+.dca-p-amt { color: #a5b4fc; cursor: pointer; }
+.dca-p-amt:hover { text-decoration: underline; }
+.dca-p-edit { display: inline-flex; align-items: center; gap: 4px; }
+.dca-edit-input {
+  width: 70px;
+  box-sizing: border-box;
+  background: #0f172a;
+  border: 1px solid #6366f1;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.dca-edit-input:focus { outline: none; border-color: #8b5cf6; }
+.dca-edit-save,
+.dca-edit-cancel {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 2px 7px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.dca-edit-save {
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+.dca-edit-cancel {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
 .dca-p-freq, .dca-p-next, .dca-p-inv { color: #94a3b8; }
 .dca-p-inv { font-size: 11px; }
 .dca-switch {

@@ -17,6 +17,7 @@ import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, typ
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund, getPanoramaAccountCash } from '@/utils/storage'
+import { getAccountDailyRateMap } from '@/utils/dca'
 import { createTrade } from '@/composables/useFundTrade'
 import type { TradeType } from '@/types/fund'
 import { tradeTypeLabel } from '@/types/fund'
@@ -1314,6 +1315,11 @@ const mobileAccountSections = computed(() =>
     const cash = mobileAccountCash.value[key] || 0
     const totalPosition = cash + stats.marketValue
     const posPct = totalPosition > 0 ? Math.min(100, (stats.marketValue / totalPosition) * 100) : 0
+    // [WHAT] 第二行展示：QD占比 / 每日定投额 / 可投天数（与全景大屏 QD定投概览同口径）
+    const qdMv = funds.reduce((t: number, f: any) => t + (f.isQDII ? (f.marketValue || 0) : 0), 0)
+    const qdPct = stats.marketValue > 0 ? (qdMv / stats.marketValue) * 100 : 0
+    const dailyRate = getAccountDailyRateMap()[key] || 0
+    const daysRemaining = dailyRate > 0 ? Math.floor(cash / dailyRate) : Infinity
     return {
       key,
       label: mobileAccountMeta[key].label,
@@ -1322,7 +1328,8 @@ const mobileAccountSections = computed(() =>
       stats,
       cash,
       totalPosition,
-      posPct
+      posPct,
+      dca: { qdPct, dailyRate, daysRemaining }
     }
   }).filter(Boolean) as any[]
 )
@@ -1341,6 +1348,10 @@ function fmtMoney(v: number) {
 }
 function fmtPctValue(v: number) {
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+}
+// [WHAT] 占比专用：无正负号，一位小数（QD占比等）
+function fmtRatio(v: number) {
+  return v.toFixed(1) + '%'
 }
 
 // [WHAT] 排序持仓基金（兼容旧代码）
@@ -1629,70 +1640,107 @@ function handleNameClick(code: string, name: string) {
   <div class="home-page">
     <!-- 顶部搜索栏 -->
     <div class="top-header">
-      <div class="header-left">
-        <span class="app-title web-only">AI 百万实盘</span>
-        <span class="app-title mobile-only">AI实盘</span>
-        <!-- 网页端：参考均线和指数横向显示 -->
-        <div class="web-only">
-          <div class="reference-ma-badge header-ma-badge">
-            <span class="reference-ma-label">参考均线</span>
-            <span class="reference-ma-value" :class="hs300ChangePercent >= 0 ? 'up' : 'down'">
-              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
-            </span>
+      <!-- 第一行：标题 / 指数 / 设置（桌面+移动共用，靠 web-only/mobile-only 切换） -->
+      <div class="top-header-main-row">
+        <div class="header-left">
+          <span class="app-title web-only">AI 百万实盘</span>
+          <span class="app-title mobile-only">AI实盘</span>
+          <!-- 网页端：参考均线和指数横向显示 -->
+          <div class="web-only">
+            <div class="reference-ma-badge header-ma-badge">
+              <span class="reference-ma-label">参考均线</span>
+              <span class="reference-ma-value" :class="hs300ChangePercent >= 0 ? 'up' : 'down'">
+                {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
+              </span>
+            </div>
+            <div class="top-indices-bar" v-if="topIndices.length > 0">
+              <div 
+                v-for="index in topIndices" 
+                :key="index.code"
+                class="top-index-item"
+                :class="[index.changePercent >= 0 ? 'up' : 'down']"
+                @click="router.push('/market')"
+              >
+                <span class="top-index-name">{{ index.name }}</span>
+                <span class="top-index-change">
+                  {{ index.changePercent >= 0 ? '+' : '' }}{{ index.changePercent.toFixed(2) }}%
+                </span>
+              </div>
+            </div>
           </div>
-          <div class="top-indices-bar" v-if="topIndices.length > 0">
+          <!-- 移动端：参考均线和指数横向排列，每个都是上下布局 -->
+          <div class="mobile-indices-container mobile-only">
+            <!-- 参考均线 - 保持蓝色，不受涨跌影响 -->
+            <div class="mobile-ma-item">
+              <span class="mobile-ma-name">参考均线</span>
+              <span class="mobile-ma-value">
+                {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
+              </span>
+            </div>
+            <!-- 指数 - 根据涨跌变化配色 -->
             <div 
               v-for="index in topIndices" 
               :key="index.code"
-              class="top-index-item"
+              class="mobile-index-item"
               :class="[index.changePercent >= 0 ? 'up' : 'down']"
               @click="router.push('/market')"
             >
-              <span class="top-index-name">{{ index.name }}</span>
-              <span class="top-index-change">
+              <span class="mobile-index-name">{{ index.name }}</span>
+              <span class="mobile-index-change">
                 {{ index.changePercent >= 0 ? '+' : '' }}{{ index.changePercent.toFixed(2) }}%
               </span>
             </div>
           </div>
         </div>
-        <!-- 移动端：参考均线和指数横向排列，每个都是上下布局 -->
-        <div class="mobile-indices-container mobile-only">
-          <!-- 参考均线 - 保持蓝色，不受涨跌影响 -->
-          <div class="mobile-ma-item">
-            <span class="mobile-ma-name">参考均线</span>
-            <span class="mobile-ma-value">
-              {{ hs300ChangePercent >= 0 ? '+' : '' }}{{ hs300ChangePercent.toFixed(2) }}%
-            </span>
+        <div class="header-right">
+          <!-- 网页端：显示设置按钮 -->
+          <div class="web-only">
+            <div class="auto-refresh-label">
+              <span>{{ autoRefreshEnabled ? '自动刷新开' : '自动刷新关' }}</span>
+            </div>
+            <van-switch v-model="autoRefreshEnabled" size="20" />
+            <van-icon name="replay" size="22" @click="refreshData" />
+            <van-icon name="setting-o" size="22" @click="router.push('/alerts')" />
           </div>
-          <!-- 指数 - 根据涨跌变化配色 -->
-          <div 
-            v-for="index in topIndices" 
-            :key="index.code"
-            class="mobile-index-item"
-            :class="[index.changePercent >= 0 ? 'up' : 'down']"
-            @click="router.push('/market')"
-          >
-            <span class="mobile-index-name">{{ index.name }}</span>
-            <span class="mobile-index-change">
-              {{ index.changePercent >= 0 ? '+' : '' }}{{ index.changePercent.toFixed(2) }}%
-            </span>
+          <!-- 移动端：只显示自动刷新开关和刷新按钮 -->
+          <div class="mobile-only">
+            <van-switch v-model="autoRefreshEnabled" size="20" />
+            <van-icon name="replay" size="22" @click="refreshData" />
           </div>
         </div>
       </div>
-      <div class="header-right">
-        <!-- 网页端：显示设置按钮 -->
-        <div class="web-only">
-          <div class="auto-refresh-label">
-            <span>{{ autoRefreshEnabled ? '自动刷新开' : '自动刷新关' }}</span>
-          </div>
-          <van-switch v-model="autoRefreshEnabled" size="20" />
-          <van-icon name="replay" size="22" @click="refreshData" />
-          <van-icon name="setting-o" size="22" @click="router.push('/alerts')" />
-        </div>
-        <!-- 移动端：只显示自动刷新开关和刷新按钮 -->
-        <div class="mobile-only">
-          <van-switch v-model="autoRefreshEnabled" size="20" />
-          <van-icon name="replay" size="22" @click="refreshData" />
+      <!-- 手机端第二行：原 m-holding-bar（持仓盈亏 / 星标K线 / 更新进度），从首页持仓区搬到顶部 -->
+      <div class="top-header-second-row mobile-only">
+        <div class="m-holding-bar">
+          <span class="live-dot" :class="tradingStatus.class"></span>
+          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
+            {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
+          </span>
+          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
+            {{ isWeekend ? '' : '盈亏' + (totalTodayProfit >= 0 ? '+' : '') + Math.round(totalTodayProfit) }}
+          </span>
+          <span
+            class="mobile-star-entry"
+            :class="{ 'is-empty': starredCount === 0 }"
+            role="button"
+            aria-label="星标K线"
+            @click="openMobileStarKline"
+          >
+            <svg class="mobile-star-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
+            </svg>
+            <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
+          </span>
+          <!-- 基金更新进度条：今天更新了多少只（仅「更新中」状态显示进度条，已更新/未更新只显示文字） -->
+          <span class="m-update-progress" :class="[globalUpdateProgress.cls, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
+            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
+              <span class="m-up-live-dot"></span>
+            </template>
+            <template v-else-if="globalUpdateProgress.bar">
+              <span class="m-update-bar"><span class="m-update-fill" :style="{ width: globalUpdateProgress.percent + '%' }"></span></span>
+            </template>
+            <span class="m-update-text">{{ globalUpdateProgress.text }}</span>
+          </span>
         </div>
       </div>
     </div>
@@ -1860,73 +1908,62 @@ function handleNameClick(code: string, name: string) {
           </div>
         </div>
 
-        <!-- ===== 手机端：账户分块改版（m-holding-header + 按账户从上到下分块） ===== -->
+        <!-- ===== 手机端：账户分块改版（按账户从上到下分块） ===== -->
+        <!-- 顶部持仓盈亏/星标/更新进度已搬到 top-header 第二行（mobile-only） -->
         <div class="home-holdings-mobile">
-        <!-- 持仓趋势模块头部：左=全局单行(绿点+盈亏+更新进度+星标)，右=交易状态(已收盘/时间，原有逻辑不变) -->
-        <div class="m-holding-header">
-          <div class="m-holding-bar">
-          <span class="live-dot" :class="tradingStatus.class"></span>
-          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
-            {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
-          </span>
-          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
-            {{ isWeekend ? '' : '盈亏' + (totalTodayProfit >= 0 ? '+' : '') + Math.round(totalTodayProfit) }}
-          </span>
-          <span
-            class="mobile-star-entry"
-            :class="{ 'is-empty': starredCount === 0 }"
-            role="button"
-            aria-label="星标K线"
-            @click="openMobileStarKline"
-          >
-            <svg class="mobile-star-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
-            </svg>
-            <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
-          </span>
-          <!-- 基金更新进度条：今天更新了多少只（仅「更新中」状态显示进度条，已更新/未更新只显示文字） -->
-          <span class="m-update-progress" :class="[globalUpdateProgress.cls, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
-            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
-              <span class="m-up-live-dot"></span>
-            </template>
-            <template v-else-if="globalUpdateProgress.bar">
-              <span class="m-update-bar"><span class="m-update-fill" :style="{ width: globalUpdateProgress.percent + '%' }"></span></span>
-            </template>
-            <span class="m-update-text">{{ globalUpdateProgress.text }}</span>
-          </span>
-          </div>
-
-          <!-- 交易状态：时间(左) + 已收盘(右)，单行展示，节省上下空间 -->
-          <div class="trading-status m-status-inline" :class="tradingStatus.class">
-            <span class="status-time">{{ tradingStatus.subText }}</span>
-            <span class="status-text">{{ tradingStatus.text }}</span>
-          </div>
-        </div>
-
         <!-- 3 个账户分块：支付宝 / 腾讯 / 京东 -->
         <template v-for="acc in mobileAccountSections" :key="acc.key">
           <div class="m-account-block">
             <div class="m-account-header">
               <img :src="acc.icon" class="m-account-icon" />
-              <span class="m-account-name">{{ acc.label }}</span>
-              <span class="m-account-count">{{ acc.stats.count }} 只</span>
-              <span class="m-account-cash">
-                <span class="m-cash-icon">💰</span>{{ fmtMoney(acc.cash) }}
-              </span>
-              <!-- 持仓市值占比进度条：轨道=总仓位(现金+市值)，填充=持仓市值 -->
-              <div
-                v-if="acc.totalPosition > 0"
-                class="m-account-position"
-                :title="`持仓占比 ${fmtPctValue(acc.posPct)} · 市值 ${fmtMoney(acc.stats.marketValue)} / 总仓位 ${fmtMoney(acc.totalPosition)}（含现金 ${fmtMoney(acc.cash)}）`"
-              >
-                <div class="m-pos-track">
-                  <div class="m-pos-fill" :style="{ width: acc.posPct + '%' }"></div>
+              <!-- 中间两行：数量 + 现金(💰) + 持仓占比 / QD·定投·可投 -->
+              <div class="m-account-meta">
+                <div class="m-account-meta-top">
+                  <span class="m-account-count">{{ acc.stats.count }} 只</span>
+                  <span class="m-account-cash">
+                    <span class="m-cash-icon">💰</span>{{ fmtMoney(acc.cash) }}
+                  </span>
+                  <div
+                    v-if="acc.totalPosition > 0"
+                    class="m-account-position"
+                    :title="`持仓占比 ${fmtPctValue(acc.posPct)} · 市值 ${fmtMoney(acc.stats.marketValue)} / 总仓位 ${fmtMoney(acc.totalPosition)}（含现金 ${fmtMoney(acc.cash)}）`"
+                  >
+                    <div class="m-pos-track">
+                      <div class="m-pos-fill" :style="{ width: acc.posPct + '%' }"></div>
+                    </div>
+                    <span class="m-pos-label">{{ fmtPctValue(acc.posPct) }}</span>
+                  </div>
+                  <span v-else class="m-account-position-empty">—</span>
                 </div>
-                <span class="m-pos-label">{{ fmtPctValue(acc.posPct) }}</span>
+                <div class="m-account-dca-row">
+                  <span class="m-dca-item">
+                    <span class="m-dca-label">QD</span>
+                    <span class="m-dca-value">{{ fmtRatio(acc.dca.qdPct) }}</span>
+                  </span>
+                  <span class="m-dca-sep">·</span>
+                  <span class="m-dca-item">
+                    <span class="m-dca-label">定投</span>
+                    <span class="m-dca-value">{{ Math.round(acc.dca.dailyRate) }}/天</span>
+                  </span>
+                  <span class="m-dca-sep">·</span>
+                  <span class="m-dca-item">
+                    <span class="m-dca-label">可投</span>
+                    <span class="m-dca-value">{{ acc.dca.daysRemaining === Infinity ? '∞' : acc.dca.daysRemaining }}天</span>
+                  </span>
+                  <span class="m-dca-sep">·</span>
+                  <span class="m-dca-item">
+                    <span class="m-dca-value m-dca-profit" :class="acc.stats.todayProfit >= 0 ? 'up' : 'down'">
+                      {{ acc.stats.todayProfit >= 0 ? '+' : '-' }}{{ fmtMoney(Math.abs(acc.stats.todayProfit)) }}
+                    </span>
+                  </span>
+                </div>
               </div>
-              <span v-else class="m-account-position-empty">—</span>
-              <div class="m-account-spacer"></div>
-              <span class="m-account-mv">{{ fmtMoney(acc.stats.marketValue) }}</span>
+              <!-- 市值：单拉到最右侧，与两行同高、垂直居中，背景色随当日涨跌（涨红/跌绿，中国配色） -->
+              <div
+                class="m-account-mv-card"
+                :class="acc.stats.profitPercent >= 0 ? 'up' : 'down'"
+                :title="`今日盈亏 ${fmtMoney(acc.stats.todayProfit)}（${fmtPctValue(acc.stats.profitPercent)}）`"
+              >{{ fmtMoney(acc.stats.marketValue) }}</div>
             </div>
             <div class="index-grid">
               <FundGridItem
@@ -1950,10 +1987,16 @@ function handleNameClick(code: string, name: string) {
         <div class="m-account-block" v-if="mobileObserveSection">
           <div class="m-account-header">
             <img v-if="mobileObserveSection.icon" :src="mobileObserveSection.icon" class="m-account-icon" />
-            <span class="m-account-name">{{ mobileObserveSection.label }}</span>
-            <span class="m-account-count">{{ mobileObserveSection.stats.count }} 只</span>
-            <div class="m-account-spacer"></div>
-            <span class="m-account-mv">{{ fmtMoney(mobileObserveSection.stats.marketValue) }}</span>
+            <div class="m-account-meta">
+              <div class="m-account-meta-top">
+                <span class="m-account-count">{{ mobileObserveSection.stats.count }} 只</span>
+              </div>
+            </div>
+            <div
+              class="m-account-mv-card"
+              :class="mobileObserveSection.stats.profitPercent >= 0 ? 'up' : 'down'"
+              :title="`今日盈亏 ${fmtMoney(mobileObserveSection.stats.todayProfit)}（${fmtPctValue(mobileObserveSection.stats.profitPercent)}）`"
+            >{{ fmtMoney(mobileObserveSection.stats.marketValue) }}</div>
           </div>
           <div class="index-grid">
             <FundGridItem
@@ -2592,6 +2635,21 @@ function handleNameClick(code: string, name: string) {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* [WHAT] 顶部第一行容器：包裹 header-left + header-right，桌面/移动共用；
+   [WHY] 让第二行（手机端持仓盈亏条）作为兄弟节点换行到下方，而不破坏第一行 space-between 布局 */
+.top-header-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+/* [WHAT] 顶部第二行（手机端 m-holding-bar），仅 mobile-only 显示；默认占满整行 */
+.top-header-second-row {
+  width: 100%;
+}
+
 .header-left {
   flex-shrink: 0;
   display: flex;
@@ -2814,14 +2872,7 @@ function handleNameClick(code: string, name: string) {
   color: #999;
 }
 
-/* [WHAT] 手机版首页持仓新布局：全局单行 + 账户分块（参考全景大屏） */
-.m-holding-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
+/* [WHAT] 手机版首页持仓新布局：账户分块（参考全景大屏）；顶部全局单行已迁到 top-header 第二行 */
 .m-holding-bar {
   display: flex;
   align-items: center;
@@ -2839,11 +2890,13 @@ function handleNameClick(code: string, name: string) {
 }
 .m-bar-profit {
   font-family: 'SF Mono', Consolas, monospace;
-  font-size: 13px;
+  font-size: 15px;   /* 百分比 + 盈亏 放大（原 13px） */
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
 }
-.m-bar-profit.up { color: var(--color-up); }
-.m-bar-profit.down { color: var(--color-down); }
+.m-bar-profit.up { background: rgba(239, 68, 68, 0.14); color: #f87171; }   /* 浅红底：涨（与市值卡同配色） */
+.m-bar-profit.down { background: rgba(34, 197, 94, 0.16); color: #4ade80; } /* 浅绿底：跌（与市值卡同配色） */
 .m-bar-profit.closed { color: #999; }
 /* 更新进度条推到最右侧（与星标互换位置后） */
 .m-holding-bar .m-update-progress {
@@ -2858,31 +2911,23 @@ function handleNameClick(code: string, name: string) {
   margin-bottom: 0;
 }
 
+/* [WHAT] 手机端账户头部：图标(缩小,左) 与 市值卡(右,同高) 均相对中间两行 meta 垂直居中；市值卡随当日涨跌涨红跌绿 */
 .m-account-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  gap: 8px;
+  margin-bottom: 0;   /* 取消与下方 index-grid 的间距 */
+  padding: 0;
 }
 .m-account-icon {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  flex-shrink: 0;
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
-.m-account-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-.m-account-count {
-  font-size: 11px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
+/* [WHAT] 现金：钱袋图标 + 金额，沿用原第一行样式，不动 */
 .m-account-cash {
   display: inline-flex;
   align-items: center;
@@ -2901,6 +2946,44 @@ function handleNameClick(code: string, name: string) {
 .m-cash-icon {
   font-size: 11px;
   line-height: 1;
+}
+/* [WHAT] 市值卡：拉到最右、与两行同高、垂直居中，背景随当日涨跌（涨红/跌绿，中国配色） */
+.m-account-mv-card {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 72px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.m-account-mv-card.up { background: rgba(239, 68, 68, 0.14); color: #f87171; }   /* 浅红：涨 */
+.m-account-mv-card.down { background: rgba(34, 197, 94, 0.16); color: #4ade80; } /* 浅绿：跌 */
+/* 其余信息（数量 + 占比 + QD/定投/可投）占满右侧，内部两行 */
+.m-account-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.m-account-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.m-account-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 /* [WHAT] 账户持仓市值占比进度条（现金图标右侧）：轨道=总仓位(现金+市值)，填充=持仓市值，空白=闲置现金 */
 .m-account-position {
@@ -2943,6 +3026,36 @@ function handleNameClick(code: string, name: string) {
   font-size: 11px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* [WHAT] 账户头部第二行：QD占比 / 每日定投额 / 可投天数（与全景大屏 QD定投概览同口径） */
+.m-account-dca-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+}
+.m-dca-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.m-dca-label {
+  color: var(--text-muted);
+}
+.m-dca-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* [WHAT] 第二行新增「盈亏」字段：当天账户盈亏金额，涨红/跌绿（无背景色） */
+.m-dca-profit.up { color: var(--color-up); }
+.m-dca-profit.down { color: var(--color-down); }
+.m-dca-sep {
+  color: var(--text-muted);
+  opacity: 0.5;
 }
 
 /* [WHAT] 基金更新进度条（与全景大屏 update-progress 同视觉）：交易中呼吸绿点，仅「更新中」显示进度条 */
@@ -2998,17 +3111,6 @@ function handleNameClick(code: string, name: string) {
   font-size: 11px;
   font-weight: 600;
   font-family: 'SF Mono', Consolas, monospace;
-}
-.m-account-spacer {
-  flex: 1;
-  min-width: 6px;
-}
-.m-account-mv {
-  font-size: 13px;
-  font-weight: 700;
-  font-family: 'SF Mono', Consolas, monospace;
-  color: var(--text-primary);
-  flex-shrink: 0;
 }
 
 /* [WHAT] 持仓趋势桌面/移动双版本切换容器（.home-holdings-desktop / .home-holdings-mobile）
@@ -4418,6 +4520,10 @@ function handleNameClick(code: string, name: string) {
     padding: 12px 2px;
     margin: 12px 4px;
   }
+  /* 含手机版持仓容器的 market-overview：顶部内边距缩小一半（原 12px → 6px） */
+  .market-overview:has(.home-holdings-mobile) {
+    padding-top: 6px;
+  }
 
   .overview-title {
     margin-bottom: 2px;
@@ -4653,6 +4759,15 @@ function handleNameClick(code: string, name: string) {
     gap: 8px;
     padding: 8px 12px;
     padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    flex-wrap: wrap;
+  }
+  /* 移动端：第一行占满 → 第二行（持仓盈亏条）自然换到下一行 */
+  .top-header-main-row {
+    flex: 1 1 100%;
+  }
+  .top-header-second-row {
+    flex: 0 0 100%;
+    margin-top: 6px;
   }
   
   .header-left {

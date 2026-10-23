@@ -19,6 +19,8 @@ export const STORAGE_KEYS = {
   PANORAMA_ACCOUNT_CASH: 'panorama_account_cash',
   /** [WHAT] 定投（DCA）计划列表。中性命名、不带 fund_/api_/market_/estimate_ 前缀，版本清理不会误删 */
   DCA_PLANS: 'dca_plans',
+  /** [WHAT] 备份/恢复时落地的「每账户每日定投额」（元/交易日），手机端无完整计划时用于展示 定投¥/天、可投天数。中性命名，版本清理不会误删 */
+  DCA_DAILY_RATES: 'dca_daily_rates',
   // [WHAT] 每个账户「当日收益曲线」分钟级采样序列（中性命名，不带 fund_/api_/market_/estimate_ 前缀，版本清理不会误删）
   INTRADAY_RETURN_SERIES: 'intraday_return_series',
   // [WHAT] 需要在版本更新时清除的缓存 key 前缀
@@ -60,7 +62,8 @@ export function checkVersionAndClearCache(): void {
       STORAGE_KEYS.PANORAMA_ACCOUNT_HEIGHTS,
       STORAGE_KEYS.PANORAMA_ACCOUNT_CASH,
       STORAGE_KEYS.INTRADAY_RETURN_SERIES,
-      STORAGE_KEYS.DCA_PLANS
+      STORAGE_KEYS.DCA_PLANS,
+      STORAGE_KEYS.DCA_DAILY_RATES
     ]
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
@@ -800,4 +803,32 @@ export function savePanoramaAccountCash(cash: Record<string, number>): void {
     out[k] = typeof v === 'number' && isFinite(v) ? v : 0
   }
   setItem(STORAGE_KEYS.PANORAMA_ACCOUNT_CASH, out)
+}
+
+// ========== 定投：每账户每日定投额（备份/恢复落地用） ==========
+// [WHY] 定投完整计划只在网页端编辑/执行，手机端无需（也无法）同步整套计划。
+//       备份时只落「每个账户每天定投多少钱」，恢复后手机端即可展示 定投¥/天 与 可投天数；
+//       QD占比、可投天数等其余数据都能由持仓/现金现算，不必备份。
+
+/** 读取「每账户每日定投额」（元/交易日），缺省为 {} */
+export function getDCADailyRates(): Record<string, number> {
+  const raw = getItem<Record<string, number>>(STORAGE_KEYS.DCA_DAILY_RATES, {})
+  const out: Record<string, number> = {}
+  if (raw && typeof raw === 'object') {
+    for (const k of ['ali', 'TX', 'JD']) {
+      const v = raw[k]
+      out[k] = typeof v === 'number' && isFinite(v) ? v : 0
+    }
+  }
+  return out
+}
+
+/** 写入「每账户每日定投额」 */
+export function saveDCADailyRates(rates: Record<string, number>): void {
+  const out: Record<string, number> = {}
+  for (const k of ['ali', 'TX', 'JD']) {
+    const v = rates[k]
+    out[k] = typeof v === 'number' && isFinite(v) ? v : 0
+  }
+  setItem(STORAGE_KEYS.DCA_DAILY_RATES, out)
 }

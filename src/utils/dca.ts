@@ -12,7 +12,7 @@
 //               且仅在「今天」这一交易日执行一次（按 lastExecutedDate 防重），过去的交易日不补买
 //               （没有历史每日净值数据，用今日净值回补过去日期在经济学上是错的，故诚实跳过）。
 
-import { STORAGE_KEYS, getPanoramaAccountCash, savePanoramaAccountCash } from '@/utils/storage'
+import { STORAGE_KEYS, getPanoramaAccountCash, savePanoramaAccountCash, getDCADailyRates } from '@/utils/storage'
 import { isWorkday } from '@/utils/navDate'
 import { useHoldingStore } from '@/stores/holding'
 import { createTrade } from '@/composables/useFundTrade'
@@ -331,4 +331,28 @@ export function computeDCAStats(plans: DCAPlan[], cashMap: Record<string, number
     s.daysRemaining = s.dailyRate > 0 ? Math.floor(s.cash / s.dailyRate) : Infinity
   }
   return Object.values(map)
+}
+
+/**
+ * [WHAT] 由本地完整计划折算「每账户每日定投额」（元/交易日）。
+ * [WHY] 备份 payload 只带这个派生值，不再带整套计划（手机端用不到也无法同步执行）。
+ */
+export function computeDCADailyRateMap(): Record<string, number> {
+  const plans = getDCAPlans()
+  const map: Record<string, number> = {}
+  for (const p of plans) {
+    if (!(p.active && p.amount > 0)) continue
+    map[p.source] = (map[p.source] || 0) + planDailyRate(p)
+  }
+  return map
+}
+
+/**
+ * [WHAT] 取某账户当前「每日定投额」：优先本地完整计划（网页端），否则回落到备份恢复的每日额度（手机端）。
+ * [WHY] 手机端没有完整 DCA 计划，但恢复备份后会落地 dca_daily_rates，足以驱动「定投¥/天 / 可投天数」展示。
+ */
+export function getAccountDailyRateMap(): Record<string, number> {
+  const fromPlans = computeDCADailyRateMap()
+  if (Object.keys(fromPlans).length > 0) return fromPlans
+  return getDCADailyRates()
 }
