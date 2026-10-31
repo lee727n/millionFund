@@ -15,6 +15,7 @@
     --text-secondary: #666666;
     --text-tertiary: #999999;
     --fund-updated-name: #1f2328;
+    --fund-name-accent: #b8860b;
     --border-color: #f0f0f0;
     --up-color: #e4393c;
     --down-color: #1db82c;
@@ -54,6 +55,7 @@
         --text-secondary: #a0a0a0;
         --text-tertiary: #707070;
         --fund-updated-name: #c9d1d9;
+        --fund-name-accent: #d4a017;
         --border-color: #333333;
         --up-color: #ff6b6b;
         --down-color: #4ecdc4;

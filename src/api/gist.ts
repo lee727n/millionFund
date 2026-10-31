@@ -149,18 +149,17 @@ async function findBackupGist(token: string): Promise<{ id: string } | null> {
   console.log('[Gist] 查找备份 - 获取到的 gist 列表:', gists.map(g => ({ id: g.id, description: g.description, files: Object.keys(g.files) })))
   
   // 查找包含备份文件的 gist
-  return gists.find(gist => {
-    const fileKeys = Object.keys(gist.files)
-    // 检查文件名是否匹配（支持精确匹配和模糊匹配）
-    const hasBackupFile = fileKeys.some(key => 
-      key === GIST_FILE_NAME || 
-      key.includes('fund') || 
-      key.includes('backup') ||
-      key.includes('持仓')
-    )
-    const hasMatchingDescription = gist.description?.includes('基金持仓') || gist.description?.includes('AI百万实盘')
-    return hasBackupFile || hasMatchingDescription
-  }) || null
+  // [FIX] 精确文件名优先：永远指向同一个备份 gist，避免「写到一个 gist、读到另一个」导致恢复旧数据。
+  //       兜底才用描述匹配（且排除定投云端同步 gist 等无关 gist）。
+  const exact = gists.find(gist => Object.keys(gist.files).some(key => key === GIST_FILE_NAME))
+  if (exact) return exact
+
+  const byDesc = gists.find(gist => {
+    const desc = gist.description || ''
+    // 排除定投云端同步等无关 gist（描述含「基金持仓」或「AI百万实盘」才认）
+    return desc.includes('基金持仓') || desc.includes('AI百万实盘')
+  })
+  return byDesc || null
 }
 
 /**

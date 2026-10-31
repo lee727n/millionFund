@@ -52,9 +52,11 @@ export function createTrade(params: {
   source?: string
   /** [WHAT] 是否联动对应账户的现金余额（买入扣减 / 卖出加回）。历史/批量/自愈类建交易传 false，避免把存量持仓成本误当新支出 */
   adjustCash?: boolean
+  /** [WHAT] 显式交易 id（定投用确定性 id dca_<planId>_<date> 以便跨设备幂等合并）；不传则自动生成 */
+  id?: string
 }): void {
   addTrade({
-    id: '',
+    id: params.id ?? '',
     code: params.code,
     name: params.name,
     type: params.type,

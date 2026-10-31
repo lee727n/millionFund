@@ -1221,6 +1221,15 @@ function drawTradeMarkers(
       ...performanceData.value.map(d => d.fundReturn),
       ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
     ]
+    // [FIX] 与 drawPerformanceChart 使用同一套 Y 范围：必须纳入成本线收益率，
+    // 否则成本线超出基金/沪深300数据范围时，标记点的 toY 与曲线 toY 缩放不一致，
+    // 加减仓点会整体浮在曲线上方/下方（典型发生在成本远低于窗口起点、累计涨幅大的基金，如 257070）。
+    if (props.costNavValue && props.costNavValue > 0) {
+      const fundFirstValue = filteredData.value[0]?.value || props.lastClose || 1
+      if (fundFirstValue > 0) {
+        allReturns.push(((props.costNavValue - fundFirstValue) / fundFirstValue) * 100)
+      }
+    }
     let minReturn = Math.min(...allReturns)
     let maxReturn = Math.max(...allReturns)
     minReturn = Math.min(minReturn, 0)
@@ -1276,6 +1285,11 @@ function drawTradeMarkers(
     const values = filteredData.value.map(d => d.value)
     let minValue = Math.min(...values)
     let maxValue = Math.max(...values)
+    // [FIX] 与 drawChart 净值模式一致：把成本线净值纳入价格范围，保证标记点 Y 映射与曲线一致
+    if (props.costNavValue && props.costNavValue > 0) {
+      minValue = Math.min(minValue, props.costNavValue)
+      maxValue = Math.max(maxValue, props.costNavValue)
+    }
     const margin = (maxValue - minValue) * 0.1 || 0.01
     minValue -= margin
     maxValue += margin
@@ -1549,6 +1563,13 @@ function drawTTradeMarkers(
       ...performanceData.value.map(d => d.fundReturn),
       ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
     ]
+    // [FIX] 与 drawPerformanceChart / drawTradeMarkers 一致：纳入成本线收益率，保证 T交易点 Y 与曲线一致
+    if (props.costNavValue && props.costNavValue > 0) {
+      const fundFirstValue = filteredData.value[0]?.value || props.lastClose || 1
+      if (fundFirstValue > 0) {
+        allReturns.push(((props.costNavValue - fundFirstValue) / fundFirstValue) * 100)
+      }
+    }
     let minReturn = Math.min(...allReturns)
     let maxReturn = Math.max(...allReturns)
     minReturn = Math.min(minReturn, 0)
@@ -1563,6 +1584,11 @@ function drawTTradeMarkers(
     const values = filteredData.value.map(d => d.value)
     let minValue = Math.min(...values)
     let maxValue = Math.max(...values)
+    // [FIX] 与 drawChart 净值模式一致：把成本线净值纳入价格范围，保证 T交易点 Y 映射与曲线一致
+    if (props.costNavValue && props.costNavValue > 0) {
+      minValue = Math.min(minValue, props.costNavValue)
+      maxValue = Math.max(maxValue, props.costNavValue)
+    }
     const margin = (maxValue - minValue) * 0.1 || 0.01
     minValue -= margin
     maxValue += margin
@@ -1649,6 +1675,13 @@ function drawHighlightMarker(
       ...performanceData.value.map(d => d.fundReturn),
       ...(showHS300.value ? performanceData.value.map(d => d.hs300Return) : [])
     ]
+    // [FIX] 与 drawPerformanceChart / drawTradeMarkers 一致：纳入成本线收益率，保证高亮点 Y 与曲线一致
+    if (props.costNavValue && props.costNavValue > 0) {
+      const fundFirstValue = filteredData.value[0]?.value || props.lastClose || 1
+      if (fundFirstValue > 0) {
+        allReturns.push(((props.costNavValue - fundFirstValue) / fundFirstValue) * 100)
+      }
+    }
     let minReturn = Math.min(...allReturns)
     let maxReturn = Math.max(...allReturns)
     minReturn = Math.min(minReturn, 0)
@@ -1663,6 +1696,11 @@ function drawHighlightMarker(
     const values = filteredData.value.map(d => d.value)
     let minValue = Math.min(...values)
     let maxValue = Math.max(...values)
+    // [FIX] 与 drawChart 净值模式一致：把成本线净值纳入价格范围，保证高亮点 Y 映射与曲线一致
+    if (props.costNavValue && props.costNavValue > 0) {
+      minValue = Math.min(minValue, props.costNavValue)
+      maxValue = Math.max(maxValue, props.costNavValue)
+    }
     const margin = (maxValue - minValue) * 0.1 || 0.01
     minValue -= margin
     maxValue += margin

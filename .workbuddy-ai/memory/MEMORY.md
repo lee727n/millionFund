@@ -1,83 +1,68 @@
 # 项目长期笔记：AI百万实盘（MillionfundN）
 
-## 本地存储约定（致命陷阱）
-- 用户数据全在 localStorage，key 集中 `src/utils/storage.ts` 的 `STORAGE_KEYS`。
-- `checkVersionAndClearCache()` 版本变更会删命中 `CACHE_PREFIXES`（`fund_`/`api_`/`market_`/`estimate_`）且不在 `preservedKeys` 白名单的 key。**这些前缀开头的用户数据 key 必须登记进白名单**，否则静默清空（事故：`fund_t_trades` 漏登记被清空，2026-09-05）。
-- 新增 UI 偏好类 key 优先用**不带前缀**的名字（如 `panorama_col_widths`）双保险。
-- 白名单：watchlist / holdings / trades / t_trades / net_values / source_filter / app_version / starred_funds / panorama_col_widths / panorama_account_order / panorama_account_heights。
+## 本地存储致命陷阱
+- 用户数据全在 localStorage，key 集中 `src/utils/storage.ts` 的 `STORAGE_KEYS`。`checkVersionAndClearCache()` 版本变更会删命中 `CACHE_PREFIXES`（`fund_`/`api_`/`market_`/`estimate_`）且不在 `preservedKeys` 白名单的 key——前缀开头的用户数据 key 必须登记进白名单，否则静默清空（事故：`fund_t_trades` 漏登记被清空 2026-09-05）。
+- 新增 UI 偏好类 key 优先用不带前缀的名字（如 `panorama_col_widths`）双保险。白名单：watchlist/holdings/trades/t_trades/net_values/source_filter/app_version/starred_funds/panorama_col_widths/panorama_account_order/panorama_account_heights。
 
-## 数据结构
-- 普通交易 `fund_trades`；做T记录 `fund_t_trades`（一买一卖配对归档，原两条从 `fund_trades` 移除）。做T由 Detail「标记T」生成，TradeCenter/Detail「恢复」可还原成普通交易。
+## 数据结构与 TradeType 铁律
+- 普通交易 `fund_trades`；做T记录 `fund_t_trades`（一买一卖配对归档，原两条从 `fund_trades` 移除）。
+- `TradeType='buy'|'sell'|'dividend'|'auto_invest'`。**绝不写 `type==='buy'?A:B`**（会把定投/分红错判）。展示用 `tradeTypeLabel(type)`；资金/份额方向用 `isBuySide(type)`（=buy||auto_invest）。**例外**：画K线买卖点要白名单 `type==='buy'||type==='sell'`（定投按需求不画）；MiniKLineChart(2处)/OKXChart 遍历 trades 默认不过滤类型，不显式加白名单定投会被画成绿色卖点。
+- 定投：刷新时 `executeDueDCAs(today)` 建 `auto_invest`+扣现金+加份额，`lastExecutedDate` 防同日重扣；只在网页打开刷新时跑，过去交易日不补买。`getTodayFirstBuyCorrection` 返回值整体覆盖 holding.shares（只按唯一 buy 重算），当天有定投已被守卫挡掉（`if(trades.some(t=>t.type==='auto_invest'))return null`），改此函数务必保留守卫。
 
-## TradeType 铁律（4 个值，禁止三元判断）
-- `TradeType = 'buy' | 'sell' | 'dividend' | 'auto_invest'`。**绝不能写 `type === 'buy' ? A : B`** —— 会把定投和分红一起错判（2026-10-21 定投上线首日，10 笔定投在交易记录全显示「减仓」）。
-- 展示一律用 `tradeTypeLabel(type)`（`src/types/fund.ts` 导出）；资金/份额方向判断（扣现金、删记录回滚份额、AI 统计买入额）一律用 `isBuySide(type)`（= buy || auto_invest）。
-- **例外**：「K线画不画买卖点」要精确白名单 `type==='buy'||type==='sell'`，因为定投按需求**不画**买点；且 MiniKLineChart(drawChart+handleCanvasClick 两处) / OKXChart(props.trades 一处) 遍历 trades 时**默认不过滤类型**，不显式加白名单，定投会被画成绿色卖点。
-- 定投执行：全景/定投页刷新时 `executeDueDCAs(today)` 建 `auto_invest` 交易+扣现金+累加份额，`lastExecutedDate` 防同日重扣；**只在网页打开且刷新时跑**，过去交易日不补买。
-- 隐患：`getTodayFirstBuyCorrection` 的返回值会**整体覆盖 holding.shares**（只按唯一那笔 buy 重算），当天有定投时已被守卫挡掉（`if (trades.some(t=>t.type==='auto_invest')) return null`），改这个函数务必保留该守卫。
+## 定投云端协调铁律（2026-10-28）
+- DCA 云端协调与整库备份是**两个独立 gist**：主备份 `fund-holdings-backup.json`(描述"基金持仓数据备份 - AI百万实盘")；DCA 台账 `dca-sync.json`(描述"定投计划云端同步")。两者都需同一 GitHub Token，缺一不可；token 不同 → 两端各看各的 gist → 恢复/去重全乱。
+- **引导死锁 bug（已修）**：`dca.ts` `executeDueDCAsCloudCore` 的 `!cloud` 分支在 dca gist 不存在时直接走本地执行，而 `writeDcaCloudState` 只在 cloud 非空分支被调用 → gist 永不被创建 → 新 Token 永久卡"本地"徽标、跨设备去重永不生效。修复：`findDcaGist` 三态(找到/notfound/error) + 新增 `bootstrapDcaCloudState(plans)` 仅当 `notfound` 时创建 + `!cloud` 先引导再重读。
+- `dcaCloud.ts` `findDcaGist` 用 `per_page=100` 列 gist；若某端 gist 超 100 个会被漏匹配（边角风险）。
+
+## 备份/恢复铁律（2026-10-28）
+- `BackupActions.vue` `applyBackupData`：**先写回全部数据（trades/cash/dcaPlans/fundNetValues/starred…），最后再 `holdingStore.initHoldings()`**。旧顺序是 initHoldings 在写回前跑，导致自愈补齐买点用旧交易、净值快照在网络重算后才落盘(恢复瞬间市值由手机联网决定)、定投幂等依赖的恢复后 dcaPlans 缺失。改顺序务必保持「数据落盘 → 估值重算」次序。
+- 市值(marketValue)永不进备份（运行时字段被剥），恢复后由手机端联网重算，故恢复瞬间部分基金市值可能与备份时刻略有差异——属设计，非 bug；想恢复瞬间完全一致需让恢复走「本地净值快照」而非联网。
+- `gist.ts` `findBackupGist` **精确文件名 `fund-holdings-backup.json` 优先**，再兜底描述匹配，且排除定投云端同步 gist。模糊匹配会"写到一个 gist、读到另一个"→ 恢复到旧数据。PC/手机必须配**同一个 GitHub Token**，否则两边 gist 不是同一批。
+- 现金(`panoramaAccountCash`)不经计算：PC 显示值 = `getPanoramaAccountCash()` = 备份抓取值 = 还原整对象覆盖。若手机现金对不上，只可能是"恢复到旧 gist"（最新备份没落地）或还原静默失败，绝不可能是估值计算。
 
 ## 估值架构与字段语义
-- `useFundValuation` = 估值层（拉取/缓存 `liveFundData`/`calcPostReturn`）；`holdingStore.updateHoldingWithAccurateData` = 收益层（重算市值盈亏+落盘）。需估值页面复用 composable，勿内联。
-- `fetchFundAccurateData` 字段：
-  - `dataSource: 'nav'|'estimate'|'fallback'|'local_cache'` —— currentValue 用哪类数据（DEPRECATED 做判断，仅日志）。
-  - `navIsCurrent` —— navDate 是不是「当前该拿到的那一期」。**今天交易能否用此净值确认只看 `navIsCurrent`**，绝不能用 `dataSource!=='nav'` 代替；`updateTradesByCode(code,nav,navDate,navIsCurrent)` 内置该守卫。
-  - `isNav` —— currentValue 是净值还是估值，唯一判定出口。**交易时间内估值拉取失败会强制 `currentValue=0`**（保护持仓市值不被旧净值污染），此时星标K线应回退 `nav` 兜底（见"星标K线"）。
-- **两个「今天」必须分开**（共用 `isNavUpToDate`，传不同 `today`）：
-  - `getCalendarDateStr()`：自然日（默认）——估值取值/交易守卫/缓存新鲜度。
-  - `getProgressDateStr()`：**仅进度条专用**，9点前归属上一工作日（净值半夜才更新完的宽限期）。误用→09:00 前守卫失效→今天单被 T-1 净值确认、份额算错。净值缓存窗口已放宽到 `hour<18`。
-  - **[FIX 2026-10-17] 非交易日（周末/节假日）`getProgressDateStr()` 也归属上一工作日**（新增 `isWorkday()` 借 `isHolidaySync` 判定）。否则周六等休息日返回当天→`isUpdated` 误判 false→基金名/进度条整片显示「未更新」灰（AI追踪曾因此「都显示净但颜色不一」）。交易日口径不变。
+- `useFundValuation`=估值层；`holdingStore.updateHoldingWithAccurateData`=收益层。需估值页面复用 composable，勿内联。
+- `fetchFundAccurateData` 字段：`navIsCurrent`（今天交易能否用此净值确认只看它，绝不能用 `dataSource!=='nav'` 代替）；`isNav`（currentValue 是净值/估值的唯一判定出口）。交易时间内估值拉取失败强制 `currentValue=0`（保护市值不被旧净值污染），星标K线应回退 `nav` 兜底。
+- **两个「今天」必须分开**（共用 `isNavUpToDate`，传不同 today）：`getCalendarDateStr()` 自然日（估值/交易守卫/缓存新鲜度）；`getProgressDateStr()` 仅进度条专用，9点前归属上一工作日。非交易日 `getProgressDateStr()` 也归属上一工作日（`isWorkday()` 借 `isHolidaySync`）；净值缓存窗口 `hour<18`。
 
 ## 刷新短路（数据不对先查这）
-1. **`isUpdated` 粘性布尔陷阱（2026-09-15/16）**：被置 true 后不因日历日推进复位。两处跳过条件改为 `holdingNavIsCurrent(h)`（`isNavUpToDate({nav:h.currentValue,navDate:h.valueDate,isQDII})`），**必须不传 `today`（默认自然日），不能用 `getProgressDateStr()`**（QDII 在 09:00 前恒 true 致不重拉）。`isUpdated` 字段保留但不再当跳过闸门；快路径须按进度条口径重算写回 `isUpdated`（否则绿名/进度条「未更新」错显）。
-2. `fetchFundEstimateFast`：非交易时间（周末/<9:30/>=15:00）且 `forceRefresh=false` 直接返回持久化缓存。
-3. **`fetchFundAccurateData` 估值分支必须带 `inTradingTime` 守卫**：`isWeekday && inTradingTime && estimate>0` 才用盘中实时估值；非交易时间进此分支会拿上一交易日快照当今日涨跌幅盖掉真净值（QDII 典型）。`inTradingTime = isWeekday && isTradingHours`（9:30-11:30 ∪ 13:00-15:00）。
-4. **QDII 判定按设计用持仓手动开关，不要自动从接口推导去覆盖**（2026-09-16 Request 9 反例，用户确认回退）。漏勾→QDII 滞后净值 ≠ 今天→`isUpdated` 恒 false→绿名/进度条错显。保持手动开关唯一来源。
+1. `isUpdated` 粘性布尔陷阱（2026-09-15/16）：两处跳过条件改 `holdingNavIsCurrent(h)`，必须不传 today（默认自然日），不能用 `getProgressDateStr()`。**必须不传今天**——QDII 09:00 前恒 true 致不重拉。快路径须按进度条口径重算写回 `isUpdated`。
+2. `fetchFundEstimateFast`：非交易时间且 `forceRefresh=false` 直接返持久化缓存。
+3. `fetchFundAccurateData` 估值分支必须带 `inTradingTime` 守卫（`isWeekday && isTradingHours` 9:30-11:30∪13:00-15:00），否则非交易时间拿上一交易日快照当今日涨跌幅盖真净值（QDII 典型）。
+4. QDII 判定按设计用持仓手动开关，不要自动从接口推导去覆盖（2026-09-16 反例）。
 
-## 口径铁律：累计/收益率一律用 addedGain（真 ROI）
-- `addedGain = (现价−买价)/买价`（利润÷成本）；**禁止 `profitRate`（利润÷市值）**。`profitRate = 1 - 1/(1+addedGain/100)`。例：addedGain -17.6% ↔ profitRate -21.33%。
-- 易错：`holdingStore.profitRate` 是 ÷市值；`Detail.holdingDetails.profitRate` 本地重算成 ÷买价（变量名误导）。全景左列/观察「累计」、星标K线信息条（`h.addedGain`）用 addedGain；Holding 顶部「收益率」汇总=真组合 ROI（`totalCost`=Σ份额×买价，`totalProfitRate`=总收益÷总成本）。
+## 口径铁律：累计/收益率一律用 addedGain（真ROI）
+- `addedGain=(现价-买价)/买价`（利润÷成本）；**禁止 `profitRate`**（利润÷市值）。`profitRate=1-1/(1+addedGain/100)`。易错：`holdingStore.profitRate` 是÷市值；Detail.holdingDetails.profitRate 本地重算成÷买价（变量名误导）。全景左列/观察「累计」、星标K线信息条用 addedGain；Holding 顶部「收益率」=真组合ROI（`totalCost`=Σ份额×买价，`totalProfitRate`=总收益÷总成本）。
 
-## 星标K线（StarKLinePanel）= 唯一展示层，3 处复用
-- `src/components/StarKLinePanel.vue`：独立页 `views/StarKLine.vue`、全景第二列（2列/行/传 `liveFundData`）、手机版 `views/MobileStarKLine.vue`。改星标 UI 只动此组件。
-- 增删靠 `window` 的 `starred-funds-changed` 事件同步。
-- `MiniKLineChart.realtime` prop：父层传了就不自取（子图 60s 定时器兜底）；估值判定只认 `isNav`。
-- 9.30 这类「今天的点」是 `MiniKLineChart.drawChart` 的**延伸点**，仅在 `rt.value.currentValue>0` 时补画；`rt = props.realtime ?? realtimeData`（自取）。**不再加 `nav` 兜底**（2026-09-30 回退）：曾以为批量拉取超时致 `currentValue=0` 会让点消失，但用户确认 002910 的 9.30 点「没改之前就画出来了」；且估值失败时用旧净值当今天点会显示错误数据，保持 `currentValue>0` 原闸门更诚实。
-- **点击命中铁律（2026-09-30 修）**：`handleCanvasClick` 必须与 `drawChart` 用**同一套坐标**——算 `extendedPerfData`/`hasExtension`/`todayStr`，`toX` 用 `extendedPerfData.length`；交易命中用**严格日期匹配**（禁 `findDateIndex` 的 7 天兜底，会把今天交易误匹配到最近历史点），且取**最近命中**而非首命中（防相邻日期交易点互相遮挡）。否则点「今天加仓点」会显示前一天交易 tooltip（002910 案例：点 9.30 却显示 9.29 加仓信息）。
-- **Y 范围铁律（同次补）**：点击的 `toY` 范围必须**包含 HS300 返回**（`showHS300Line` 时）和**成本线返回**（`props.costNavValue>0` 时），不能只算 `fundReturn`。否则 `toY` 映射和画出来的不一致，**高亮红点会跑到下方很远**（HS300 跌得越深、点偏得越远；002910 案例：点击 9.24 加仓点，高亮跑到 -10.6% 处）。和 `drawChart` 的 `allReturns` 构造保持一字不差。
-- 星标排序 `sortStarredByAccount()`：权重 ali=0/TX=1/JD=2/observe=4/其他3；组内按 `todayChange` 降序，相同保添加顺序。
-- 交易 tooltip「涨幅」=`(latestValue-区间首根净值)/区间首根净值`，latest=rt.currentValue??末根净值；`props.returnRate`(=addedGain) 是成本收益率，与「区间累计涨幅」两指标别混。
-- **星标快照（2026-09-17）**：`STARRED_FUNDS` 由 `string[]` 升级为 `StarredFundMeta[]`，每只冗余 `name/addedGain/buyNetValue/source/isQDII`；删持仓后 `fundInfoMap` 用快照兜底仍显示名称/累计/成本线，只「在星标里删除」才真不显示。`updateStarredFundMeta()` **不广播** `starred-funds-changed`（否则死循环）；快照刷新仅在持仓存在时。`getStarredFunds()` 仍返回 `string[]`。
-- **备份带快照（同次补）**：`buildBackupPayload.starredFunds` 走 `getAllStarredFundMeta()`（全量对象）；`applyBackupData.saveStarredFunds` 原样写回 `Array<string|StarredFundMeta>`。老备份纯 string[] 仍归一化；新备份（带对象）恢复到旧版 App 会丢快照（版本耦合，需两端同版本）。
+## 星标K线（StarKLinePanel）= 唯一展示层，3处复用
+- `src/components/StarKLinePanel.vue`：独立页 `views/StarKLine.vue`、全景第二列（传 `liveFundData`）、手机版 `views/MobileStarKLine.vue`。增删靠 window `starred-funds-changed` 事件。`MiniKLineChart.realtime` prop 父传则不自取；估值只认 `isNav`。
+- **点击命中铁律**：`handleCanvasClick` 必须与 `drawChart` 用同一套坐标（`extendedPerfData`/`hasExtension`/`todayStr`，`toX` 用 `extendedPerfData.length`）；交易命中严格日期匹配（禁 `findDateIndex` 7天兜底），取最近命中而非首命中。否则点今天加仓点会显前一天 tooltip。
+- **Y范围铁律**：点击 `toY` 必须含 HS300 返回（`showHS300Line` 时）和成本线返回（`costNavValue>0`），与 `drawChart` 的 `allReturns` 一字不差，否则高亮红点跑到下方很远。
+- 星标快照：`STARRED_FUNDS` 由 `string[]` 升级为 `StarredFundMeta[]`（每只冗余 name/addedGain/buyNetValue/source/isQDII）；删持仓后 `fundInfoMap` 用快照兜底仍显示。删持仓后靠快照继续显示与「量化观察删除语义」无关，别误改。`updateStarredFundMeta()` 不广播 `starred-funds-changed`（死循环）；快照刷新仅持仓存在时。
 
 ## 备份与恢复（BackupActions.vue）
-- `Holding.vue` 备份逻辑抽到 `src/components/BackupActions.vue`，全景+持仓共用。Props 全默认 true：showLocalBackup/showLocalRestore/showCloudBackup/showCloudRestore/size/buttonClass。恢复成功 `emit('restored')`，全景监听调 `refreshAll(true)`。
+- 抽出到 `src/components/BackupActions.vue`，全景+持仓共用。Props 全默认 true：showLocalBackup/showLocalRestore/showCloudBackup/showCloudRestore/size/buttonClass。恢复成功 `emit('restored')`，全景监听调 `refreshAll(true)`。
 - payload v1.2：holdings/summary/aiTracking/baiduOcrConfig/trades/tTrades/starredFunds/watchlist；云备份额外带 `fundNetValues`。加字段只改 `buildBackupPayload` 两处。
-- **恢复铁律**：新字段必须 `if (Array.isArray(jsonData.x)) saveX(...)`，不能无条件写默认值（老备份没该字段会清空现有数据）。判定用「字段是否存在」非版本号。
+- **恢复铁律**：新字段必须 `if(Array.isArray(jsonData.x)) saveX(...)`，不能无条件写默认值。payload 另有 `dcaPlans` 与 `dcaDailyRates`。
+
+## 定投云端化（2026-10-26，跨设备只扣一次）
+- 云端=独立 GitHub Gist（`src/api/dcaCloud.ts`，文件名 `dca-sync.json`、描述 `定投计划云端同步`，刻意避开整库备份 gist 定位规则）。唯一入口 `executeDueDCAsCloud(today)`（`src/utils/dca.ts`）；调用方：DCAPage/PanoramaDashboard/Home.vue 手机端。
+- 确定性交易 id `dcaTradeId(planId,date)=dca_<planId>_<date>`——幂等基石。⚠️ planId 本身以 `dca_` 开头，禁止靠字符串反解 planId。
+- 幂等两层：本地 `lastExecutedDate===today` 且 确定性 trade id 已存在→跳过。四分支：云端 done→幂等恢复；claimed 他人未超时(5min)→退避；无/过期→认领→二次校验→本地执行→发 done；本机已执行云端无台账→补发。
+- `reconcilePlans` TODAY-GUARD：`updatedAt` 较新者胜（后改者胜）；执行标记取日期较大者（防陈旧云端抹掉今天已执行）。`DCAPlan` 新增 `updatedAt?`；add/update 打戳。手机端须配 GitHub Token 否则退化纯本地。
 
 ## 全景大屏（PanoramaDashboard.vue）
-- 4 列：0=Portfolio 1=K线全景 2=量化观察+AI追踪 3=交易记录+AI分析。flex+百分比 flexBasis，列间 resizer（12px/内含3px），拖拽守恒、总和100%、`MIN_WIDTH=15%`。宽度存 `panorama_col_widths` 默认 `[37,28,35]`。
-- 左列账户块拖拽：⋮⋮ 手柄排序（`panorama_account_order`）、块间 resizer 调高（`panorama_account_heights`，`MIN_ACCOUNT_HEIGHT=80`）。
-- 隐藏底栏：`hiddenTabbarPages` 含 `panorama`；离开自动 `setTabbarForceShow(false)`。
-- 交易记录时间过滤按「实际有交易的自然日」倒序取前 N（见 `tradeDateStats`），勿用 `Date.now()-N*86400000`。
-- 第二列星标K线传 `:live-data="liveFundData"`（口径与持仓/交易一致、不重复请求）。
+- 4列：0=Portfolio 1=K线全景 2=量化观察+AI追踪 3=交易记录+AI分析。flex+百分比 flexBasis，列间 resizer（12px/3px），拖拽守恒总和100%，`MIN_WIDTH=15%`。默认 `[37,28,35]`。左列账户块拖拽：⋮⋮ 手柄排序（`panorama_account_order`）、块间 resizer 调高（`panorama_account_heights`，`MIN_ACCOUNT_HEIGHT=80`）。隐藏底栏 `hiddenTabbarPages` 含 panorama；离开 `setTabbarForceShow(false)`。交易记录按实际有交易自然日倒序（见 `tradeDateStats`），第二列星标K线传 `:live-data="liveFundData"`。
 
-## 账户收益曲线（2026-10-17 新增）
-- **位置**：每个账户头部，持仓进度条(`account-position`/`m-account-position`)与市值(`account-stat`/`m-account-mv`)之间，放一条小 sparkline（默认 58×18 全景 / 46×16 手机）。
-- **组件**：`src/components/AccountReturnCurve.vue`，props `{ accountKey, width?, height? }`，读 `getIntradaySeries(todayKey, accountKey)` 画 SVG，涨红跌绿（中国配色），含 0 基线虚线；<2 点显示占位块不画。
-- **数据层**：`src/utils/intradayReturn.ts`。`recordIntradaySamples(samples)` 仅在**交易时段**（工作日 9:30=570 ~ 15:00=900 分钟）落盘，存 `localStorage['intraday_return_series']`（中性 key，无 `fund_/api_/market_/estimate_` 前缀，已登记进 `preservedKeys`）。每天每账户封顶 320 点，保留最近 5 天。模块级 `intradayTick` ref 在每次采样后 +1，组件 `watch` 它重绘。
-- **采样钩子**：`stores/holding.ts` 的 `refreshEstimates()` finally 块调 `recordAccountReturnSamples()`（聚合 ali/TX/JD/other 的 `marketValue`/`todayProfit`，profitPercent=今日盈亏/昨日市值，与首页/全景同口径；observe 跳过不计入 other）。集中一处，首页/全景/持仓页刷新都覆盖。
-- **数据缺口铁律**：估值 API 只返回「当前」估值，无历史分钟序列 → **系统没开的那段交易时间就没有采样**，曲线左侧留白即缺口（如 11:00 才开，9:30–11:00 为空）。要「不开系统也拿分钟数据」只能上后端定时采集，或指数反推近似（见用户问答）。
+## 账户收益曲线（2026-10-17）
+- 每个账户头部 sparkline（58×18 全景 / 46×16 手机），组件 `src/components/AccountReturnCurve.vue`，读 `getIntradaySeries(todayKey,accountKey)` 画 SVG，涨红跌绿，含0基线虚线；<2点占位不画。数据层 `src/utils/intradayReturn.ts`：`recordIntradaySamples` 仅交易时段（工作日 9:30=570~15:00=900 分钟）落盘 `localStorage['intraday_return_series']`（中性 key 已登记白名单），每天每账户封顶320点、保留5天。采样钩子在 `stores/holding.ts` 的 `refreshEstimates()` finally 调 `recordAccountReturnSamples()`（聚合 ali/TX/JD/other 的 marketValue/todayProfit，observe 跳过）。数据缺口铁律：系统没开的那段交易时间无采样→左侧留白。
 
 ## 通用坑
-- **Home.vue 桌面/移动是两套 UI（2026-10-17 事故铁律）**：手机改版曾把桌面端「持仓趋势」整段覆盖成手机布局（丢全景面板/星标入口/排序/简全/账户筛选）。现结构=`.home-holdings-desktop`（改版前原版布局）+ `.home-holdings-mobile`（手机账户分块改版），各自由媒体查询切换（min-768/max-767）。**改 Home 手机端绝不能动桌面段；反之亦然**。外层切换容器勿复用 `.web-only`/`.mobile-only`（`.web-only.web-only{display:flex}` 会命中所有 .web-only 元素强制 flex）。
-- 构建：`npm run build` 失败 `Cannot find module '@rollup/rollup-darwin-arm64'`（arm64 只装 x64 rollup），与代码无关；验证用 `npx vue-tsc -b`（退出码 0 即通过）。
-- Vue3 Boolean prop：`defineProps<{x?:boolean}>()` 不带 `withDefaults` → 未传入解析为 **false** 非 undefined；「默认 true」必须 `withDefaults(...,{x:true})`。
-- 父级 scoped CSS 写子组件内部必须 `:deep()`。
-- Playwright mock：`**/pingzhongdata/*.js` → `var fS_name=..;var Data_netWorthTrend=[...]`；`fundgz` 回调名运行时 `fundgz_<ts>` 需反向扫 window。`**/*.js` 匹配不到带 `?v=` 的 URL（写 `**/*.js*`）；`page.clock.install()` 必须在 `goto` 前。探针改 60000→3000，完事 `grep PROBE-TEMP` 确认无残留。
-- MiniKLineChart 窄图信息条（`width<280 && height>=130` 两行）用 `computeLayout` 共用；`topRightReserve` prop 让开右上按钮。改按钮尺寸只动 `StarKLinePanel.controlReserve`。
+- Home.vue 桌面/移动两套 UI（2026-10-17 事故）：`.home-holdings-desktop`（原版）+ `.home-holdings-mobile`（手机分块），各自媒体查询切换。**改手机端绝不动物端，反之亦然**。外层切换容器勿复用 `.web-only`/`.mobile-only`（`.web-only.web-only{display:flex}` 命中所有）。
+- 构建 `npm run build` 失败（arm64 缺 x64 rollup，与代码无关）；验证用 `npx vue-tsc -b`（退出码0）。
+- Vue3 Boolean prop 不带 `withDefaults`→未传解析为 false 非 undefined；「默认 true」必须 `withDefaults(...,{x:true})`。父级 scoped CSS 写子组件内部须 `:deep()`。
+- Playwright mock：`**/pingzhongdata/*.js`→`var fS_name=..;var Data_netWorthTrend=[...]`；`fundgz` 回调名运行时 `fundgz_<ts>` 扫描 window；`**/*.js*` 才匹配带 `?v=`；`page.clock.install()` 须在 `goto` 前。探针改 60000→3000，完事 `grep PROBE-TEMP` 确认无残留。
+- MiniKLineChart 窄图信息条（`width<280 && height>=130` 两行）用 `computeLayout` 共用；`topRightReserve` 让开右上按钮，改按钮只动 `StarKLinePanel.controlReserve`。
 
-## 量化观察账户 & 删除语义铁律（2026-09-20）
-- **设计意图（用户明确）**：量化观察**不是独立数据**，就是 `holdingStore.holdings` 里 `source==='observe'` 的又一个账户，和 ali/TX/JD 平级（全景=3账户+量化观察，单独显示而已）。全景/首页「量化观察」块都读 `holdings.filter(source==='observe')`。
-- **删除语义**：详情页/首页长按/自选列表任意一处「删除这个基金」= 从账户（持仓）移除，全渠道一致，不该删了还在别处残留。
-- 已修坑：1) `removeHolding` 原 `findIndex+splice(1)` 只删第一条→改为 `filter(h=>h.code!==code)` 全量删。2) 自选(`fund_watchlist`)与持仓原两份独立存储不级联→`removeHolding` 末尾 `removeFromWatchlist(code)`、`fundStore.removeFund` 末尾 `useHoldingStore().removeHolding(code)`，互调幂等无死循环。改删除逻辑务必保持「删基金=持仓+自选一起清」。
-- ⚠️ 星标K线（StarKLinePanel）是**故意**在删持仓后靠快照继续显示的，与本条删除语义无关，别误改。
+## 量化观察账户 & 删除语义（2026-09-20）
+- 量化观察= `holdingStore.holdings` 里 `source==='observe'` 的账户，和 ali/TX/JD 平级，单独显示。删除语义：任意处「删除这个基金」=从账户（持仓）移除全渠道一致。删持仓需保持「删基金=持仓+自选一起清」（`removeHolding` 末尾 `removeFromWatchlist`，`fundStore.removeFund` 末尾 `useHoldingStore().removeHolding`，互调幂等）。

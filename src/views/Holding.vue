@@ -3,7 +3,7 @@
 // [WHAT] 显示持仓列表、汇总统计，支持添加/编辑/删除持仓
 // [WHAT] 支持 A类/C类基金费用计算
 
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHoldingStore } from '@/stores/holding'
 import { useAITrackingStore } from '@/stores/aiTracking'
@@ -17,6 +17,8 @@ import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
 import { saveHoldings, saveSourceFilter, getSourceFilter, getTrades, saveTrades, getTTrades, saveTTrades, getTradesByCode, removeTrade } from '@/utils/storage'
 import { isWeb, isMobile } from '@/utils/platform'
+import { getDCAPlans, isScheduledDay, getDcaTodaySync, isDcaCloudDoneToday } from '@/utils/dca'
+import { getCalendarDateStr } from '@/utils/navDate'
 import type { FundInfo, HoldingRecord } from '@/types/fund'
 import ScreenshotImport from '@/components/ScreenshotImport.vue'
 import AppUpdateDialog from '@/components/AppUpdateDialog.vue'
@@ -92,10 +94,45 @@ const costFormData = ref({
 onMounted(() => {
   holdingStore.initHoldings()
   currentSourceFilter.value = getSourceFilter()
+  // [WHAT] 进入页面就读一次今日定投状态（计划是非响应式的 localStorage，靠 tick 触发）
+  dcaNavTick.value++
+  // [WHY] 云恢复/本地恢复会整体替换 trades/holdings/dcaPlans，今日状态会变；
+  //       这里监听 BackupActions 广播的事件重算，否则恢复后状态条还显示恢复前的旧数字
+  window.addEventListener('backup-restored', onBackupRestored)
 })
+onUnmounted(() => {
+  window.removeEventListener('backup-restored', onBackupRestored)
+})
+function onBackupRestored() {
+  dcaNavTick.value++
+}
 
 // [WHAT] 排序方向
 const sortDirection = ref<'up' | 'down' | 'none'>('none')
+
+// ============ 今日定投状态条（手机端导航条第三行） ============
+// [WHAT] 点击状态条跳转到定投管理页（手机端唯一的定投计划编辑入口）
+// [WHY] 手机端走专属竖屏重设计页 /m/dca（桌面端仍是横屏 /dca）
+function goDca(): void {
+  router.push('/m/dca')
+}
+
+// [WHAT] 今日「已执行 / 已恢复(云端) / 未触发」三档计数。
+// [WHY] 用户要在手机端导航条一眼确认今天定投扣没扣、这笔是本机扣的还是从云端同步过来的。
+// [NOTE] 定投计划存 localStorage（非响应式），靠 dcaNavTick 手动自增触发重算；
+//       「已恢复/是否云端」读 dca.ts 的共享快照，与定投页/首页显示同一份数字。
+const dcaNavTick = ref(0)
+const dcaTodayStat = computed(() => {
+  void dcaNavTick.value
+  const today = getCalendarDateStr()
+  const plans = getDCAPlans()
+  const executed = plans.filter(p => p.lastExecutedDate === today).length
+  const pending = plans.filter(
+    p => p.active && p.startDate <= today && isScheduledDay(p, today) && p.lastExecutedDate !== today
+  ).length
+  const sync = getDcaTodaySync(today)
+  return { executed, pending, recovered: sync.recovered, cloud: sync.cloud, synced: isDcaCloudDoneToday(today) }
+})
 
 // [WHAT] 来源筛选
 const currentSourceFilter = ref('')
@@ -733,6 +770,8 @@ async function refreshHoldings() {
   
   try {
     await holdingStore.refreshEstimates()
+    // [WHAT] 定投可能刚在其他页面/设备执行过，刷新后重读一次今日状态条
+    dcaNavTick.value++
     showToast('刷新成功')
   } catch (error) {
     console.error('刷新失败:', error)
@@ -823,6 +862,36 @@ async function refreshHoldingsCache() {
           />
           <van-button size="small" @click="clearAllHoldings" type="danger" class="mobile-hide">清空</van-button>
         </div>
+      </div>
+      <!-- 第三行：今日定投状态（手机端独占一行） -->
+      <!-- [WHY] 用户要在手机端一眼确认今天定投扣没扣、这笔是本机扣的还是从云端同步过来的 -->
+      <!-- [WHAT] 点击整行跳转到定投管理页（手机端目前唯一的定投计划编辑入口） -->
+      <div
+        class="nav-dca-row mobile-only"
+        :class="[dcaTodayStat.pending > 0 ? 'is-pending' : 'is-ok']"
+        role="button"
+        aria-label="今日定投状态，点击进入定投管理"
+        :title="`今日定投：已执行 ${dcaTodayStat.executed} 笔，其中从云端恢复 ${dcaTodayStat.recovered} 笔；未触发 ${dcaTodayStat.pending} 笔（点击进入定投管理）`"
+        @click="goDca"
+      >
+        <span class="ndr-item">今日已执行 <b>{{ dcaTodayStat.executed }}</b></span>
+        <span class="ndr-sep">·</span>
+        <span class="ndr-item" :class="{ 'is-dim': dcaTodayStat.recovered === 0 }">
+          已恢复 <b>{{ dcaTodayStat.recovered }}</b>
+        </span>
+        <span class="ndr-sep">·</span>
+        <span class="ndr-item" :class="{ 'is-warn': dcaTodayStat.pending > 0 }">
+          未触发 <b>{{ dcaTodayStat.pending }}</b>
+        </span>
+        <span class="ndr-cloud" :class="dcaTodayStat.cloud ? 'on' : 'off'">
+          {{ dcaTodayStat.cloud ? '云端' : '本地' }}
+        </span>
+        <span
+          v-if="dcaTodayStat.synced"
+          style="margin-left:6px;font-size:13px;color:#52c41a;opacity:.95;font-weight:700"
+          title="今日已同步：云端协调已处理完成，自动刷新不再请求云端 gist"
+        >✓</span>
+        <span class="ndr-go" aria-hidden="true">›</span>
       </div>
       <!-- 网页端按钮行 -->
       <div class="nav-actions web-only">
@@ -1561,6 +1630,49 @@ async function refreshHoldingsCache() {
     align-items: center;
     justify-content: space-between;
     width: 100%;
+  }
+
+  /* 第三行：今日定投状态（独占一行）。导航条在手机端已是 column，自然落到第三行 */
+  .nav-dca-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-sizing: border-box;
+  }
+  .ndr-item b { font-weight: 700; color: var(--text-primary); }
+  .ndr-item.is-dim { opacity: 0.45; }
+  .ndr-item.is-warn b { color: #f59e0b; }
+  .ndr-sep { opacity: 0.35; }
+  .ndr-cloud {
+    margin-left: auto;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    border-radius: 4px;
+  }
+  .ndr-cloud.on { color: #0891b2; background: rgba(8, 145, 178, 0.12); }
+  .ndr-cloud.off { color: #f59e0b; background: rgba(245, 158, 11, 0.14); }
+  .nav-dca-row.is-ok { border-color: rgba(16, 185, 129, 0.35); }
+  .nav-dca-row.is-pending { border-color: rgba(245, 158, 11, 0.45); }
+  /* [WHAT] 第三行可点击进入定投管理页：指针 + 按压反馈 */
+  .nav-dca-row { cursor: pointer; }
+  .nav-dca-row:active { background: var(--bg-tertiary); }
+  /* [WHAT] 最右侧的「›」提示可点击跳转 */
+  .ndr-go {
+    margin-left: 2px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-secondary);
+    opacity: 0.6;
   }
   
   /* 移动端主题按钮位置 */

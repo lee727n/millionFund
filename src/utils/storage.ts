@@ -295,7 +295,10 @@ export function addTrade(trade: TradeRecord): void {
     code: trade.code
   })
   const trades = getTrades()
-  trades.push({ ...trade, id: generateId(), createdAt: Date.now() })
+  // [WHAT] 允许调用方传入确定性的 id（定投交易用 dca_<planId>_<date>，便于跨设备幂等合并）；
+  //       传了空串/未传则自动生成随机 id（历史行为不变）。
+  const id = trade.id && String(trade.id).length > 0 ? trade.id : generateId()
+  trades.push({ ...trade, id, createdAt: trade.createdAt || Date.now() })
   saveTrades(trades)
 }
 

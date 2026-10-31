@@ -6,6 +6,31 @@
         <h1>📅 定投管理</h1>
         <span class="dca-sub">按计划自动以当前净值买入 · 扣减对应账户现金</span>
       </div>
+      <!-- [WHAT] 今日定投状态条：已执行 / 已恢复(云端) / 未触发 -->
+      <!-- [WHY] 全景大屏持仓头部太挤，改放到定投页顶部栏（定投的归属页） -->
+      <span
+        class="dca-today-status"
+        :class="[dcaTodayStat.pending > 0 ? 'is-pending' : 'is-ok']"
+        :title="`今日定投：已执行 ${dcaTodayStat.executed} 笔，其中从云端恢复 ${dcaTodayStat.recovered} 笔；未触发 ${dcaTodayStat.pending} 笔（${dcaTodayStat.cloud ? '云端协调已开启' : '本地模式，未配置云端 Token'}）`"
+      >
+        <span class="dts-item">今日已执行 <b>{{ dcaTodayStat.executed }}</b></span>
+        <span class="dts-sep">·</span>
+        <span class="dts-item" :class="{ 'is-dim': dcaTodayStat.recovered === 0 }">
+          已恢复 <b>{{ dcaTodayStat.recovered }}</b>
+        </span>
+        <span class="dts-sep">·</span>
+        <span class="dts-item" :class="{ 'is-warn': dcaTodayStat.pending > 0 }">
+          未触发 <b>{{ dcaTodayStat.pending }}</b>
+        </span>
+        <span class="dts-cloud" :class="dcaTodayStat.cloud ? 'on' : 'off'">
+          {{ dcaTodayStat.cloud ? '云端' : '本地' }}
+        </span>
+        <span
+          v-if="dcaTodayStat.synced"
+          style="margin-left:6px;font-size:11px;color:#52c41a;opacity:.9;white-space:nowrap"
+          title="今日云端协调已处理完成：自动刷新不再请求云端 gist"
+        >✓ 今日已同步（自动刷新不再请求云端）</span>
+      </span>
       <div class="dca-top-right">
         <span class="dca-updated">{{ lastUpdated }}</span>
         <button class="dca-btn ghost" @click="doRefresh">↻ 刷新</button>
@@ -158,7 +183,10 @@ import {
   updateDCAPlan,
   removeDCAPlan,
   computeDCAStats,
-  executeDueDCAs,
+  executeDueDCAsCloud,
+  pushPlansToCloud,
+  isScheduledDay,
+  getDcaTodaySync, isDcaCloudDoneToday,
   nextScheduledDate,
   freqLabel,
   type DCAFrequency,
@@ -210,6 +238,22 @@ function plansOf(key: string): DCAPlan[] {
 function statOf(key: string): DCAAccountStat {
   return allStats.value.find(s => s.source === key) || EMPTY_STAT
 }
+
+// ============ 今日定投状态条（顶部栏） ============
+// [WHAT] 今日「已执行 / 已恢复(云端) / 未触发」三档计数。
+// [WHY] 用户要在定投页一眼确认今天扣没扣、这笔是本机扣的还是从云端同步过来的（手机扣的电脑补上）。
+// [NOTE] 「已恢复 / 是否云端」读 dca.ts 的共享快照（localStorage），
+//       这样即便定投是在别处（首页/手机端）执行的，本页也能显示同一份今日状态。
+const dcaTodayStat = computed(() => {
+  void dcaRefreshKey.value
+  const plans = allPlans.value
+  const executed = plans.filter(p => p.lastExecutedDate === todayCal).length
+  const pending = plans.filter(
+    p => p.active && p.startDate <= todayCal && isScheduledDay(p, todayCal) && p.lastExecutedDate !== todayCal
+  ).length
+  const sync = getDcaTodaySync(todayCal)
+  return { executed, pending, recovered: sync.recovered, cloud: sync.cloud, synced: isDcaCloudDoneToday(todayCal) }
+})
 
 /** 新建计划：基金下拉按所选账户过滤 */
 const fundsBySource = computed(() => {
@@ -279,16 +323,19 @@ function submit() {
   }
   resetForm()
   dcaRefreshKey.value++
+  pushPlansToCloud().catch(() => {})
 }
 
 function toggle(id: string, active: boolean) {
   updateDCAPlan(id, { active })
   dcaRefreshKey.value++
+  pushPlansToCloud().catch(() => {})
 }
 function remove(id: string) {
   removeDCAPlan(id)
   showToast('定投计划已删除')
   dcaRefreshKey.value++
+  pushPlansToCloud().catch(() => {})
 }
 
 // [WHAT] 行内编辑每期金额：点击金额 → 输入框 → 保存写回 plan.amount → 后续执行按新金额扣款
@@ -309,6 +356,7 @@ function saveEdit() {
     updateDCAPlan(editingId.value, { amount: amt })
     dcaRefreshKey.value++
     showToast('每期金额已更新')
+    pushPlansToCloud().catch(() => {})
   }
   editingId.value = null
 }
@@ -329,8 +377,15 @@ async function doRefresh() {
       /* 估值拉取失败不阻断执行 */
     }
   }
-  const res = executeDueDCAs(getCalendarDateStr())
-  if (res.executed.length) showToast(`已执行 ${res.executed.length} 笔定投`)
+  const res = await executeDueDCAsCloud(getCalendarDateStr())
+  if (res.executed.length) {
+    const tag = res.cloudCoordinated ? '（云端）' : '（本地·未配置Token）'
+    showToast(`已执行 ${res.executed.length} 笔定投${tag}`)
+  } else if (res.recovered > 0) {
+    showToast(`已从云端恢复 ${res.recovered} 笔定投`)
+  } else if (res.deferred > 0) {
+    showToast('云端正在执行，本机暂不扣款')
+  }
   dcaRefreshKey.value++
   lastUpdated.value = '更新于 ' + new Date().toLocaleTimeString('zh-CN')
 }
@@ -378,6 +433,37 @@ onUnmounted(() => {
 .dca-top-left { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .dca-top-left h1 { font-size: 18px; font-weight: 700; margin: 0; color: #f1f5f9; }
 .dca-sub { font-size: 12px; color: #64748b; }
+
+/* [WHAT] 今日定投状态条（顶部栏中间）。本页是深色主题，配色按深底浅字来，不用全局 CSS 变量 */
+.dca-today-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: border-color 0.15s;
+}
+.dts-item b { font-weight: 700; color: #f1f5f9; }
+.dts-item.is-dim { opacity: 0.45; }
+.dts-item.is-warn b { color: #fbbf24; }
+.dts-sep { opacity: 0.3; }
+.dts-cloud {
+  margin-left: 3px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  border-radius: 4px;
+}
+.dts-cloud.on { color: #67e8f9; background: rgba(34, 211, 238, 0.16); }
+.dts-cloud.off { color: #fbbf24; background: rgba(251, 191, 36, 0.16); }
+.dca-today-status.is-ok { border-color: rgba(52, 211, 153, 0.4); }
+.dca-today-status.is-pending { border-color: rgba(251, 191, 36, 0.5); }
 .dca-top-right { display: flex; align-items: center; gap: 10px; }
 .dca-updated { font-size: 11px; color: #64748b; }
 .dca-btn {

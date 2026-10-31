@@ -24,7 +24,7 @@ import {
   savePanoramaAccountCash,
   saveDCADailyRates,
 } from '@/utils/storage'
-import { computeDCADailyRateMap } from '@/utils/dca'
+import { computeDCADailyRateMap, getDCAPlans, saveDCAPlans } from '@/utils/dca'
 import { getBaiduOcrConfig, setBaiduOcrConfig } from '@/utils/ocr'
 import { clearFundCache } from '@/api/fundFast'
 import {
@@ -164,6 +164,11 @@ function buildBackupPayload(withNetValues: boolean) {
     //       手机端无完整计划且无法同步执行，但靠这个每日额度即可展示 定投¥/天 与 可投天数；
     //       QD占比、可投天数等其余数据都能由持仓/现金现算，不必备份。
     dcaDailyRates: computeDCADailyRateMap(),
+    // [WHAT] 定投完整计划（含 lastExecutedDate 等执行标记）。
+    // [WHY] 定投计划已支持云端同步 + 手机端执行，「计划本身」也必须是可恢复资产；
+    //       否则用户在手机建/改的计划，一旦电脑端恢复一次旧备份就会被清掉。
+    //       老备份无此字段 → 恢复时跳过（不写空），不会清掉本机现有计划。
+    dcaPlans: getDCAPlans(),
   }
 
   if (withNetValues) {
@@ -190,8 +195,6 @@ function applyBackupData(jsonData: any): boolean {
   processedHoldings.forEach((h: any) => {
     if (h.code) clearFundCache(h.code)
   })
-
-  holdingStore.initHoldings()
 
   if (jsonData.aiTracking && Array.isArray(jsonData.aiTracking)) {
     aiTrackingStore.importRecords(jsonData.aiTracking)
@@ -231,6 +234,28 @@ function applyBackupData(jsonData: any): boolean {
   // [WHY] 老版本备份文件里没有这个字段时「跳过」而非写空，避免清掉当前已有的每日定投额
   if (jsonData.dcaDailyRates && typeof jsonData.dcaDailyRates === 'object') {
     saveDCADailyRates(jsonData.dcaDailyRates)
+  }
+
+  // [WHY] 同上：老备份无 dcaPlans 字段时「跳过」而非写空数组，
+  //       否则恢复一次旧备份就会把本机（含手机端）已有的定投计划无声清空。
+  if (Array.isArray(jsonData.dcaPlans)) {
+    saveDCAPlans(jsonData.dcaPlans)
+  }
+
+  // [WHY] 全部数据落盘后再重算估值/自愈，保证重算基于「恢复后的完整状态」
+  //       [BUG·旧顺序] 原 initHoldings 跑在 trades/cash/dcaPlans 写回之前，导致：① 自愈补齐买点(backfillBuyTrades)
+  //       用的是恢复前的旧交易；② 备份自带的正确净值快照 fundNetValues 在联网重算之后才落盘，恢复瞬间市值完全由
+  //       手机端当场联网拉取决定，与备份时刻不一致；③ 定投幂等依赖恢复后的 dcaPlans，顺序错有隐患。
+  holdingStore.initHoldings()
+
+  // [DEFENSIVE] 现金不经任何计算，恢复后应与备份逐账户一致；不一致说明写入被覆盖或未生效，打日志便于排查
+  const restoredCash = getPanoramaAccountCash()
+  if (jsonData.panoramaAccountCash && typeof jsonData.panoramaAccountCash === 'object') {
+    for (const k of Object.keys(jsonData.panoramaAccountCash)) {
+      if ((restoredCash[k] || 0) !== (jsonData.panoramaAccountCash[k] || 0)) {
+        console.warn(`[恢复校验] 账户现金 ${k} 不一致：备份=${jsonData.panoramaAccountCash[k]}，本地=${restoredCash[k]}`)
+      }
+    }
   }
 
   emit('restored')

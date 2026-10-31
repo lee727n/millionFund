@@ -95,7 +95,7 @@ function getColors() {
       bgPrimary: '#ffffff',
       textPrimary: '#1f2329',
       textSecondary: '#8b939e',
-      textUpdated: '#1f2329',
+      textUpdated: '#b8860b',
       gridColor: '#eef0f3',
       borderColor: '#dfe3e8',
       upColor: '#f6465d',
@@ -109,7 +109,7 @@ function getColors() {
     bgPrimary: '#0b0e11',
     textPrimary: '#eaecef',
     textSecondary: '#848e9c',
-    textUpdated: '#c9d1d9',
+    textUpdated: '#d4a017',
     gridColor: '#1e2329',
     borderColor: '#2b3139',
     upColor: '#f6465d',
@@ -620,7 +620,7 @@ function drawChart() {
     // 基金名称（代码兜底）
     const nameY = twoLineHeader ? 11 : infoBarHeight - 3
     // [WHAT] 名称颜色跟随「净值是否已更新」状态，与 .home 持仓趋势 FundGridItem 同口径
-    //        交易中=灰 / 未更新=灰(与交易中同色) / 已更新=柔白(textUpdated，比纯白暗、比灰亮，不刺眼)；不再用黄色；无状态则用默认主色（全景大屏等未传时）
+    //        交易中=灰 / 未更新=灰(与交易中同色) / 已更新=暗黄(textUpdated，与全局 --fund-name-accent 一致)；无状态则用默认主色（全景大屏等未传时）
     ctx.fillStyle = props.updateStatus === 'updated'
       ? colors.textUpdated
       : props.updateStatus === 'not-updated'

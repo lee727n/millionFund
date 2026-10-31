@@ -81,6 +81,14 @@ const router = createRouter({
       meta: { title: '定投管理' }
     },
     {
+      // [WHAT] 手机端专属定投管理页：竖屏重设计（顶部安全区 + 账户汇总卡 + 竖向计划卡 + 底部弹层表单）
+      //       与桌面端 /dca 分开，避免横屏布局套到竖屏上格式错乱
+      path: '/m/dca',
+      name: 'mobile-dca',
+      component: () => import('@/views/MobileDCAPage.vue'),
+      meta: { title: '定投管理' }
+    },
+    {
       path: '/ai-tracking/detail/:sellCode/:sellName/:buyCode/:buyName/:sellNav/:buyNav/:sellPrice/:buyPrice/:sellChange/:buyChange/:date/:sellNavEstimated/:buyNavEstimated',
       name: 'ai-tracking-detail',
       component: () => import('@/views/AITrackingDetail.vue'),

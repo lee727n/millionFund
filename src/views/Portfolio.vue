@@ -886,11 +886,11 @@ onUnmounted(() => {
 }
 
 .web-account-column-grid :deep(.fund-name-not-updated) {
-  color: var(--color-down) !important;
+  color: var(--text-secondary) !important;
 }
 
 .web-account-column-grid :deep(.fund-name-updated) {
-  color: var(--color-warning) !important;
+  color: var(--fund-name-accent) !important;
 }
 
 .web-account-column-grid :deep(.fund-ratio-badge) {

@@ -17,7 +17,7 @@ import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, typ
 import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { addStarredFund, removeStarredFund, isStarredFund, getStarredFunds, starMetaFromFund, getPanoramaAccountCash } from '@/utils/storage'
-import { getAccountDailyRateMap } from '@/utils/dca'
+import { getAccountDailyRateMap, executeDueDCAsCloud } from '@/utils/dca'
 import { createTrade } from '@/composables/useFundTrade'
 import type { TradeType } from '@/types/fund'
 import { tradeTypeLabel } from '@/types/fund'
@@ -1300,7 +1300,7 @@ function calcUpdateProgress(funds: any[]) {
   if (inTrading) return { updated, total, text: '交易中', cls: 'updating', percent: (updated / total) * 100, bar: false }
   if (updated === 0) return { updated, total, text: '未更新', cls: 'not-updated', percent: 0, bar: false }
   if (updated < total) return { updated, total, text: `更新中 ${updated}/${total}`, cls: 'updating', percent: (updated / total) * 100, bar: true }
-  return { updated, total, text: `已更新 ${total}/${total}`, cls: 'updated', percent: 100, bar: false }
+  return { updated, total, text: '已更新', cls: 'updated', percent: 100, bar: false }
 }
 
 // [WHAT] 全局更新进度：所有持仓（含量化观察）今天更新了多少只
@@ -1341,6 +1341,11 @@ const mobileObserveSection = computed(() => {
   const stats = calcMobileAccountStats(funds)
   return { label: '量化观察', icon: eyeIcon, funds, stats }
 })
+
+// [WHAT] 手机首页第二行：支付宝/腾讯/京东 三个账户的总市值（与全景大屏「总市值」同口径，不含量化观察/other）。
+const threeAccountMarketValue = computed(() =>
+  mobileAccountSections.value.reduce((t: number, acc: any) => t + (acc?.stats?.marketValue || 0), 0)
+)
 
 function fmtMoney(v: number) {
   if (Math.abs(v) >= 10000) return (v / 10000).toFixed(2) + '万'
@@ -1524,8 +1529,20 @@ async function refreshData() {
     
     // 刷新持仓趋势中的基金数据
     await holdingStore.refreshEstimates()
-    
-    showToast('刷新成功')
+
+    // [WHAT] 手机端也执行「今天到期」的定投（云端协调，与电脑端共用同一份去重台账，不会重复扣款）
+    // [WHY] 用户要求：在外面只用手机扣费；回来电脑端从云端恢复即可完全恢复数据。
+    //       放在持仓估值刷新之后，保证买入价用的是最新净值/估值。
+    const dcaRes = await executeDueDCAsCloud(getCalendarDateStr())
+    if (dcaRes.executed.length) {
+      showToast(`已执行 ${dcaRes.executed.length} 笔定投${dcaRes.cloudCoordinated ? '（云端）' : '（本地·未配置Token）'}`)
+    } else if (dcaRes.recovered > 0) {
+      showToast(`已从云端恢复 ${dcaRes.recovered} 笔定投`)
+    } else if (dcaRes.deferred > 0) {
+      showToast('云端正在执行，本机暂不扣款')
+    } else {
+      showToast('刷新成功')
+    }
   } catch {
     showToast('刷新失败，请重试')
   }
@@ -1582,11 +1599,23 @@ watch(
 async function onRefresh() {
   await Promise.all([
     fundStore.refreshEstimates(),
+    // [WHAT] 补上持仓仓位的估值刷新：定投要以最新净值/估值为买入价，
+    //        且下拉刷新原本只刷自选/指数/资讯，不刷持仓 → 定投会拿到昨天的价格。
+    holdingStore.refreshEstimates(),
     loadIndices(),
     loadGlobalIndices(),
     loadNews()
   ])
-  showToast('刷新成功')
+  // [WHAT] 下拉刷新同样执行「今天到期」的定投（云端协调，与电脑端去重）。
+  //       手动下拉 = 用户主动要同步，强制跑一次（绕过「今日已处理」的 60s 轮询停用标记）。
+  const dcaRes = await executeDueDCAsCloud(getCalendarDateStr(), { force: true })
+  if (dcaRes.executed.length) {
+    showToast(`已执行 ${dcaRes.executed.length} 笔定投${dcaRes.cloudCoordinated ? '（云端）' : '（本地·未配置Token）'}`)
+  } else if (dcaRes.recovered > 0) {
+    showToast(`已从云端恢复 ${dcaRes.recovered} 笔定投`)
+  } else {
+    showToast('刷新成功')
+  }
 }
 
 // [WHAT] 删除自选基金
@@ -1704,7 +1733,17 @@ function handleNameClick(code: string, name: string) {
           </div>
           <!-- 移动端：只显示自动刷新开关和刷新按钮 -->
           <div class="mobile-only">
-            <van-switch v-model="autoRefreshEnabled" size="20" />
+            <button
+              class="auto-refresh-toggle"
+              :class="{ 'is-on': autoRefreshEnabled }"
+              @click="autoRefreshEnabled = !autoRefreshEnabled"
+              :title="autoRefreshEnabled ? '关闭自动刷新' : '开启自动刷新'"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+            </button>
             <van-icon name="replay" size="22" @click="refreshData" />
           </div>
         </div>
@@ -1712,11 +1751,18 @@ function handleNameClick(code: string, name: string) {
       <!-- 手机端第二行：原 m-holding-bar（持仓盈亏 / 星标K线 / 更新进度），从首页持仓区搬到顶部 -->
       <div class="top-header-second-row mobile-only">
         <div class="m-holding-bar">
-          <span class="live-dot" :class="tradingStatus.class"></span>
-          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
+          <!-- 基金更新进度条（含 交易中/更新中/已更新/未更新）：移到最左侧，替代原呼吸点位置 -->
+          <span class="m-update-progress" :class="[globalUpdateProgress.cls, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
+            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
+              <span class="m-up-live-dot"></span>
+            </template>
+            <span class="m-update-text">{{ globalUpdateProgress.text }}</span>
+          </span>
+          <span class="m-bar-mv" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')" :title="`支付宝/腾讯/京东 总市值 ${fmtMoney(threeAccountMarketValue)}`">{{ fmtMoney(threeAccountMarketValue) }}</span>
+          <span class="m-bar-profit m-bar-pct" :class="isWeekend ? 'closed' : (totalTodayProfitPercent >= 0 ? 'up' : 'down')">
             {{ isWeekend ? '休市' : ((totalTodayProfitPercent >= 0 ? '+' : '') + totalTodayProfitPercent.toFixed(2) + '%') }}
           </span>
-          <span class="m-bar-profit" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
+          <span class="m-bar-profit" v-if="!(globalUpdateProgress.cls === 'updating' && globalUpdateProgress.bar)" :class="isWeekend ? 'closed' : (totalTodayProfit >= 0 ? 'up' : 'down')">
             {{ isWeekend ? '' : '盈亏' + (totalTodayProfit >= 0 ? '+' : '') + Math.round(totalTodayProfit) }}
           </span>
           <span
@@ -1730,16 +1776,6 @@ function handleNameClick(code: string, name: string) {
               <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.1-6.47-4.69-4.58 6.5-.95z" />
             </svg>
             <em v-if="starredCount > 0" class="mobile-star-badge">{{ starredCount }}</em>
-          </span>
-          <!-- 基金更新进度条：今天更新了多少只（仅「更新中」状态显示进度条，已更新/未更新只显示文字） -->
-          <span class="m-update-progress" :class="[globalUpdateProgress.cls, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
-            <template v-if="tradingSession === 'morning' || tradingSession === 'afternoon'">
-              <span class="m-up-live-dot"></span>
-            </template>
-            <template v-else-if="globalUpdateProgress.bar">
-              <span class="m-update-bar"><span class="m-update-fill" :style="{ width: globalUpdateProgress.percent + '%' }"></span></span>
-            </template>
-            <span class="m-update-text">{{ globalUpdateProgress.text }}</span>
           </span>
         </div>
       </div>
@@ -2876,7 +2912,7 @@ function handleNameClick(code: string, name: string) {
 .m-holding-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;   /* [WHAT] 去掉统一间距；左间距只留给 总市值/涨跌幅%（margin-left），交易中/盈亏/星标K线 左侧不留间距 */
   flex: 1;
   min-width: 0;
   font-size: 14px;
@@ -2884,9 +2920,6 @@ function handleNameClick(code: string, name: string) {
   color: var(--text-primary);
   flex-wrap: nowrap;
   white-space: nowrap;
-}
-.m-holding-bar .live-dot {
-  flex-shrink: 0;
 }
 .m-bar-profit {
   font-family: 'SF Mono', Consolas, monospace;
@@ -2898,10 +2931,47 @@ function handleNameClick(code: string, name: string) {
 .m-bar-profit.up { background: rgba(239, 68, 68, 0.14); color: #f87171; }   /* 浅红底：涨（与市值卡同配色） */
 .m-bar-profit.down { background: rgba(34, 197, 94, 0.16); color: #4ade80; } /* 浅绿底：跌（与市值卡同配色） */
 .m-bar-profit.closed { color: #999; }
-/* 更新进度条推到最右侧（与星标互换位置后） */
+/* [WHAT] 涨跌幅%：左侧保留 10px 间距（总市值 与 涨跌幅 之间仍分隔）；盈亏 不再留左间距 */
+.m-bar-pct { margin-left: 10px; }
+/* [WHAT] 手机首页第二行：涨跌幅左侧的「三账户总市值」小卡（随当日涨跌涨红跌绿，与每个账户市值卡同配色；不写「总市值」三字） */
+.m-bar-mv {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: 10px;   /* [WHAT] 总市值左侧保留间距（与交易中分隔）；其余组件左间距见各自规则 */
+  white-space: nowrap;
+}
+.m-bar-mv.up { background: rgba(239, 68, 68, 0.14); color: #f87171; }
+.m-bar-mv.down { background: rgba(34, 197, 94, 0.16); color: #4ade80; }
+.m-bar-mv.closed { color: #999; background: transparent; }
+
+/* [WHAT] 手机首页自动刷新开关：与全景大屏一致的图标按钮，开启时变蓝（is-on） */
+.auto-refresh-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--bg-secondary, #2a2f3a);
+  border: 1px solid var(--border-light, #3a4150);
+  color: var(--text-primary, #e5e7eb);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+}
+.auto-refresh-toggle.is-on {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+/* 更新进度条（含 交易中/更新中/已更新/未更新）：移到最左侧，作为状态指示（替代原呼吸点位置） */
 .m-holding-bar .m-update-progress {
-  margin-left: auto;
+  margin-left: 0;
   margin-right: 0;
+  flex-shrink: 0;
 }
 
 .m-account-block {

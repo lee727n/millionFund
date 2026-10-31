@@ -23,7 +23,7 @@ import { createTrade } from '@/composables/useFundTrade'
 import { resolveFundValue, type FundValueResult } from '@/utils/fundValue'
 import { getCalendarDateStr } from '@/utils/navDate'
 import { ACCOUNT_RETURN_CURVE_ENABLED } from '@/utils/intradayReturn'
-import { executeDueDCAs, getDCAPlans, planDailyRate } from '@/utils/dca'
+import { executeDueDCAsCloud, getDCAPlans, planDailyRate, getDcaTodaySync, isDcaCloudDoneToday } from '@/utils/dca'
 import { tradeTypeLabel } from '@/types/fund'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import BackupActions from '@/components/BackupActions.vue'
@@ -388,6 +388,7 @@ const totalCash = computed(() =>
   CASH_ACCOUNT_KEYS.reduce((t, k) => t + getAccountCash(k), 0)
 )
 
+
 // ---- 现金编辑弹窗 ----
 const cashEditDialog = reactive({
   open: false,
@@ -420,6 +421,21 @@ function closeCashEdit() {
 function openDCATab() {
   window.open('/dca', '_blank')
 }
+
+// ============ 持仓 panel 头部：简化版今日定投状态（定投按钮右侧） ============
+// [WHAT] 只显示两样：① 今日已落地扣款笔数（本机执行 + 从云端同步，done>0 才显示）② 云端/本地徽标。
+// [WHY] 用户要求比完整状态条（已执行·已恢复·未触发）更精简：没扣款就不显示「已执行」，但仍要一眼看到跨设备保护是否开启。
+// [NOTE] 计划与云端快照都存 localStorage（非响应式），靠 dcaTick 手动自增触发重算。
+const dcaTick = ref(0)
+const dcaTodayStat = computed(() => {
+  void dcaTick.value
+  const today = getCalendarDateStr()
+  const plans = getDCAPlans()
+  const executed = plans.filter(p => p.lastExecutedDate === today).length
+  const sync = getDcaTodaySync(today)
+  // done = 今天实际落地的扣款笔数（本机执行 OR 云端同步都算「已执行」）
+  return { done: executed + sync.recovered, cloud: sync.cloud, synced: isDcaCloudDoneToday(today) }
+})
 
 // ============ 持仓列：账户区块顺序 + 高度（都能拖） ============
 // [WHY] 原来 4 个账户区块是 4 段几乎一模一样的静态模板，顺序/高度写死。
@@ -880,11 +896,15 @@ async function refreshAll(forceRefresh: boolean = false) {
     // [WHAT] 估值刷新完成后，执行「今天到期」的定投计划（买入 auto_invest 交易 + 扣减账户现金 + 累加持仓份额）。
     // [WHY] 此时持仓已带最新 currentValue（净值或估值），可直接作为买入价。定投仅在网页打开且触发刷新时执行，
     //       过去的交易日不补买（没有历史每日净值，用今日净值回补过去日期在经济学上是错的）。
-    const dcaResult = executeDueDCAs(getCalendarDateStr())
-    if (dcaResult.executed.length) {
-      // [WHAT] 定投已改动现金余额与持仓份额，重新读回 ref 让顶栏/账户现金/市值即时刷新
+    // [WHAT] 定投执行：手动 ↻（forceRefresh=true）强制同步；60s 自动刷新（forceRefresh=false）尊重「今日已处理」标记，不再打 gist。
+    const dcaResult = await executeDueDCAsCloud(getCalendarDateStr(), { force: forceRefresh })
+    // [WHAT] 定投已改动现金余额与持仓份额，重新读回 ref 让顶栏/账户现金/市值即时刷新
+    // [WHY] 除了本机执行(executed)，「从云端恢复他机的扣款」(recovered) 同样会扣本机现金、加份额，也要刷新
+    if (dcaResult.executed.length || dcaResult.recovered > 0) {
       accountCash.value = getPanoramaAccountCash()
     }
+    // [WHAT] 刷新简化版定投状态条（done / 云端徽标）
+    dcaTick.value++
 
     // AI 追踪的估值成本也在每次全景刷新时校正：
     // 添加当天先用估值并记录估值日期；晚间/次日拿到历史净值后替换为同一天的真实净值。
@@ -1631,15 +1651,25 @@ const aiLiveIsNavMap = computed(() => {
         <div class="panel-header">
           <span class="panel-title">💼 Portfolio 持仓</span>
           <span class="panel-sub">共 {{ totalStats.count }} 只 · 市值 {{ fmtMoney(totalStats.marketValue) }}</span>
-          <!-- [WHAT] 定投入口：持仓 panel 头部唯一一个按钮，点击在新浏览器 tab 打开定投管理页（/dca） -->
+          <!-- [WHAT] 定投入口 + 今日状态合并为一个紫色按钮：点击在新 tab 打开定投管理页（/dca）。
+               [WHY] 用户要求定投按钮与「已执行」合并成一个，不分开两个。
+               文字：今天有扣款(done>0)→「定投·已执行N」，否则→「定投·未执行」；右侧紧跟 云端/本地 徽标（无间距）。 -->
           <button
             class="panel-dca-btn"
-            title="定投管理（新开页面）"
+            :title="dcaTodayStat.cloud ? '云端协调已开启（跨设备只扣一次）· 点击打开定投管理' : '本地模式（未配置云端 Token，无跨设备去重）· 点击打开定投管理'"
             @click="openDCATab"
           >
-            <span class="dca-icon">📅</span>定投
+            <span class="dca-icon">📅</span>
+            <span class="pdca-text">{{ dcaTodayStat.done > 0 ? '定投·已执行' + dcaTodayStat.done : '定投·未执行' }}</span>
+            <span class="panel-dca-cloud-inline" :class="dcaTodayStat.cloud ? 'on' : 'off'">
+              {{ dcaTodayStat.cloud ? '云端' : '本地' }}
+            </span>
+            <span
+              v-if="dcaTodayStat.synced"
+              style="margin-left:6px;font-size:13px;color:#52c41a;opacity:.95;font-weight:700"
+              title="今日已同步：云端协调已处理完成，自动刷新不再请求云端 gist"
+            >✓</span>
           </button>
-          <span class="panel-link" @click="resetAccountLayout" title="恢复账户区块的默认顺序与高度">复位</span>
           <!-- 更新进度 -->
           <div class="update-progress" :class="[updateProgress.class, { 'in-trading': tradingSession === 'morning' || tradingSession === 'afternoon' }]">
             <!-- 交易中：绿点呼吸 + 文字 -->
@@ -3194,6 +3224,18 @@ const aiLiveIsNavMap = computed(() => {
   background: linear-gradient(135deg, #1989fa, #21c1ff);
 }
 .dca-icon { font-size: 11px; line-height: 1; }
+/* [WHAT] 合并后的定投按钮内：云端/本地 徽标（紧贴文字，无额外间距，半透明白底配色在紫底上可读） */
+.panel-dca-cloud-inline {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-left: 0;
+  white-space: nowrap;
+}
+.panel-dca-cloud-inline.on { color: #67e8f9; background: rgba(255, 255, 255, 0.22); }
+.panel-dca-cloud-inline.off { color: #fde68a; background: rgba(255, 255, 255, 0.22); }
 .dca-badge {
   display: inline-flex;
   align-items: center;
@@ -3208,6 +3250,10 @@ const aiLiveIsNavMap = computed(() => {
   background: #fff;
   border-radius: 7px;
 }
+
+/* [WHAT] 「复位」按钮(.panel-link，带 margin-left:auto)已移除，原由它把更新进度条顶到最右；
+         这里接手，保持 Portfolio panel 头部的更新进度条仍然右对齐（只作用于持仓列，不影响其他 panel） */
+.col-portfolio .panel-header .update-progress { margin-left: auto; }
 
 /* ============ 账户持仓进度条（现金图标右侧） ============ */
 /* [WHAT] 轨道=总仓位(现金+市值)，填充=持仓市值(渐变主色)，空白=闲置现金；右侧等宽百分比标签 */
@@ -3402,7 +3448,7 @@ const aiLiveIsNavMap = computed(() => {
 }
 
 /* 交易时间内：已更新=橙色，未更新=绿色 */
-.fm-name.fm-updated, .observe-name.fm-updated { color: var(--fund-updated-name); }
+.fm-name.fm-updated, .observe-name.fm-updated { color: var(--fund-name-accent); }
 .fm-name.fm-pending, .observe-name.fm-pending { color: rgba(255, 255, 255, 0.55); }
 .fm-name.fm-in-trading, .observe-name.fm-in-trading { color: rgba(255, 255, 255, 0.55); }
 

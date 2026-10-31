@@ -483,7 +483,7 @@ const badgeVisible = computed(() => {
 }
 
 .fund-name-updated {
-  color: var(--fund-updated-name) !important;
+  color: var(--fund-name-accent) !important;
 }
 
 .source-icon-small {

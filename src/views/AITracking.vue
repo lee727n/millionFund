@@ -1479,7 +1479,7 @@ onUnmounted(() => {
 
 /* [WHAT] 基金名状态色（复用 FundName 组件注入的 fm-updated / fm-pending / fm-in-trading 类）
    与全景大屏持仓/星标K线同口径：已更新=绿 / 未更新=灰 / 交易中=灰 */
-.fm-name.fm-updated { color: var(--fund-updated-name); }
+.fm-name.fm-updated { color: var(--fund-name-accent); }
 .fm-name.fm-pending { color: var(--text-muted); }
 .fm-name.fm-in-trading { color: var(--text-muted); }
 
